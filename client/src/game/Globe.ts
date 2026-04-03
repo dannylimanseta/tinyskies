@@ -2,6 +2,8 @@ import {
   Mesh,
   InstancedMesh,
   SphereGeometry,
+  BoxGeometry,
+  ConeGeometry,
   MeshPhongMaterial,
   ShaderMaterial,
   BackSide,
@@ -16,6 +18,7 @@ import {
   MathUtils,
   Quaternion,
   Float32BufferAttribute,
+  BufferGeometry,
   type Scene,
 } from "three";
 import { addRimLight } from "./RimLight";
@@ -45,6 +48,8 @@ void main() {
 `;
 
 const TREE_COUNT = 3400;
+const VILLAGE_COUNT = 20;
+const HOUSES_PER_VILLAGE = [8, 10, 12, 14, 16];
 const CLOUD_COUNT = 30;
 const CLOUD_ALTITUDE = 1.0;
 const CLOUD_DRIFT_SPEED = 0.03;
@@ -75,6 +80,7 @@ export class Globe {
     this.terrainType = terrainType;
     this.createSurface();
     this.createTrees();
+    this.createVillages();
     this.createClouds();
     this.createAtmosphere();
   }
@@ -375,6 +381,334 @@ transformed.z += sway2;`,
       }
       instanced.instanceMatrix.needsUpdate = true;
 
+      this.group.add(instanced);
+    }
+  }
+
+  private mergeColoredParts(
+    parts: { geo: BufferGeometry; color: Color }[],
+  ): BufferGeometry {
+    let totalVerts = 0;
+    let totalIdx = 0;
+    for (const p of parts) {
+      totalVerts += p.geo.attributes.position.count;
+      totalIdx += (p.geo.index ? p.geo.index.count : 0);
+    }
+
+    const positions = new Float32Array(totalVerts * 3);
+    const normals = new Float32Array(totalVerts * 3);
+    const colors = new Float32Array(totalVerts * 3);
+    const indices: number[] = [];
+    let vOffset = 0;
+
+    for (const { geo, color } of parts) {
+      const pos = geo.attributes.position;
+      const norm = geo.attributes.normal;
+      for (let i = 0; i < pos.count; i++) {
+        const idx = (vOffset + i) * 3;
+        positions[idx] = pos.getX(i);
+        positions[idx + 1] = pos.getY(i);
+        positions[idx + 2] = pos.getZ(i);
+        normals[idx] = norm.getX(i);
+        normals[idx + 1] = norm.getY(i);
+        normals[idx + 2] = norm.getZ(i);
+        colors[idx] = color.r;
+        colors[idx + 1] = color.g;
+        colors[idx + 2] = color.b;
+      }
+      if (geo.index) {
+        for (let i = 0; i < geo.index.count; i++) {
+          indices.push(geo.index.getX(i) + vOffset);
+        }
+      }
+      vOffset += pos.count;
+    }
+
+    const merged = new BufferGeometry();
+    merged.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    merged.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+    merged.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    merged.setIndex(indices);
+    for (const { geo } of parts) geo.dispose();
+    return merged;
+  }
+
+  private createHouseGeo(type: number): BufferGeometry {
+    const wallColor = new Color(0xf0ece4);
+    const domeColors = [new Color(0x2866b0), new Color(0x3478c0), new Color(0x1e5898), new Color(0x4088c8)];
+    const domeColor = domeColors[type % domeColors.length];
+    const flatRoofColor = new Color(0xe8e4dc);
+    const doorColor = new Color(0x4a7ab5);
+    const windowColor = new Color(0x5090c0);
+
+    const parts: { geo: BufferGeometry; color: Color }[] = [];
+
+    if (type === 0) {
+      const wall = new BoxGeometry(1, 0.8, 1);
+      wall.translate(0, 0.4, 0);
+      parts.push({ geo: wall, color: wallColor });
+
+      const dome = new SphereGeometry(0.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.translate(0, 0.8, 0);
+      parts.push({ geo: dome, color: domeColor });
+
+      const door = new BoxGeometry(0.22, 0.36, 0.05);
+      door.translate(0, 0.18, 0.525);
+      parts.push({ geo: door, color: doorColor });
+
+      const winL = new BoxGeometry(0.05, 0.16, 0.16);
+      winL.translate(-0.525, 0.5, 0);
+      parts.push({ geo: winL, color: windowColor });
+      const winR = new BoxGeometry(0.05, 0.16, 0.16);
+      winR.translate(0.525, 0.5, 0);
+      parts.push({ geo: winR, color: windowColor });
+    } else if (type === 1) {
+      const base = new BoxGeometry(1.2, 0.6, 0.9);
+      base.translate(0, 0.3, 0);
+      parts.push({ geo: base, color: wallColor });
+
+      const roof = new BoxGeometry(1.3, 0.08, 1.0);
+      roof.translate(0, 0.64, 0);
+      parts.push({ geo: roof, color: flatRoofColor });
+
+      const upper = new BoxGeometry(0.6, 0.45, 0.5);
+      upper.translate(0.2, 0.925, 0);
+      parts.push({ geo: upper, color: wallColor });
+
+      const upperRoof = new BoxGeometry(0.7, 0.06, 0.6);
+      upperRoof.translate(0.2, 1.18, 0);
+      parts.push({ geo: upperRoof, color: flatRoofColor });
+
+      const door = new BoxGeometry(0.22, 0.3, 0.05);
+      door.translate(-0.2, 0.15, 0.475);
+      parts.push({ geo: door, color: doorColor });
+
+      const win1 = new BoxGeometry(0.14, 0.14, 0.05);
+      win1.translate(0.25, 0.4, 0.475);
+      parts.push({ geo: win1, color: windowColor });
+      const win2 = new BoxGeometry(0.14, 0.14, 0.05);
+      win2.translate(0.2, 0.85, 0.275);
+      parts.push({ geo: win2, color: windowColor });
+    } else if (type === 2) {
+      const wall = new BoxGeometry(0.7, 1.0, 0.7);
+      wall.translate(0, 0.5, 0);
+      parts.push({ geo: wall, color: wallColor });
+
+      const dome = new SphereGeometry(0.4, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.translate(0, 1.0, 0);
+      parts.push({ geo: dome, color: domeColor });
+
+      const door = new BoxGeometry(0.18, 0.4, 0.05);
+      door.translate(0, 0.2, 0.375);
+      parts.push({ geo: door, color: doorColor });
+
+      const winF = new BoxGeometry(0.12, 0.2, 0.05);
+      winF.translate(0, 0.7, 0.375);
+      parts.push({ geo: winF, color: windowColor });
+      const winB = new BoxGeometry(0.12, 0.2, 0.05);
+      winB.translate(0, 0.7, -0.375);
+      parts.push({ geo: winB, color: windowColor });
+    } else {
+      const base = new BoxGeometry(0.9, 0.5, 0.8);
+      base.translate(0, 0.25, 0);
+      parts.push({ geo: base, color: wallColor });
+
+      const baseRoof = new BoxGeometry(1.0, 0.06, 0.9);
+      baseRoof.translate(0, 0.53, 0);
+      parts.push({ geo: baseRoof, color: flatRoofColor });
+
+      const mid = new BoxGeometry(0.55, 0.45, 0.55);
+      mid.translate(-0.1, 0.785, 0.05);
+      parts.push({ geo: mid, color: wallColor });
+
+      const midRoof = new BoxGeometry(0.65, 0.06, 0.65);
+      midRoof.translate(-0.1, 1.04, 0.05);
+      parts.push({ geo: midRoof, color: flatRoofColor });
+
+      const top = new BoxGeometry(0.35, 0.35, 0.35);
+      top.translate(0.05, 1.245, 0);
+      parts.push({ geo: top, color: wallColor });
+
+      const dome = new SphereGeometry(0.22, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.translate(0.05, 1.42, 0);
+      parts.push({ geo: dome, color: domeColor });
+
+      const door = new BoxGeometry(0.2, 0.28, 0.05);
+      door.translate(0.15, 0.14, 0.425);
+      parts.push({ geo: door, color: doorColor });
+
+      const win1 = new BoxGeometry(0.12, 0.12, 0.05);
+      win1.translate(-0.2, 0.35, 0.425);
+      parts.push({ geo: win1, color: windowColor });
+      const win2 = new BoxGeometry(0.05, 0.12, 0.12);
+      win2.translate(-0.375, 0.7, 0.05);
+      parts.push({ geo: win2, color: windowColor });
+    }
+
+    return this.mergeColoredParts(parts);
+  }
+
+  private createVillages() {
+    const rand = seededRandom(200 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    const LAND_HEIGHT = 0.02;
+    const MOUNTAIN_HEIGHT = 0.22;
+    const MIN_ELEVATION = 0.08;
+
+    const villageCenters: Vector3[] = [];
+    let attempts = 0;
+
+    while (villageCenters.length < VILLAGE_COUNT && attempts < VILLAGE_COUNT * 30) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < MIN_ELEVATION || elevation > 0.35) continue;
+
+      const tooClose = villageCenters.some((v) => {
+        const dot = v.x * nx + v.y * ny + v.z * nz;
+        return dot > 0.95;
+      });
+      if (tooClose) continue;
+
+      villageCenters.push(new Vector3(nx, ny, nz));
+    }
+
+    const HOUSE_TYPES = 4;
+    const houseGeos = Array.from({ length: HOUSE_TYPES }, (_, i) => this.createHouseGeo(i));
+    const transformsByType: Matrix4[][] = Array.from({ length: HOUSE_TYPES }, () => []);
+    const gardenTreeTransforms: Matrix4[] = [];
+    const dummy = new Object3D();
+
+    for (const center of villageCenters) {
+      const houseCount = HOUSES_PER_VILLAGE[Math.floor(rand() * HOUSES_PER_VILLAGE.length)];
+
+      for (let h = 0; h < houseCount; h++) {
+        const angle = rand() * Math.PI * 2;
+        const dist = 0.014 + rand() * 0.034;
+
+        const tangent = new Vector3(-center.y, center.x, 0).normalize();
+        if (tangent.lengthSq() < 0.01) tangent.set(0, 0, 1).cross(center).normalize();
+        const bitangent = new Vector3().crossVectors(center, tangent).normalize();
+
+        const houseNormal = center.clone()
+          .addScaledVector(tangent, Math.cos(angle) * dist)
+          .addScaledVector(bitangent, Math.sin(angle) * dist)
+          .normalize();
+
+        const nx = houseNormal.x;
+        const ny = houseNormal.y;
+        const nz = houseNormal.z;
+
+        const value = terrainNoise(
+          noise, nx, ny, nz,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (value <= params.threshold) continue;
+
+        const elevation = (value - params.threshold) / (1 - params.threshold);
+        if (elevation < MIN_ELEVATION * 0.5) continue;
+
+        const displacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
+        const surfaceRadius = this.radius + displacement;
+
+        const sinkAmount = 0.004;
+        const pos = houseNormal.clone().multiplyScalar(surfaceRadius - sinkAmount);
+        const scale = MathUtils.lerp(0.047, 0.074, rand());
+        const houseType = Math.floor(rand() * HOUSE_TYPES);
+
+        dummy.position.copy(pos);
+        dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), houseNormal);
+        dummy.rotateY(rand() * Math.PI * 2);
+        dummy.scale.set(scale, scale * 0.7, scale);
+        dummy.updateMatrix();
+
+        transformsByType[houseType].push(dummy.matrix.clone());
+
+        const treesAround = 2 + Math.floor(rand() * 3);
+        for (let tr = 0; tr < treesAround; tr++) {
+          const tAngle = rand() * Math.PI * 2;
+          const tDist = 0.011 + rand() * 0.014;
+
+          const treeNormal = houseNormal.clone()
+            .addScaledVector(new Vector3(-houseNormal.y, houseNormal.x, 0).normalize(), Math.cos(tAngle) * tDist)
+            .addScaledVector(new Vector3().crossVectors(houseNormal, new Vector3(-houseNormal.y, houseNormal.x, 0).normalize()).normalize(), Math.sin(tAngle) * tDist)
+            .normalize();
+
+          const treeDisplacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
+          const treeSurfaceR = this.radius + treeDisplacement;
+          const treeScale = MathUtils.lerp(0.016, 0.030, rand());
+          const treeH = treeScale * 2.5;
+
+          dummy.position.copy(treeNormal.clone().multiplyScalar(treeSurfaceR).addScaledVector(treeNormal, -treeH * 0.05));
+          dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), treeNormal);
+          dummy.scale.set(treeScale * 0.7, treeH, treeScale * 0.7);
+          dummy.updateMatrix();
+
+          gardenTreeTransforms.push(dummy.matrix.clone());
+        }
+      }
+    }
+
+    const gardenGeo = this.createTeardropGeo(1, 1);
+    const gardenShades = [0x3a8a2a, 0x45953a, 0x509a40];
+
+    for (let s = 0; s < gardenShades.length; s++) {
+      const count = Math.ceil(gardenTreeTransforms.length / gardenShades.length);
+      const start = s * count;
+      const end = Math.min(start + count, gardenTreeTransforms.length);
+      const slice = gardenTreeTransforms.slice(start, end);
+      if (slice.length === 0) continue;
+
+      const mat = new MeshPhongMaterial({
+        color: gardenShades[s],
+        vertexColors: true,
+        flatShading: true,
+      });
+      addRimLight(mat, 0xffeeaa, 0.7, 3.0);
+
+      const instanced = new InstancedMesh(gardenGeo, mat, slice.length);
+      instanced.castShadow = true;
+      instanced.receiveShadow = false;
+
+      for (let i = 0; i < slice.length; i++) {
+        instanced.setMatrixAt(i, slice[i]);
+      }
+      instanced.instanceMatrix.needsUpdate = true;
+      this.group.add(instanced);
+    }
+
+    for (let t = 0; t < HOUSE_TYPES; t++) {
+      const tforms = transformsByType[t];
+      if (tforms.length === 0) continue;
+
+      const mat = new MeshPhongMaterial({
+        vertexColors: true,
+        flatShading: true,
+        shininess: 15,
+      });
+      addRimLight(mat, 0xffeebb, 0.6, 3.0);
+
+      const instanced = new InstancedMesh(houseGeos[t], mat, tforms.length);
+      instanced.castShadow = true;
+      instanced.receiveShadow = true;
+
+      for (let i = 0; i < tforms.length; i++) {
+        instanced.setMatrixAt(i, tforms[i]);
+      }
+      instanced.instanceMatrix.needsUpdate = true;
       this.group.add(instanced);
     }
   }
