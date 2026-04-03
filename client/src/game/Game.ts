@@ -18,6 +18,7 @@ import { CameraRig } from "./CameraRig";
 import { SocketClient } from "../network/SocketClient";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
+import { SpeedLines } from "./SpeedLines";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
 import type { WorldConfig } from "@globefly/shared";
@@ -33,6 +34,7 @@ export class Game {
   private controls!: FlightControls;
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
+  private speedLines!: SpeedLines;
 
   private socketClient: SocketClient | null = null;
   private stateSync: StateSync | null = null;
@@ -155,6 +157,9 @@ export class Game {
 
     this.remotePlanes = new RemotePlaneManager(this.scene, globeRadius);
 
+    this.speedLines = new SpeedLines();
+    this.scene.add(this.speedLines.group);
+
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
 
@@ -218,6 +223,9 @@ export class Game {
     // Update remote planes
     this.remotePlanes.update(dt);
 
+    // Update speed lines
+    this.speedLines.update(dt, this.plane.speed, this.cameraRig.camera);
+
     // Update HUD
     this.hud.setSpeed(this.plane.speed);
     this.hud.setAltitude(this.plane.altitude);
@@ -266,6 +274,7 @@ export class Game {
   dispose() {
     this.running = false;
     this.controls?.dispose();
+    this.speedLines?.dispose();
     this.plane?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();

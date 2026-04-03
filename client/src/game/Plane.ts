@@ -9,6 +9,7 @@ import { createBiplane } from "./BiplaneMesh";
 const CRUISE_SPEED = 1.5;
 const BRAKE_DECEL = 3.0;
 const ACCEL = 2.5;
+const MIN_SPEED = 0.5;
 const MAX_SPEED = 3.0;
 const ALTITUDE = 0.4;
 const MAX_BANK = Math.PI / 4;
@@ -43,10 +44,9 @@ export class Plane {
     if (forward) {
       this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
     } else if (brake) {
-      this.speed = Math.max(0, this.speed - BRAKE_DECEL * dt);
+      this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
     } else {
-      // Gentle drag when coasting (no input)
-      this.speed = Math.max(0, this.speed - 0.3 * dt);
+      this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
     }
 
     this.heading += turnRate * dt;
