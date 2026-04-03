@@ -42,7 +42,8 @@ export class HUD {
       <div class="hud-controls">
         <span>W</span> forward &middot;
         <span>S</span> brake &middot;
-        <span>A/D</span> turn
+        <span>A/D</span> turn &middot;
+        <span>E</span> barrel roll
       </div>
     `;
 
@@ -81,10 +82,10 @@ export class HUD {
     this.xpValueEl.textContent = `${current} XP`;
   }
 
-  showXPGain(amount: number) {
+  showXPGain(amount: number, bonus = false) {
     const popup = document.createElement("div");
-    popup.className = "hud-xp-popup";
-    popup.textContent = `+${amount} XP`;
+    popup.className = bonus ? "hud-xp-popup hud-xp-popup-bonus" : "hud-xp-popup";
+    popup.textContent = bonus ? `+${amount} XP BARREL ROLL!` : `+${amount} XP`;
     this.el.appendChild(popup);
 
     requestAnimationFrame(() => popup.classList.add("hud-xp-popup-animate"));
@@ -201,6 +202,11 @@ export class HUD {
       .hud-xp-popup-animate {
         opacity: 1;
         transform: translateY(-40px);
+      }
+      .hud-xp-popup-bonus {
+        color: rgba(120, 255, 200, 0.95);
+        font-size: 1.3rem;
+        text-shadow: 0 0 16px rgba(80, 255, 180, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
       }
 
       .hud-levelup {

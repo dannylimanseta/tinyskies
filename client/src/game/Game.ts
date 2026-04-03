@@ -180,9 +180,15 @@ export class Game {
     this.scene.add(this.collectVFX.group);
 
     this.ringManager.onCollect = (xp, worldPos, tier) => {
+      const rolling = this.plane.isRolling;
+      const bonusXP = rolling ? xp : 0;
+      if (bonusXP > 0) {
+        this.ringManager.sessionXP += bonusXP;
+        this.ringManager.level = this.ringManager.getLevel();
+      }
       this.collectVFX.play(worldPos, tier);
       this.cameraRig.shake();
-      this.hud.showXPGain(xp);
+      this.hud.showXPGain(xp + bonusXP, rolling);
       this.hud.setXP(
         this.ringManager.getXP(),
         this.ringManager.getXPForNextLevel(),
@@ -239,8 +245,8 @@ export class Game {
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
 
     // Update local plane
-    const { turnRate, forward, brake, elevate } = this.controls.getState();
-    this.plane.update(dt, turnRate, forward, brake, elevate);
+    const { turnRate, forward, brake, elevate, barrelRoll } = this.controls.getState();
+    this.plane.update(dt, turnRate, forward, brake, elevate, barrelRoll);
 
     // Update camera
     this.cameraRig.update(

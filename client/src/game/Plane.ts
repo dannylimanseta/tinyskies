@@ -16,6 +16,10 @@ const HIGH_ALTITUDE = 1.2;
 const ALTITUDE_SPEED = 0.75;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
+const ROLL_SPEED = 5.0;
+const TWO_PI = Math.PI * 2;
+const ROLL_ALT_AMPLITUDE = 0.05;
+const ROLL_PITCH_AMPLITUDE = 0.02;
 
 export class Plane {
   readonly group: Group;
@@ -26,6 +30,11 @@ export class Plane {
   altitude = ALTITUDE;
   speed = 0;
   bankAngle = 0;
+  isRolling = false;
+  private rollProgress = 0;
+  private rollAngle = 0;
+  private rollAltOffset = 0;
+  private rollPitchOffset = 0;
 
   private globeRadius: number;
 
@@ -42,6 +51,7 @@ export class Plane {
     forward: boolean,
     brake: boolean,
     elevate: boolean = false,
+    barrelRoll: boolean = false,
   ) {
     if (forward) {
       this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
@@ -65,6 +75,33 @@ export class Plane {
     const targetBank = -turnRate * MAX_BANK * 0.5;
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * dt);
 
+    if (barrelRoll && !this.isRolling) {
+      this.isRolling = true;
+      this.rollProgress = 0;
+    }
+
+    if (this.isRolling) {
+      this.rollProgress += ROLL_SPEED / TWO_PI * dt;
+      if (this.rollProgress >= 1) {
+        this.rollProgress = 0;
+        this.rollAngle = 0;
+        this.isRolling = false;
+        this.rollAltOffset = 0;
+        this.rollPitchOffset = 0;
+      } else {
+        const t = this.rollProgress;
+        const eased = t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        this.rollAngle = eased * TWO_PI;
+        this.rollAltOffset = Math.sin(this.rollAngle) * ROLL_ALT_AMPLITUDE;
+        this.rollPitchOffset = Math.sin(this.rollAngle * 2) * ROLL_PITCH_AMPLITUDE;
+      }
+    } else {
+      this.rollAltOffset += (0 - this.rollAltOffset) * Math.min(1, 8 * dt);
+      this.rollPitchOffset += (0 - this.rollPitchOffset) * Math.min(1, 8 * dt);
+    }
+
     this.applyMatrix();
   }
 
@@ -72,9 +109,9 @@ export class Plane {
     const m = buildPlaneMatrix(
       this.qPosition,
       this.heading,
-      this.pitch,
-      this.bankAngle,
-      this.altitude,
+      this.pitch + this.rollPitchOffset,
+      this.bankAngle + this.rollAngle,
+      this.altitude + this.rollAltOffset,
       this.globeRadius,
     );
     this.group.matrix.copy(m);
