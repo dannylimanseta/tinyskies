@@ -21,6 +21,8 @@ import { RemotePlaneManager } from "./RemotePlane";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
 import { LensFlare } from "./LensFlare";
+import { RingManager } from "./Rings";
+import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
 import type { WorldConfig } from "@globefly/shared";
@@ -39,6 +41,8 @@ export class Game {
   private speedLines!: SpeedLines;
   private contrails!: Contrails;
   private lensFlare!: LensFlare;
+  private ringManager!: RingManager;
+  private collectVFX!: RingCollectVFX;
 
   private socketClient: SocketClient | null = null;
   private stateSync: StateSync | null = null;
@@ -169,6 +173,27 @@ export class Game {
 
     this.lensFlare = new LensFlare();
 
+    this.ringManager = new RingManager(globeRadius);
+    this.scene.add(this.ringManager.group);
+
+    this.collectVFX = new RingCollectVFX();
+    this.scene.add(this.collectVFX.group);
+
+    this.ringManager.onCollect = (xp, worldPos, tier) => {
+      this.collectVFX.play(worldPos, tier);
+      this.cameraRig.shake();
+      this.hud.showXPGain(xp);
+      this.hud.setXP(
+        this.ringManager.getXP(),
+        this.ringManager.getXPForNextLevel(),
+        this.ringManager.getXPForCurrentLevel(),
+        this.ringManager.getLevel(),
+      );
+    };
+    this.ringManager.onLevelUp = (level) => {
+      this.hud.showLevelUp(level);
+    };
+
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
 
@@ -232,6 +257,10 @@ export class Game {
     // Update remote planes
     this.remotePlanes.update(dt);
 
+    // Update rings and collection VFX
+    this.ringManager.update(dt, this.plane.qPosition, this.plane.altitude);
+    this.collectVFX.update(dt);
+
     // Update speed lines
     this.speedLines.update(dt, this.plane.speed, this.cameraRig.camera);
 
@@ -293,6 +322,8 @@ export class Game {
     this.speedLines?.dispose();
     this.contrails?.dispose();
     this.lensFlare?.dispose();
+    this.ringManager?.dispose();
+    this.collectVFX?.dispose();
     this.plane?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();

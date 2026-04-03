@@ -13,9 +13,19 @@ export class CameraRig {
   private currentPos = new Vector3(0, 10, 0);
   private currentLookAt = new Vector3();
 
+  private shakeIntensity = 0;
+  private shakeDuration = 0;
+  private shakeTimer = 0;
+
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(60, aspect, 0.01, 200);
     this.camera.position.set(0, 10, 0);
+  }
+
+  shake(intensity = 0.025, duration = 0.25) {
+    this.shakeIntensity = intensity;
+    this.shakeDuration = duration;
+    this.shakeTimer = 0;
   }
 
   update(
@@ -54,7 +64,15 @@ export class CameraRig {
 
     this.camera.position.copy(this.currentPos);
 
-    // Up vector: radial direction at the camera's position (not the plane's)
+    if (this.shakeTimer < this.shakeDuration) {
+      this.shakeTimer += dt;
+      const decay = 1 - this.shakeTimer / this.shakeDuration;
+      const amp = this.shakeIntensity * decay * decay;
+      this.camera.position.x += (Math.random() - 0.5) * 2 * amp;
+      this.camera.position.y += (Math.random() - 0.5) * 2 * amp;
+      this.camera.position.z += (Math.random() - 0.5) * 2 * amp;
+    }
+
     const camUp = this.currentPos.clone().normalize();
     this.camera.up.copy(camUp);
     this.camera.lookAt(this.currentLookAt);

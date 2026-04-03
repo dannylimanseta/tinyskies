@@ -5,6 +5,9 @@ export class HUD {
   private playerCountEl!: HTMLElement;
   private speedEl!: HTMLElement;
   private altitudeEl!: HTMLElement;
+  private xpLevelEl!: HTMLElement;
+  private xpBarFill!: HTMLElement;
+  private xpValueEl!: HTMLElement;
 
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
@@ -29,6 +32,13 @@ export class HUD {
           <span class="hud-value hud-altitude">0.4</span>
         </div>
       </div>
+      <div class="hud-xp-panel">
+        <div class="hud-xp-level">LVL 1</div>
+        <div class="hud-xp-bar">
+          <div class="hud-xp-bar-fill"></div>
+        </div>
+        <div class="hud-xp-value">0 XP</div>
+      </div>
       <div class="hud-controls">
         <span>W</span> forward &middot;
         <span>S</span> brake &middot;
@@ -40,6 +50,9 @@ export class HUD {
     this.playerCountEl = this.el.querySelector(".hud-player-count")!;
     this.speedEl = this.el.querySelector(".hud-speed")!;
     this.altitudeEl = this.el.querySelector(".hud-altitude")!;
+    this.xpLevelEl = this.el.querySelector(".hud-xp-level")!;
+    this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
+    this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
 
     this.applyStyles();
   }
@@ -58,6 +71,34 @@ export class HUD {
 
   setAltitude(alt: number) {
     this.altitudeEl.textContent = alt.toFixed(2);
+  }
+
+  setXP(current: number, nextLevelXP: number, currentLevelXP: number, level: number) {
+    this.xpLevelEl.textContent = `LVL ${level}`;
+    const range = nextLevelXP - currentLevelXP;
+    const progress = range > 0 ? (current - currentLevelXP) / range : 1;
+    this.xpBarFill.style.width = `${Math.min(100, Math.max(0, progress * 100))}%`;
+    this.xpValueEl.textContent = `${current} XP`;
+  }
+
+  showXPGain(amount: number) {
+    const popup = document.createElement("div");
+    popup.className = "hud-xp-popup";
+    popup.textContent = `+${amount} XP`;
+    this.el.appendChild(popup);
+
+    requestAnimationFrame(() => popup.classList.add("hud-xp-popup-animate"));
+    setTimeout(() => popup.remove(), 1200);
+  }
+
+  showLevelUp(level: number) {
+    const banner = document.createElement("div");
+    banner.className = "hud-levelup";
+    banner.textContent = `LEVEL ${level}`;
+    this.el.appendChild(banner);
+
+    requestAnimationFrame(() => banner.classList.add("hud-levelup-animate"));
+    setTimeout(() => banner.remove(), 2000);
   }
 
   private applyStyles() {
@@ -114,6 +155,67 @@ export class HUD {
       .hud-controls span {
         color: rgba(180, 200, 255, 0.5);
         font-weight: 500;
+      }
+
+      .hud-xp-panel {
+        position: absolute; bottom: 30px; left: 24px;
+        display: flex; flex-direction: column; gap: 4px;
+        background: rgba(0, 0, 20, 0.4);
+        border: 1px solid rgba(100, 140, 255, 0.12);
+        border-radius: 10px; padding: 10px 16px;
+        backdrop-filter: blur(8px);
+        min-width: 120px;
+      }
+      .hud-xp-level {
+        font-size: 0.7rem; font-weight: 700;
+        letter-spacing: 0.08em;
+        color: rgba(255, 220, 120, 0.9);
+      }
+      .hud-xp-bar {
+        width: 100%; height: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 3px; overflow: hidden;
+      }
+      .hud-xp-bar-fill {
+        height: 100%; width: 0%;
+        background: linear-gradient(90deg, rgba(100, 200, 255, 0.8), rgba(180, 140, 255, 0.9));
+        border-radius: 3px;
+        transition: width 0.4s ease-out;
+      }
+      .hud-xp-value {
+        font-size: 0.6rem;
+        color: rgba(180, 200, 255, 0.5);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .hud-xp-popup {
+        position: absolute; bottom: 90px; left: 48px;
+        font-size: 1.1rem; font-weight: 700;
+        color: rgba(255, 230, 120, 0.95);
+        text-shadow: 0 0 12px rgba(255, 200, 60, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        transform: translateY(0px);
+        transition: opacity 0.3s ease-out, transform 0.8s ease-out;
+        pointer-events: none;
+      }
+      .hud-xp-popup-animate {
+        opacity: 1;
+        transform: translateY(-40px);
+      }
+
+      .hud-levelup {
+        position: absolute; top: 35%; left: 50%;
+        transform: translate(-50%, -50%) scale(0.5);
+        font-size: 2.5rem; font-weight: 800;
+        letter-spacing: 0.12em;
+        color: rgba(255, 230, 100, 0);
+        text-shadow: 0 0 30px rgba(255, 200, 60, 0.8), 0 0 60px rgba(255, 180, 40, 0.4);
+        transition: color 0.3s ease-out, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        pointer-events: none;
+      }
+      .hud-levelup-animate {
+        color: rgba(255, 230, 100, 0.95);
+        transform: translate(-50%, -50%) scale(1);
       }
     `;
     document.head.appendChild(style);
