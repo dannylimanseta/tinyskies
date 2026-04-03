@@ -864,7 +864,7 @@ transformed.z += sway2;`,
 
       for (let h = 0; h < houseCount; h++) {
         const angle = rand() * Math.PI * 2;
-        const dist = 0.014 + rand() * 0.034;
+        const dist = 0.02 + rand() * 0.048;
 
         const tangent = new Vector3(-center.y, center.x, 0).normalize();
         if (tangent.lengthSq() < 0.01) tangent.set(0, 0, 1).cross(center).normalize();
@@ -893,7 +893,7 @@ transformed.z += sway2;`,
 
         const sinkAmount = 0.004;
         const pos = houseNormal.clone().multiplyScalar(surfaceRadius - sinkAmount);
-        const scale = MathUtils.lerp(0.047, 0.074, rand());
+        const scale = MathUtils.lerp(0.065, 0.10, rand());
         const houseType = Math.floor(rand() * HOUSE_TYPES);
 
         dummy.position.copy(pos);
@@ -907,7 +907,7 @@ transformed.z += sway2;`,
         const treesAround = 2 + Math.floor(rand() * 3);
         for (let tr = 0; tr < treesAround; tr++) {
           const tAngle = rand() * Math.PI * 2;
-          const tDist = 0.011 + rand() * 0.014;
+          const tDist = 0.016 + rand() * 0.02;
 
           const treeNormal = houseNormal.clone()
             .addScaledVector(new Vector3(-houseNormal.y, houseNormal.x, 0).normalize(), Math.cos(tAngle) * tDist)
@@ -916,7 +916,7 @@ transformed.z += sway2;`,
 
           const treeDisplacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
           const treeSurfaceR = this.radius + treeDisplacement;
-          const treeScale = MathUtils.lerp(0.016, 0.030, rand());
+          const treeScale = MathUtils.lerp(0.022, 0.04, rand());
           const treeH = treeScale * 2.5;
 
           dummy.position.copy(treeNormal.clone().multiplyScalar(treeSurfaceR).addScaledVector(treeNormal, -treeH * 0.05));
