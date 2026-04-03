@@ -19,6 +19,7 @@ import { SocketClient } from "../network/SocketClient";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
 import { SpeedLines } from "./SpeedLines";
+import { Contrails } from "./Contrails";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
 import type { WorldConfig } from "@globefly/shared";
@@ -35,6 +36,7 @@ export class Game {
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
   private speedLines!: SpeedLines;
+  private contrails!: Contrails;
 
   private socketClient: SocketClient | null = null;
   private stateSync: StateSync | null = null;
@@ -112,11 +114,11 @@ export class Game {
     this.clock = new Clock();
 
     // Bright even lighting across the whole globe
-    const hemi = new HemisphereLight(0x99ccff, 0x66aa44, 1.5);
+    const hemi = new HemisphereLight(0x99ccff, 0x66aa44, 1.8);
     this.scene.add(hemi);
-    const ambient = new AmbientLight(0xffffff, 0.8);
+    const ambient = new AmbientLight(0xffffff, 1.0);
     this.scene.add(ambient);
-    const sun = new DirectionalLight(0xfff0d0, 1.5);
+    const sun = new DirectionalLight(0xfff0d0, 1.7);
     sun.position.set(10, 12, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;
@@ -160,6 +162,9 @@ export class Game {
 
     this.speedLines = new SpeedLines();
     this.scene.add(this.speedLines.group);
+
+    this.contrails = new Contrails();
+    this.scene.add(this.contrails.group);
 
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
@@ -227,6 +232,9 @@ export class Game {
     // Update speed lines
     this.speedLines.update(dt, this.plane.speed, this.cameraRig.camera);
 
+    this.plane.group.updateMatrixWorld(true);
+    this.contrails.update(this.plane.group.matrixWorld, this.cameraRig.camera);
+
     // Update HUD
     this.hud.setSpeed(this.plane.speed);
     this.hud.setAltitude(this.plane.altitude);
@@ -276,6 +284,7 @@ export class Game {
     this.running = false;
     this.controls?.dispose();
     this.speedLines?.dispose();
+    this.contrails?.dispose();
     this.plane?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();

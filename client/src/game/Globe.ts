@@ -46,8 +46,8 @@ void main() {
 
 const TREE_COUNT = 3400;
 const CLOUD_COUNT = 30;
-const CLOUD_ALTITUDE = 0.6;
-const CLOUD_DRIFT_SPEED = 0.015;
+const CLOUD_ALTITUDE = 1.0;
+const CLOUD_DRIFT_SPEED = 0.03;
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -434,7 +434,7 @@ transformed.z += sway2;`,
   }
 
   private createAtmosphere() {
-    const geo = new SphereGeometry(this.radius * 1.25, 48, 48);
+    const geo = new SphereGeometry(this.radius * 1.45, 48, 48);
     const mat = new ShaderMaterial({
       vertexShader: ATMOSPHERE_VERTEX,
       fragmentShader: ATMOSPHERE_FRAGMENT,
