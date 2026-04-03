@@ -1,4 +1,4 @@
-const TURN_SPEED = 2.0;
+const TURN_SPEED = 1.2;
 
 export interface ControlState {
   turnRate: number;

@@ -232,6 +232,18 @@ varying vec3 vWorldPos;`,
   foam = 1.0 - smoothstep(0.002, 0.015, foam);
   float shallowness = smoothstep(0.1, 0.22, vColor.r);
   gl_FragColor.rgb += vec3(0.7, 1.0, 1.0) * foam * mix(0.05, 1.0, shallowness);
+
+  float sp1 = sin(wp.x * 40.0 + wp.y * 23.0 + wp.z * 9.0 + oceanTime * 3.5);
+  float sp2 = sin(wp.y * 35.0 + wp.z * 29.0 + wp.x * 13.0 - oceanTime * 2.8);
+  float sp3 = sin(wp.z * 27.0 + wp.x * 37.0 - wp.y * 17.0 + oceanTime * 4.1);
+  float sp4 = sin(wp.x * 71.0 - wp.z * 47.0 + wp.y * 5.0 + oceanTime * 1.9);
+  float sp5 = sin(wp.y * 59.0 + wp.x * 11.0 - wp.z * 31.0 - oceanTime * 2.3);
+  float sparkleMask = sin(wp.x * 3.1 + wp.z * 4.7 + oceanTime * 0.25) * sin(wp.y * 5.3 - wp.x * 2.9 - oceanTime * 0.18);
+  sparkleMask *= sin(wp.z * 2.3 + wp.y * 3.9 + oceanTime * 0.35);
+  sparkleMask = smoothstep(0.15, 0.5, sparkleMask);
+  float sparkle = sp1 * sp2 * sp3 * sp4 + sp2 * sp3 * sp5 * 0.5;
+  sparkle = smoothstep(0.7, 0.97, sparkle) * sparkleMask;
+  gl_FragColor.rgb += vec3(1.0, 1.0, 1.0) * sparkle * 0.6;
 }
 vec3 rimViewDir = normalize(vViewPosition);
 vec3 rimNormal = normalize(normal);
