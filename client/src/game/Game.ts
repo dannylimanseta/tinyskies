@@ -8,6 +8,8 @@ import {
   Color,
   Fog,
   VSMShadowMap,
+  CanvasTexture,
+  SRGBColorSpace,
 } from "three";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
@@ -104,16 +106,16 @@ export class Game {
     this.container.appendChild(this.renderer.domElement);
 
     this.scene = new Scene();
-    this.scene.background = new Color(0x87ceeb);
-    this.scene.fog = new Fog(0x87ceeb, 15, 40);
+    this.scene.background = this.createSkyGradient();
+    this.scene.fog = new Fog(0xa0d8f0, 15, 40);
     this.clock = new Clock();
 
-    // Warm outdoor lighting
-    const hemi = new HemisphereLight(0x88bbff, 0x446622, 0.8);
+    // Bright even lighting across the whole globe
+    const hemi = new HemisphereLight(0x99ccff, 0x66aa44, 1.5);
     this.scene.add(hemi);
-    const ambient = new AmbientLight(0xfff5e0, 0.4);
+    const ambient = new AmbientLight(0xffffff, 0.8);
     this.scene.add(ambient);
-    const sun = new DirectionalLight(0xfff0d0, 2.2);
+    const sun = new DirectionalLight(0xfff0d0, 1.5);
     sun.position.set(10, 12, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;
@@ -128,9 +130,12 @@ export class Game {
     sun.shadow.blurSamples = 16;
     sun.shadow.bias = -0.0005;
     this.scene.add(sun);
-    const fill = new DirectionalLight(0x8899cc, 0.5);
-    fill.position.set(-5, 3, -8);
+    const fill = new DirectionalLight(0xaabbdd, 1.0);
+    fill.position.set(-8, -5, -10);
     this.scene.add(fill);
+    const back = new DirectionalLight(0xccddee, 0.8);
+    back.position.set(-3, 10, -6);
+    this.scene.add(back);
 
     this.globe = new Globe(globeRadius, texture);
     this.globe.addTo(this.scene);
@@ -207,6 +212,9 @@ export class Game {
       globeRadius,
     );
 
+    // Update globe (cloud drift)
+    this.globe.update(dt);
+
     // Update remote planes
     this.remotePlanes.update(dt);
 
@@ -224,6 +232,30 @@ export class Game {
     this.renderer.setSize(w, h);
     this.cameraRig.resize(w / h);
   };
+
+  private createSkyGradient(): CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2;
+    canvas.height = 512;
+    const ctx = canvas.getContext("2d")!;
+    const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+    gradient.addColorStop(0.0, "#152d5e");
+    gradient.addColorStop(0.1, "#1e3f78");
+    gradient.addColorStop(0.2, "#2a5a9a");
+    gradient.addColorStop(0.3, "#3572b8");
+    gradient.addColorStop(0.4, "#4488cc");
+    gradient.addColorStop(0.5, "#5a9ed8");
+    gradient.addColorStop(0.6, "#72b2e2");
+    gradient.addColorStop(0.7, "#8ac4eb");
+    gradient.addColorStop(0.8, "#a0d4f0");
+    gradient.addColorStop(0.9, "#b8e2f5");
+    gradient.addColorStop(1.0, "#d0eef8");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 2, 512);
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    return tex;
+  }
 
   private getServerUrl(): string {
     return (
