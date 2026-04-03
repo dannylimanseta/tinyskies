@@ -161,7 +161,6 @@ export class Game {
     this.remotePlanes = new RemotePlaneManager(this.scene, globeRadius);
 
     this.speedLines = new SpeedLines();
-    this.scene.add(this.speedLines.group);
 
     this.contrails = new Contrails();
     this.scene.add(this.contrails.group);
@@ -241,6 +240,7 @@ export class Game {
 
     // Render
     this.renderer.render(this.scene, this.cameraRig.camera);
+    this.speedLines.render(this.renderer);
   };
 
   private onResize = () => {

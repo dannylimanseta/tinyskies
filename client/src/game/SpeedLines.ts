@@ -5,128 +5,171 @@ import {
   ShaderMaterial,
   AdditiveBlending,
   DoubleSide,
+  OrthographicCamera,
+  Scene,
   type PerspectiveCamera,
+  type WebGLRenderer,
 } from "three";
 
-const LINE_COUNT = 6;
-const SPAWN_RADIUS_MIN = 0.15;
-const SPAWN_RADIUS_MAX = 0.8;
-const SPAWN_DEPTH_MIN = 0.5;
-const SPAWN_DEPTH_MAX = 2.0;
-const LINE_WIDTH = 0.024;
-const BASE_LENGTH = 0.08;
-const MAX_LENGTH = 0.25;
+const LINE_COUNT = 24;
 const SPEED_THRESHOLD = 0.8;
-const MAX_SPEED = 3.0;
+const MAX_SPEED = 1.5;
 
 interface Streak {
-  x: number;
-  y: number;
-  z: number;
-  drift: number;
-  mesh: Mesh;
-  material: ShaderMaterial;
+  angle: number;
+  length: number;
+  offset: number;
+  width: number;
+  speed: number;
+  life: number;
+  maxLife: number;
+  active: boolean;
 }
 
-function createStreakMaterial(): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: {
-      globalOpacity: { value: 0.0 },
-      life: { value: 0.0 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float globalOpacity;
-      uniform float life;
-      varying vec2 vUv;
-      void main() {
-        float along = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.4, vUv.x);
-        float across = 1.0 - abs(vUv.y - 0.5) * 2.0;
-        across = across * across;
-        float fade = smoothstep(0.0, 0.3, life) * smoothstep(1.0, 0.7, life);
-        float a = along * across * fade * globalOpacity;
-        gl_FragColor = vec4(1.0, 0.98, 0.9, a);
-      }
-    `,
-    transparent: true,
-    depthWrite: false,
-    side: DoubleSide,
-    blending: AdditiveBlending,
-  });
+const screenVert = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
+`;
+
+const screenFrag = `
+uniform float opacity;
+uniform float life;
+varying vec2 vUv;
+void main() {
+  float along = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.6, vUv.x);
+  float across = 1.0 - abs(vUv.y - 0.5) * 2.0;
+  across = pow(across, 1.5);
+  float fade = smoothstep(0.0, 0.2, life) * smoothstep(1.0, 0.6, life);
+  float a = along * across * fade * opacity;
+  gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+}
+`;
 
 export class SpeedLines {
   readonly group = new Group();
   private streaks: Streak[] = [];
+  private meshes: Mesh[] = [];
+  private materials: ShaderMaterial[] = [];
   private geo: PlaneGeometry;
+  private orthoScene: Scene;
+  private orthoCamera: OrthographicCamera;
+  private spawnTimer = 0;
 
   constructor() {
-    this.geo = new PlaneGeometry(1, LINE_WIDTH);
+    this.geo = new PlaneGeometry(1, 1);
+    this.orthoScene = new Scene();
+    this.orthoCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
     for (let i = 0; i < LINE_COUNT; i++) {
-      const mat = createStreakMaterial();
+      const mat = new ShaderMaterial({
+        vertexShader: screenVert,
+        fragmentShader: screenFrag,
+        uniforms: {
+          opacity: { value: 0 },
+          life: { value: 0 },
+        },
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        side: DoubleSide,
+        blending: AdditiveBlending,
+      });
       const mesh = new Mesh(this.geo, mat);
-      mesh.frustumCulled = false;
-      this.group.add(mesh);
-      this.streaks.push(this.spawnStreak(mesh, mat));
+      mesh.visible = false;
+      this.orthoScene.add(mesh);
+      this.meshes.push(mesh);
+      this.materials.push(mat);
+      this.streaks.push({
+        angle: 0, length: 0, offset: 0, width: 0,
+        speed: 0, life: 0, maxLife: 0, active: false,
+      });
     }
   }
 
-  private spawnStreak(mesh: Mesh, material: ShaderMaterial): Streak {
-    const angle = Math.random() * Math.PI * 2;
-    const r = SPAWN_RADIUS_MIN + Math.random() * (SPAWN_RADIUS_MAX - SPAWN_RADIUS_MIN);
-    const zStart = -(SPAWN_DEPTH_MIN + Math.random() * (SPAWN_DEPTH_MAX - SPAWN_DEPTH_MIN));
-    return {
-      x: Math.cos(angle) * r,
-      y: Math.sin(angle) * r,
-      z: zStart,
-      drift: 1.5 + Math.random() * 2,
-      mesh,
-      material,
-    };
+  private spawn(idx: number) {
+    const s = this.streaks[idx];
+    s.angle = Math.random() * Math.PI * 2;
+    s.length = 0.25 + Math.random() * 0.35;
+    s.width = 0.006 + Math.random() * 0.008;
+    s.offset = 0.95 + Math.random() * 0.15;
+    s.speed = 0.5 + Math.random() * 0.8;
+    s.maxLife = 0.3 + Math.random() * 0.4;
+    s.life = 0;
+    s.active = true;
   }
 
-  update(dt: number, planeSpeed: number, camera: PerspectiveCamera) {
+  update(dt: number, planeSpeed: number, _camera: PerspectiveCamera) {
     const speedFactor = Math.max(0, (planeSpeed - SPEED_THRESHOLD) / (MAX_SPEED - SPEED_THRESHOLD));
-    const globalOp = speedFactor * 0.18;
 
-    this.group.position.copy(camera.position);
-    this.group.quaternion.copy(camera.quaternion);
+    if (speedFactor > 0) {
+      this.spawnTimer += dt;
+      const spawnRate = 0.02 + (1 - speedFactor) * 0.08;
+      while (this.spawnTimer >= spawnRate) {
+        this.spawnTimer -= spawnRate;
+        for (let i = 0; i < this.streaks.length; i++) {
+          if (!this.streaks[i].active) {
+            this.spawn(i);
+            break;
+          }
+        }
+      }
+    } else {
+      this.spawnTimer = 0;
+    }
 
-    const lineLen = BASE_LENGTH + (MAX_LENGTH - BASE_LENGTH) * speedFactor;
-    const totalTravel = SPAWN_DEPTH_MAX - 0.2;
+    const globalOpacity = Math.min(1, speedFactor) * 0.35;
 
     for (let i = 0; i < this.streaks.length; i++) {
       const s = this.streaks[i];
+      const mesh = this.meshes[i];
+      const mat = this.materials[i];
 
-      s.z += s.drift * speedFactor * dt;
-
-      if (s.z > -0.2) {
-        const newS = this.spawnStreak(s.mesh, s.material);
-        this.streaks[i] = newS;
+      if (!s.active) {
+        mesh.visible = false;
         continue;
       }
 
-      const distFromStart = (-s.z - 0.2);
-      const life = 1.0 - (distFromStart / totalTravel);
+      s.life += dt * s.speed;
+      if (s.life >= s.maxLife) {
+        s.active = false;
+        mesh.visible = false;
+        continue;
+      }
 
-      s.material.uniforms.globalOpacity.value = globalOp;
-      s.material.uniforms.life.value = life;
+      const lifeNorm = s.life / s.maxLife;
+      const progress = lifeNorm * 0.15;
+      const edgeDist = s.offset - progress;
 
-      s.mesh.position.set(s.x, s.y, s.z);
-      s.mesh.rotation.z = Math.atan2(s.y, s.x);
-      s.mesh.scale.set(lineLen, 1, 1);
+      const cx = Math.cos(s.angle) * edgeDist;
+      const cy = Math.sin(s.angle) * edgeDist;
+
+      mesh.position.set(cx, cy, 0);
+      mesh.rotation.z = s.angle + Math.PI;
+      mesh.scale.set(s.length, s.width, 1);
+      mesh.visible = true;
+
+      mat.uniforms.opacity.value = globalOpacity;
+      mat.uniforms.life.value = lifeNorm;
     }
+  }
+
+  render(renderer: WebGLRenderer) {
+    let anyVisible = false;
+    for (const m of this.meshes) {
+      if (m.visible) { anyVisible = true; break; }
+    }
+    if (!anyVisible) return;
+
+    renderer.autoClear = false;
+    renderer.render(this.orthoScene, this.orthoCamera);
+    renderer.autoClear = true;
   }
 
   dispose() {
     this.geo.dispose();
-    for (const s of this.streaks) s.material.dispose();
+    for (const m of this.materials) m.dispose();
   }
 }
