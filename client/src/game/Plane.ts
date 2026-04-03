@@ -56,7 +56,8 @@ export class Plane {
 
     const targetAlt = elevate ? HIGH_ALTITUDE : ALTITUDE;
     this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_SPEED * dt);
-    this.pitch = 0;
+    const targetPitch = elevate ? -0.3 : 0;
+    this.pitch += (targetPitch - this.pitch) * Math.min(1, 3.0 * dt);
 
     const arcAngle = (this.speed * dt) / this.globeRadius;
     this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);

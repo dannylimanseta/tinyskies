@@ -95,7 +95,7 @@ export class Globe {
       new Color(0x3a7d2a), new Color(0x4a8f3f),
       new Color(0x5a9f4a), new Color(0x5e9a48),
     ];
-    const mountainColor = new Color(0xb8a890);
+    const mountainColor = new Color(0xc4b07a);
     const snowColor = new Color(0xe8e8e0);
     const oceanColors = [
       new Color(0x1a6fa0), new Color(0x2080b0),
