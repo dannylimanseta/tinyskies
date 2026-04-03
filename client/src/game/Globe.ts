@@ -985,7 +985,7 @@ transformed.z += sway2;`,
     const cloudMat = new ShaderMaterial({
       uniforms: {
         cloudColor: { value: new Color(0xffe8cc) },
-        opacity: { value: 0.3 },
+        opacity: { value: 0.2 },
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -1017,39 +1017,56 @@ transformed.z += sway2;`,
     const puffGeo = new SphereGeometry(1, 16, 12);
     const cloudAlt = this.radius + CLOUD_ALTITUDE;
 
+    const cloudSizes = [
+      { puffs: [2, 3], baseScale: 0.12, spread: 0.2, weight: 0.3 },
+      { puffs: [4, 6], baseScale: 0.22, spread: 0.45, weight: 0.4 },
+      { puffs: [7, 10], baseScale: 0.3, spread: 0.7, weight: 0.2 },
+      { puffs: [10, 14], baseScale: 0.35, spread: 0.9, weight: 0.1 },
+    ];
+
     for (let i = 0; i < CLOUD_COUNT; i++) {
       const cloud = new Group();
 
-      // 3-5 puffs per cloud cluster
-      const puffCount = 3 + Math.floor(rand() * 3);
+      const r = rand();
+      let cumWeight = 0;
+      let sizeType = cloudSizes[0];
+      for (const cs of cloudSizes) {
+        cumWeight += cs.weight;
+        if (r < cumWeight) { sizeType = cs; break; }
+      }
+
+      const puffCount = sizeType.puffs[0] + Math.floor(rand() * (sizeType.puffs[1] - sizeType.puffs[0] + 1));
+      const spread = sizeType.spread;
+
       for (let p = 0; p < puffCount; p++) {
         const puff = new Mesh(puffGeo, cloudMat);
-        const scale = MathUtils.lerp(0.18, 0.35, rand());
+        const scale = sizeType.baseScale * MathUtils.lerp(0.6, 1.4, rand());
         puff.scale.set(
           scale * MathUtils.lerp(1.5, 2.8, rand()),
-          scale * MathUtils.lerp(0.6, 1.2, rand()),
+          scale * MathUtils.lerp(0.5, 1.0, rand()),
           scale * MathUtils.lerp(1.2, 2.2, rand()),
         );
+        const angle = rand() * Math.PI * 2;
+        const dist = rand() * spread;
         puff.position.set(
-          (rand() - 0.5) * 0.5,
-          (rand() - 0.5) * 0.1,
-          (rand() - 0.5) * 0.35,
+          Math.cos(angle) * dist,
+          (rand() - 0.5) * spread * 0.15,
+          Math.sin(angle) * dist * 0.7,
         );
         puff.castShadow = true;
         cloud.add(puff);
       }
 
-      // Place on sphere at cloud altitude
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
-      const pos = new Vector3(
+      const normal = new Vector3(
         Math.sin(phi) * Math.cos(theta),
         Math.sin(phi) * Math.sin(theta),
         Math.cos(phi),
-      );
-      const normal = pos.clone().normalize();
+      ).normalize();
 
-      cloud.position.copy(normal).multiplyScalar(cloudAlt);
+      const altVariation = cloudAlt + (rand() - 0.5) * 0.3;
+      cloud.position.copy(normal).multiplyScalar(altVariation);
       cloud.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), normal);
 
       this.cloudRing.add(cloud);
