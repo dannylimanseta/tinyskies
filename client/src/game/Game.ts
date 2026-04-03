@@ -20,6 +20,7 @@ import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
+import { LensFlare } from "./LensFlare";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
 import type { WorldConfig } from "@globefly/shared";
@@ -37,6 +38,7 @@ export class Game {
   private remotePlanes!: RemotePlaneManager;
   private speedLines!: SpeedLines;
   private contrails!: Contrails;
+  private lensFlare!: LensFlare;
 
   private socketClient: SocketClient | null = null;
   private stateSync: StateSync | null = null;
@@ -165,6 +167,8 @@ export class Game {
     this.contrails = new Contrails();
     this.scene.add(this.contrails.group);
 
+    this.lensFlare = new LensFlare();
+
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
 
@@ -238,9 +242,12 @@ export class Game {
     this.hud.setSpeed(this.plane.speed);
     this.hud.setAltitude(this.plane.altitude);
 
+    this.lensFlare.update(this.cameraRig.camera);
+
     // Render
     this.renderer.render(this.scene, this.cameraRig.camera);
     this.speedLines.render(this.renderer);
+    this.lensFlare.render(this.renderer);
   };
 
   private onResize = () => {
@@ -285,6 +292,7 @@ export class Game {
     this.controls?.dispose();
     this.speedLines?.dispose();
     this.contrails?.dispose();
+    this.lensFlare?.dispose();
     this.plane?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();
