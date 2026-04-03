@@ -13,6 +13,7 @@ import {
   Quaternion,
   type Scene,
 } from "three";
+import { addRimLight } from "./RimLight";
 
 const ATMOSPHERE_VERTEX = `
 varying vec3 vNormal;
@@ -31,7 +32,7 @@ varying vec3 vPosition;
 void main() {
   vec3 viewDir = normalize(-vPosition);
   float rim = 1.0 - dot(vNormal, viewDir);
-  float intensity = smoothstep(0.0, 1.0, rim) * pow(rim, 1.5) * 0.35;
+  float intensity = smoothstep(0.0, 1.0, rim) * pow(rim, 1.5) * 0.2;
   gl_FragColor = vec4(glowColor * intensity, intensity);
 }
 `;
@@ -73,6 +74,7 @@ export class Globe {
       flatShading: true,
     });
 
+    addRimLight(mat, 0xffeebb, 0.55, 4.0);
     this.surfaceMesh = new Mesh(geo, mat);
     this.surfaceMesh.receiveShadow = true;
     this.group.add(this.surfaceMesh);
@@ -82,9 +84,11 @@ export class Globe {
     const rand = seededRandom(42);
 
     const greenShades = [0x2d6b1e, 0x3a8a2a, 0x1e5a14, 0x4a9f38];
-    const foliageMats = greenShades.map(
-      (c) => new MeshPhongMaterial({ color: c, flatShading: true }),
-    );
+    const foliageMats = greenShades.map((c) => {
+      const mat = new MeshPhongMaterial({ color: c, flatShading: true });
+      addRimLight(mat, 0xffeeaa, 0.4, 3.5);
+      return mat;
+    });
 
     for (let i = 0; i < TREE_COUNT; i++) {
       const theta = rand() * Math.PI * 2;
@@ -117,16 +121,39 @@ export class Globe {
 
   private createClouds() {
     const rand = seededRandom(77);
-    const cloudMat = new MeshPhongMaterial({
-      color: 0xffe8cc,
+    const cloudMat = new ShaderMaterial({
+      uniforms: {
+        cloudColor: { value: new Color(0xffe8cc) },
+        opacity: { value: 0.3 },
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewPosition = mvPos.xyz;
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 cloudColor;
+        uniform float opacity;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          vec3 viewDir = normalize(-vViewPosition);
+          float rim = abs(dot(vNormal, viewDir));
+          float soft = rim * rim * rim;
+          gl_FragColor = vec4(cloudColor * soft, opacity * soft);
+        }
+      `,
       transparent: true,
-      opacity: 0.25,
-      flatShading: true,
       depthWrite: false,
       blending: AdditiveBlending,
     });
 
-    const puffGeo = new SphereGeometry(1, 6, 5);
+    const puffGeo = new SphereGeometry(1, 16, 12);
     const cloudAlt = this.radius + CLOUD_ALTITUDE;
 
     for (let i = 0; i < CLOUD_COUNT; i++) {
@@ -136,16 +163,16 @@ export class Globe {
       const puffCount = 3 + Math.floor(rand() * 3);
       for (let p = 0; p < puffCount; p++) {
         const puff = new Mesh(puffGeo, cloudMat);
-        const scale = MathUtils.lerp(0.08, 0.18, rand());
+        const scale = MathUtils.lerp(0.18, 0.35, rand());
         puff.scale.set(
-          scale * MathUtils.lerp(1.2, 2.0, rand()),
-          scale * MathUtils.lerp(0.5, 0.8, rand()),
-          scale * MathUtils.lerp(1.0, 1.5, rand()),
+          scale * MathUtils.lerp(1.5, 2.8, rand()),
+          scale * MathUtils.lerp(0.6, 1.2, rand()),
+          scale * MathUtils.lerp(1.2, 2.2, rand()),
         );
         puff.position.set(
-          (rand() - 0.5) * 0.3,
-          (rand() - 0.5) * 0.06,
-          (rand() - 0.5) * 0.2,
+          (rand() - 0.5) * 0.5,
+          (rand() - 0.5) * 0.1,
+          (rand() - 0.5) * 0.35,
         );
         puff.castShadow = true;
         cloud.add(puff);

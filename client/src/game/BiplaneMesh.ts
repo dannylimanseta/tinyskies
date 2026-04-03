@@ -8,6 +8,7 @@ import {
   CircleGeometry,
   DoubleSide,
 } from "three";
+import { addRimLight } from "./RimLight";
 
 /**
  * Builds a cute low-poly biplane as a Group.
@@ -18,7 +19,9 @@ export function createBiplane(color: number = 0xff4444): Group {
   const s = 0.06;
 
   const bodyMat = new MeshPhongMaterial({ color, flatShading: true, shininess: 40 });
+  addRimLight(bodyMat, 0xffeebb, 0.25, 3.5);
   const wingMat = new MeshPhongMaterial({ color: 0xf5e6c8, flatShading: true, shininess: 20 });
+  addRimLight(wingMat, 0xffeebb, 0.2, 3.5);
   const darkMat = new MeshPhongMaterial({ color: 0x333333, flatShading: true, shininess: 10 });
   const strutMat = new MeshPhongMaterial({ color: 0x8B6914, flatShading: true, shininess: 20 });
 
