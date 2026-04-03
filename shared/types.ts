@@ -19,6 +19,8 @@ export interface WorldConfig {
   globeRadius: number;
   texture: string;
   createdBy: string;
+  seed: number;
+  terrainType: string;
 }
 
 export interface ServerToClientEvents {

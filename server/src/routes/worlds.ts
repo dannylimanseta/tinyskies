@@ -11,19 +11,22 @@ export function createWorldsRouter(
 
   router.post("/", async (req, res) => {
     try {
-      const { name, texture, createdBy, globeRadius } = req.body;
+      const { name, texture, createdBy, globeRadius, terrainType } = req.body;
       if (!name || typeof name !== "string") {
         res.status(400).json({ error: "name is required" });
         return;
       }
 
       const slug = nanoid(10);
+      const seed = Math.floor(Math.random() * 2147483647);
       const world = await prisma.world.create({
         data: {
           slug,
           name: name.slice(0, 64),
           texture: texture || "earth",
           globeRadius: globeRadius ?? 5.0,
+          seed,
+          terrainType: terrainType || "default",
           createdBy: createdBy || "Anonymous",
         },
       });
@@ -34,6 +37,8 @@ export function createWorldsRouter(
         name: world.name,
         globeRadius: world.globeRadius,
         texture: world.texture,
+        seed: world.seed,
+        terrainType: world.terrainType,
         createdBy: world.createdBy,
       });
     } catch (err) {
@@ -59,6 +64,8 @@ export function createWorldsRouter(
         name: world.name,
         globeRadius: world.globeRadius,
         texture: world.texture,
+        seed: world.seed,
+        terrainType: world.terrainType,
         createdBy: world.createdBy,
       });
     } catch (err) {
@@ -82,6 +89,8 @@ export function createWorldsRouter(
         name: w.name,
         globeRadius: w.globeRadius,
         texture: w.texture,
+        seed: w.seed,
+        terrainType: w.terrainType,
         createdBy: w.createdBy,
         playerCount: roomManager.getRoomPlayerCount(w.slug),
         active: activeSlugs.has(w.slug),

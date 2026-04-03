@@ -98,7 +98,6 @@ export class Game {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
-    const texture = this.worldConfig?.texture ?? "earth";
 
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
@@ -139,7 +138,9 @@ export class Game {
     back.position.set(-3, 10, -6);
     this.scene.add(back);
 
-    this.globe = new Globe(globeRadius, texture);
+    const seed = this.worldConfig?.seed ?? 42;
+    const terrainType = this.worldConfig?.terrainType ?? "default";
+    this.globe = new Globe(globeRadius, seed, terrainType);
     this.globe.addTo(this.scene);
 
     this.plane = new Plane(globeRadius);

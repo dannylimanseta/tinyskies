@@ -1,5 +1,6 @@
 import {
   Mesh,
+  InstancedMesh,
   SphereGeometry,
   MeshPhongMaterial,
   ShaderMaterial,
@@ -7,13 +8,19 @@ import {
   AdditiveBlending,
   Group,
   Color,
-  ConeGeometry,
+  LatheGeometry,
+  Vector2,
   Vector3,
+  Matrix4,
+  Object3D,
   MathUtils,
   Quaternion,
+  Float32BufferAttribute,
   type Scene,
 } from "three";
 import { addRimLight } from "./RimLight";
+import { createNoise3D, terrainNoise, isLand } from "./SimplexNoise";
+import { getTerrainParams } from "./TerrainPresets";
 
 const ATMOSPHERE_VERTEX = `
 varying vec3 vNormal;
@@ -37,7 +44,7 @@ void main() {
 }
 `;
 
-const TREE_COUNT = 200;
+const TREE_COUNT = 600;
 const CLOUD_COUNT = 30;
 const CLOUD_ALTITUDE = 0.6;
 const CLOUD_DRIFT_SPEED = 0.015;
@@ -53,13 +60,18 @@ function seededRandom(seed: number): () => number {
 export class Globe {
   readonly group = new Group();
   readonly radius: number;
+  private seed: number;
+  private terrainType: string;
   private surfaceMesh!: Mesh;
   private atmosphereMesh!: Mesh;
   private cloudRing = new Group();
   private cloudDriftAxis = new Vector3(0.2, 1, 0.1).normalize();
+  private treeSwayUniforms: { value: number }[] = [];
 
-  constructor(radius: number = 5, _texture: string = "earth") {
+  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default") {
     this.radius = radius;
+    this.seed = seed;
+    this.terrainType = terrainType;
     this.createSurface();
     this.createTrees();
     this.createClouds();
@@ -67,55 +79,246 @@ export class Globe {
   }
 
   private createSurface() {
-    const geo = new SphereGeometry(this.radius, 64, 64);
+    const geo = new SphereGeometry(this.radius, 1024, 1024);
+    const posAttr = geo.attributes.position;
+    const vertexCount = posAttr.count;
+    const colors = new Float32Array(vertexCount * 3);
+
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    const LAND_HEIGHT = 0.02;
+    const OCEAN_DEPTH = 0.01;
+    const MOUNTAIN_HEIGHT = 0.08;
+
+    const landColors = [
+      new Color(0x3a7d2a), new Color(0x4a8f3f),
+      new Color(0x5a9f4a), new Color(0x2d6b1e),
+    ];
+    const mountainColor = new Color(0x8a7a6a);
+    const snowColor = new Color(0xe8e8e0);
+    const oceanColors = [
+      new Color(0x1a6fa0), new Color(0x2080b0),
+      new Color(0x1878a8), new Color(0x1560a0),
+    ];
+
+    for (let i = 0; i < vertexCount; i++) {
+      const x = posAttr.getX(i);
+      const y = posAttr.getY(i);
+      const z = posAttr.getZ(i);
+
+      const len = Math.sqrt(x * x + y * y + z * z);
+      const nx = x / len;
+      const ny = y / len;
+      const nz = z / len;
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+
+      let color: Color;
+      let displacement = 0;
+
+      if (value > params.threshold) {
+        const elevation = (value - params.threshold) / (1 - params.threshold);
+
+        if (elevation > 0.7) {
+          color = mountainColor.clone().lerp(snowColor, (elevation - 0.7) / 0.3);
+        } else if (elevation > 0.4) {
+          color = landColors[3].clone().lerp(mountainColor, (elevation - 0.4) / 0.3);
+        } else {
+          const t = Math.min(1, elevation * 2.5);
+          const idx = Math.floor(t * (landColors.length - 2));
+          const frac = t * (landColors.length - 2) - idx;
+          color = landColors[idx].clone().lerp(landColors[Math.min(idx + 1, landColors.length - 2)], frac);
+        }
+
+        displacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
+      } else {
+        const depth = Math.min(1, (params.threshold - value) * 4);
+        const idx = Math.floor(depth * (oceanColors.length - 1));
+        const frac = depth * (oceanColors.length - 1) - idx;
+        color = oceanColors[idx].clone().lerp(
+          oceanColors[Math.min(idx + 1, oceanColors.length - 1)], frac,
+        );
+        displacement = -OCEAN_DEPTH * depth;
+      }
+
+      const newRadius = this.radius + displacement;
+      posAttr.setXYZ(i, nx * newRadius, ny * newRadius, nz * newRadius);
+
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
+
+    posAttr.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+
     const mat = new MeshPhongMaterial({
-      color: 0x4a8f3f,
+      vertexColors: true,
       shininess: 8,
       flatShading: true,
     });
 
-    addRimLight(mat, 0xffeebb, 0.55, 4.0);
+    mat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <dithering_fragment>",
+        `float isOcean = step(vColor.b, vColor.r + vColor.g) < 0.5 ? 1.0 : 0.0;
+if (vColor.b > vColor.r + vColor.g * 0.5) {
+  gl_FragColor.rgb += vec3(0.08, 0.12, 0.18) * isOcean;
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.15, isOcean * 0.3);
+}
+#include <dithering_fragment>`,
+      );
+    };
+
+    addRimLight(mat, 0xffeebb, 0.8, 8.5);
     this.surfaceMesh = new Mesh(geo, mat);
     this.surfaceMesh.receiveShadow = true;
     this.group.add(this.surfaceMesh);
   }
 
+  private createTeardropGeo(height: number, radius: number): LatheGeometry {
+    const segments = 10;
+    const points: Vector2[] = [];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const y = t * height;
+      const r = radius * Math.pow(Math.sin(t * Math.PI), 0.35) * Math.pow(1 - t, 0.5);
+      points.push(new Vector2(r, y));
+    }
+    const geo = new LatheGeometry(points, 6);
+
+    const bottomColor = new Color(0.3, 0.55, 0.2);
+    const topColor = new Color(0.7, 0.92, 0.6);
+    const posAttr = geo.attributes.position;
+    const count = posAttr.count;
+    const colors = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      const y = posAttr.getY(i);
+      const t = Math.max(0, Math.min(1, y / height));
+      const c = bottomColor.clone().lerp(topColor, t);
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+
+    return geo;
+  }
+
   private createTrees() {
-    const rand = seededRandom(42);
+    const rand = seededRandom(42 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const forestNoise = createNoise3D(this.seed + 999);
+    const params = getTerrainParams(this.terrainType);
 
-    const greenShades = [0x2d6b1e, 0x3a8a2a, 0x1e5a14, 0x4a9f38];
-    const foliageMats = greenShades.map((c) => {
-      const mat = new MeshPhongMaterial({ color: c, flatShading: true });
-      addRimLight(mat, 0xffeeaa, 0.4, 3.5);
-      return mat;
-    });
+    const LAND_HEIGHT = 0.02;
+    const MOUNTAIN_HEIGHT = 0.08;
 
-    for (let i = 0; i < TREE_COUNT; i++) {
+    const greenShades = [0x4a9a3a, 0x55a545, 0x48953a];
+    const matsPerShade = greenShades.length;
+    const treesPerShade = Math.ceil(TREE_COUNT / matsPerShade);
+
+    const transforms: { matrix: Matrix4; shade: number }[] = [];
+    const dummy = new Object3D();
+
+    let attempts = 0;
+    const maxAttempts = TREE_COUNT * 12;
+
+    while (transforms.length < TREE_COUNT && attempts < maxAttempts) {
+      attempts++;
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
 
-      const surfacePos = new Vector3(
-        Math.sin(phi) * Math.cos(theta),
-        Math.sin(phi) * Math.sin(theta),
-        Math.cos(phi),
-      ).multiplyScalar(this.radius);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
 
-      const normal = surfacePos.clone().normalize();
-      const treeScale = MathUtils.lerp(0.04, 0.1, rand());
-      const mat = foliageMats[Math.floor(rand() * foliageMats.length)];
-
-      const coneH = treeScale * 2.5;
-      const coneR = treeScale * 0.9;
-      const cone = new Mesh(
-        new ConeGeometry(coneR, coneH, 5),
-        mat,
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
       );
-      cone.castShadow = true;
+      if (value <= params.threshold) continue;
 
-      cone.position.copy(surfacePos).addScaledVector(normal, coneH * 0.15);
-      cone.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), normal);
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation > 0.6) continue;
 
-      this.group.add(cone);
+      const forest = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
+      if (forest < 0.3) continue;
+
+      const displacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
+      const surfaceRadius = this.radius + displacement;
+
+      const normal = new Vector3(nx, ny, nz);
+      const surfacePos = normal.clone().multiplyScalar(surfaceRadius);
+      const treeScale = MathUtils.lerp(0.025, 0.06, rand());
+      const shade = Math.floor(rand() * matsPerShade);
+
+      const treeH = treeScale * 2.5;
+      const treeR = treeScale * 0.7;
+
+      dummy.position.copy(surfacePos).addScaledVector(normal, -treeH * 0.05);
+      dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), normal);
+      dummy.scale.set(treeR, treeH, treeR);
+      dummy.updateMatrix();
+
+      transforms.push({ matrix: dummy.matrix.clone(), shade });
+    }
+
+    const sharedGeo = this.createTeardropGeo(1, 1);
+
+    for (let s = 0; s < matsPerShade; s++) {
+      const shadeTransforms = transforms.filter((t) => t.shade === s);
+      if (shadeTransforms.length === 0) continue;
+
+      const swayTime = { value: 0 };
+      this.treeSwayUniforms.push(swayTime);
+
+      const mat = new MeshPhongMaterial({
+        color: greenShades[s],
+        vertexColors: true,
+        flatShading: true,
+      });
+
+      addRimLight(mat, 0xffeeaa, 0.7, 3.0);
+
+      const rimCompile = mat.onBeforeCompile.bind(mat);
+      mat.onBeforeCompile = (shader, renderer) => {
+        rimCompile(shader, renderer);
+        shader.uniforms.swayTime = swayTime;
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <common>",
+          `#include <common>
+uniform float swayTime;`,
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+float swayHeight = position.y;
+vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+float swayPhase = worldPos.x * 3.0 + worldPos.z * 2.7;
+float sway = sin(swayTime * 1.8 + swayPhase) * 0.012 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.008 * swayHeight * swayHeight;
+transformed.x += sway;
+transformed.z += sway2;`,
+        );
+      };
+
+      const instanced = new InstancedMesh(sharedGeo, mat, shadeTransforms.length);
+      instanced.castShadow = true;
+      instanced.receiveShadow = false;
+
+      for (let i = 0; i < shadeTransforms.length; i++) {
+        instanced.setMatrixAt(i, shadeTransforms[i].matrix);
+      }
+      instanced.instanceMatrix.needsUpdate = true;
+
+      this.group.add(instanced);
     }
   }
 
@@ -221,6 +424,10 @@ export class Globe {
       CLOUD_DRIFT_SPEED * dt,
     );
     this.cloudRing.quaternion.premultiply(q);
+
+    for (const u of this.treeSwayUniforms) {
+      u.value += dt;
+    }
   }
 
   addTo(scene: Scene) {

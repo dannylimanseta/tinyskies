@@ -13,6 +13,8 @@ model World {
   name        String
   globeRadius Float    @default(5.0)
   texture     String   @default("earth")
+  seed        Int      @default(0)
+  terrainType String   @default("default")
   createdBy   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
