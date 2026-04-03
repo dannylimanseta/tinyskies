@@ -623,12 +623,36 @@ transformed.z += sway2;`,
 
     if (rockTreeTransforms.length > 0) {
       const treeGeo = this.createTeardropGeo(1, 1);
+      const swayTime = { value: 0 };
+      this.treeSwayUniforms.push(swayTime);
+
       const treeMat = new MeshPhongMaterial({
         color: 0x3a8a2a,
         vertexColors: true,
         flatShading: true,
       });
       addRimLight(treeMat, 0xffeeaa, 0.7, 3.0);
+
+      const rimCompile = treeMat.onBeforeCompile.bind(treeMat);
+      treeMat.onBeforeCompile = (shader, renderer) => {
+        rimCompile(shader, renderer);
+        shader.uniforms.swayTime = swayTime;
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <common>",
+          `#include <common>\nuniform float swayTime;`,
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+float swayHeight = position.y;
+vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+float swayPhase = worldPos.x * 3.0 + worldPos.z * 2.7;
+float sway = sin(swayTime * 1.8 + swayPhase) * 0.8 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.6 * swayHeight * swayHeight;
+transformed.x += sway;
+transformed.z += sway2;`,
+        );
+      };
 
       const treeInstanced = new InstancedMesh(treeGeo, treeMat, rockTreeTransforms.length);
       treeInstanced.castShadow = true;
@@ -952,12 +976,36 @@ transformed.z += sway2;`,
       const slice = gardenTreeTransforms.slice(start, end);
       if (slice.length === 0) continue;
 
+      const swayTime = { value: 0 };
+      this.treeSwayUniforms.push(swayTime);
+
       const mat = new MeshPhongMaterial({
         color: gardenShades[s],
         vertexColors: true,
         flatShading: true,
       });
       addRimLight(mat, 0xffeeaa, 0.7, 3.0);
+
+      const rimCompile = mat.onBeforeCompile.bind(mat);
+      mat.onBeforeCompile = (shader, renderer) => {
+        rimCompile(shader, renderer);
+        shader.uniforms.swayTime = swayTime;
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <common>",
+          `#include <common>\nuniform float swayTime;`,
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+float swayHeight = position.y;
+vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+float swayPhase = worldPos.x * 3.0 + worldPos.z * 2.7;
+float sway = sin(swayTime * 1.8 + swayPhase) * 0.8 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.6 * swayHeight * swayHeight;
+transformed.x += sway;
+transformed.z += sway2;`,
+        );
+      };
 
       const instanced = new InstancedMesh(gardenGeo, mat, slice.length);
       instanced.castShadow = true;
