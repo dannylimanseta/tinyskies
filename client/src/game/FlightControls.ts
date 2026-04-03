@@ -4,6 +4,7 @@ export interface ControlState {
   turnRate: number;
   forward: boolean;
   brake: boolean;
+  elevate: boolean;
 }
 
 export class FlightControls {
@@ -27,7 +28,7 @@ export class FlightControls {
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false };
+      return { turnRate: 0, forward: false, brake: false, elevate: false };
     }
 
     let turnRate = 0;
@@ -37,8 +38,9 @@ export class FlightControls {
 
     const forward = this.keys.has("w") || this.keys.has("arrowup");
     const brake = this.keys.has("s") || this.keys.has("arrowdown");
+    const elevate = this.keys.has(" ");
 
-    return { turnRate, forward, brake };
+    return { turnRate, forward, brake, elevate };
   }
 
   private onKeyDown = (e: KeyboardEvent) => {

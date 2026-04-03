@@ -12,6 +12,8 @@ const ACCEL = 2.5;
 const MIN_SPEED = 0.5;
 const MAX_SPEED = 3.0;
 const ALTITUDE = 0.4;
+const HIGH_ALTITUDE = 1.2;
+const ALTITUDE_SPEED = 0.75;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
 
@@ -39,8 +41,8 @@ export class Plane {
     turnRate: number,
     forward: boolean,
     brake: boolean,
+    elevate: boolean = false,
   ) {
-    // W = accelerate to cruise speed, S = brake to stop
     if (forward) {
       this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
     } else if (brake) {
@@ -52,9 +54,9 @@ export class Plane {
     this.heading += turnRate * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
-    // Fixed altitude, no pitch -- just cruise along the surface
+    const targetAlt = elevate ? HIGH_ALTITUDE : ALTITUDE;
+    this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_SPEED * dt);
     this.pitch = 0;
-    this.altitude = ALTITUDE;
 
     const arcAngle = (this.speed * dt) / this.globeRadius;
     this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);

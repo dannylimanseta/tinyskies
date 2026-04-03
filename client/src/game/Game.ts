@@ -206,8 +206,8 @@ export class Game {
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
 
     // Update local plane
-    const { turnRate, forward, brake } = this.controls.getState();
-    this.plane.update(dt, turnRate, forward, brake);
+    const { turnRate, forward, brake, elevate } = this.controls.getState();
+    this.plane.update(dt, turnRate, forward, brake, elevate);
 
     // Update camera
     this.cameraRig.update(

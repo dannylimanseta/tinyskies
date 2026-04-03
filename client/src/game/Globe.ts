@@ -44,7 +44,7 @@ void main() {
 }
 `;
 
-const TREE_COUNT = 600;
+const TREE_COUNT = 3400;
 const CLOUD_COUNT = 30;
 const CLOUD_ALTITUDE = 0.6;
 const CLOUD_DRIFT_SPEED = 0.015;
@@ -93,9 +93,9 @@ export class Globe {
 
     const landColors = [
       new Color(0x3a7d2a), new Color(0x4a8f3f),
-      new Color(0x5a9f4a), new Color(0x2d6b1e),
+      new Color(0x5a9f4a), new Color(0x5e9a48),
     ];
-    const mountainColor = new Color(0x8a7a6a);
+    const mountainColor = new Color(0xb8a890);
     const snowColor = new Color(0xe8e8e0);
     const oceanColors = [
       new Color(0x1a6fa0), new Color(0x2080b0),
@@ -302,8 +302,8 @@ uniform float swayTime;`,
 float swayHeight = position.y;
 vec4 worldPos = instanceMatrix * vec4(position, 1.0);
 float swayPhase = worldPos.x * 3.0 + worldPos.z * 2.7;
-float sway = sin(swayTime * 1.8 + swayPhase) * 0.012 * swayHeight * swayHeight;
-float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.008 * swayHeight * swayHeight;
+float sway = sin(swayTime * 1.8 + swayPhase) * 0.035 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.025 * swayHeight * swayHeight;
 transformed.x += sway;
 transformed.z += sway2;`,
         );

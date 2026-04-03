@@ -2,9 +2,9 @@ import { PerspectiveCamera, Vector3, Quaternion } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 
 const FOLLOW_DISTANCE = 1.2;
-const FOLLOW_HEIGHT = 0.5;
-const POSITION_SMOOTH = 4.0;
-const LOOKAT_SMOOTH = 6.0;
+const FOLLOW_HEIGHT = 0.7;
+const POSITION_SMOOTH = 10.0;
+const LOOKAT_SMOOTH = 12.0;
 
 export class CameraRig {
   readonly camera: PerspectiveCamera;

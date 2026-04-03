@@ -16,7 +16,7 @@ import { addRimLight } from "./RimLight";
  */
 export function createBiplane(color: number = 0xff4444): Group {
   const plane = new Group();
-  const s = 0.06;
+  const s = 0.04;
 
   const bodyMat = new MeshPhongMaterial({ color, flatShading: true, shininess: 40 });
   addRimLight(bodyMat, 0xffeebb, 0.25, 3.5);
