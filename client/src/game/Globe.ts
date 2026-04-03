@@ -4,6 +4,7 @@ import {
   SphereGeometry,
   BoxGeometry,
   ConeGeometry,
+  CylinderGeometry,
   MeshPhongMaterial,
   ShaderMaterial,
   BackSide,
@@ -48,6 +49,7 @@ void main() {
 `;
 
 const TREE_COUNT = 3400;
+const ROCK_COUNT = 400;
 const VILLAGE_COUNT = 20;
 const HOUSES_PER_VILLAGE = [8, 10, 12, 14, 16];
 const CLOUD_COUNT = 30;
@@ -80,6 +82,7 @@ export class Globe {
     this.terrainType = terrainType;
     this.createSurface();
     this.createTrees();
+    this.createRocks();
     this.createVillages();
     this.createClouds();
     this.createAtmosphere();
@@ -381,6 +384,270 @@ transformed.z += sway2;`,
       }
       instanced.instanceMatrix.needsUpdate = true;
 
+      this.group.add(instanced);
+    }
+  }
+
+  private makeBlockyRock(
+    sx: number, sy: number, sz: number,
+    chunks: { x: number; y: number; z: number; w: number; h: number; d: number; sides?: number }[],
+    baseSides?: number,
+  ): BufferGeometry {
+    const geos: BufferGeometry[] = [];
+    let baseGeo: BufferGeometry;
+    if (baseSides) {
+      const cyl = new CylinderGeometry(sx / 2, sz / 2, sy, baseSides, 1);
+      cyl.translate(0, sy / 2, 0);
+      baseGeo = cyl;
+    } else {
+      baseGeo = new BoxGeometry(sx, sy, sz);
+      baseGeo.translate(0, sy / 2, 0);
+    }
+    geos.push(baseGeo.toNonIndexed());
+    baseGeo.dispose();
+
+    for (const c of chunks) {
+      let chunkGeo: BufferGeometry;
+      if (c.sides) {
+        const cyl = new CylinderGeometry(c.w / 2, c.d / 2, c.h, c.sides, 1);
+        cyl.translate(c.x, c.y, c.z);
+        chunkGeo = cyl;
+      } else {
+        chunkGeo = new BoxGeometry(c.w, c.h, c.d);
+        chunkGeo.translate(c.x, c.y, c.z);
+      }
+      geos.push(chunkGeo.toNonIndexed());
+      chunkGeo.dispose();
+    }
+
+    let totalVerts = 0;
+    for (const g of geos) totalVerts += g.attributes.position.count;
+    const positions = new Float32Array(totalVerts * 3);
+    let vOff = 0;
+
+    for (const g of geos) {
+      const pos = g.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        positions[(vOff + i) * 3] = pos.getX(i);
+        positions[(vOff + i) * 3 + 1] = pos.getY(i);
+        positions[(vOff + i) * 3 + 2] = pos.getZ(i);
+      }
+      vOff += pos.count;
+      g.dispose();
+    }
+
+    for (let i = 0; i < totalVerts; i++) {
+      const px = positions[i * 3];
+      const py = positions[i * 3 + 1];
+      const pz = positions[i * 3 + 2];
+      const h = px * 73.1 + py * 37.9 + pz * 51.3;
+      positions[i * 3] += Math.sin(h) * 0.07;
+      positions[i * 3 + 1] += Math.sin(h * 1.7) * 0.035;
+      positions[i * 3 + 2] += Math.cos(h * 1.3) * 0.07;
+    }
+
+    const colors = new Float32Array(totalVerts * 3);
+    for (let i = 0; i < totalVerts; i += 3) {
+      const px = positions[i * 3];
+      const py = positions[i * 3 + 1];
+      const pz = positions[i * 3 + 2];
+      const shade = 0.85 + Math.sin(px * 31.7 + py * 47.3 + pz * 19.1) * 0.15;
+      for (let v = 0; v < 3; v++) {
+        colors[(i + v) * 3] = shade;
+        colors[(i + v) * 3 + 1] = shade;
+        colors[(i + v) * 3 + 2] = shade;
+      }
+    }
+
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  private createRocks() {
+    const rand = seededRandom(500 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    const LAND_HEIGHT = 0.02;
+    const MOUNTAIN_HEIGHT = 0.22;
+
+    const ROCK_TYPES = 5;
+    const rockGeos: BufferGeometry[] = [
+      this.makeBlockyRock(0.9, 0.35, 0.8, [
+        { x: 0.7, y: 0.1, z: 0.3, w: 0.3, h: 0.2, d: 0.25, sides: 5 },
+      ], 6),
+      this.makeBlockyRock(1.0, 0.25, 0.9, [
+        { x: 0.15, y: 0.3, z: 0, w: 0.4, h: 0.2, d: 0.4, sides: 5 },
+      ], 5),
+      this.makeBlockyRock(0.7, 0.4, 0.6, [
+        { x: -0.55, y: 0.08, z: -0.35, w: 0.25, h: 0.15, d: 0.2, sides: 6 },
+      ], 5),
+      this.makeBlockyRock(0.85, 0.3, 0.8, [
+        { x: -0.1, y: 0.35, z: 0.08, w: 0.35, h: 0.2, d: 0.3, sides: 5 },
+        { x: 0.6, y: 0.07, z: -0.4, w: 0.22, h: 0.14, d: 0.2, sides: 6 },
+      ], 6),
+      this.makeBlockyRock(0.65, 0.45, 0.6, [
+        { x: 0.08, y: 0.48, z: -0.04, w: 0.28, h: 0.18, d: 0.25, sides: 5 },
+      ], 6),
+    ];
+
+    const rockColors = [0x5a554e, 0x65605a, 0x4e4a44, 0x585350, 0x524e48];
+    const transformsByType: Matrix4[][] = Array.from({ length: ROCK_TYPES }, () => []);
+    const rockTreeTransforms: Matrix4[] = [];
+    const dummy = new Object3D();
+
+    let attempts = 0;
+    let clusters = 0;
+    const targetClusters = Math.ceil(ROCK_COUNT / 2.5);
+
+    while (clusters < targetClusters && attempts < targetClusters * 10) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation > 0.7) continue;
+
+      const coastlineChance = elevation < 0.1 ? 0.9 : elevation < 0.25 ? 0.5 : 0.2;
+      if (rand() > coastlineChance) continue;
+
+      const centerNormal = new Vector3(nx, ny, nz);
+      const rocksInCluster = 3 + Math.floor(rand() * 2);
+
+      for (let r = 0; r < rocksInCluster; r++) {
+        let rockNormal: Vector3;
+        if (r === 0) {
+          rockNormal = centerNormal.clone();
+        } else {
+          const tangent = new Vector3(-ny, nx, 0).normalize();
+          if (tangent.lengthSq() < 0.01) tangent.set(0, 0, 1).cross(centerNormal).normalize();
+          const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
+          const a = rand() * Math.PI * 2;
+          const d = 0.005 + rand() * 0.01;
+          rockNormal = centerNormal.clone()
+            .addScaledVector(tangent, Math.cos(a) * d)
+            .addScaledVector(bitangent, Math.sin(a) * d)
+            .normalize();
+        }
+
+        const rn = rockNormal;
+        const rv = terrainNoise(
+          noise, rn.x, rn.y, rn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (rv <= params.threshold) continue;
+
+        const relev = (rv - params.threshold) / (1 - params.threshold);
+        const displacement = LAND_HEIGHT + relev * MOUNTAIN_HEIGHT;
+        const surfaceRadius = this.radius + displacement;
+
+        const scale = MathUtils.lerp(0.045, 0.12, rand());
+        const rockType = elevation < 0.1
+          ? (rand() < 0.5 ? 3 : 4)
+          : Math.floor(rand() * ROCK_TYPES);
+
+        dummy.position.copy(rn.clone().multiplyScalar(surfaceRadius - scale * 0.12));
+        dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), rn);
+        dummy.rotateY(rand() * Math.PI * 2);
+        const scaleX = scale * MathUtils.lerp(0.8, 1.3, rand());
+        const scaleZ = scale * MathUtils.lerp(0.8, 1.3, rand());
+        dummy.scale.set(scaleX, scale * 0.6, scaleZ);
+        dummy.updateMatrix();
+
+        transformsByType[rockType].push(dummy.matrix.clone());
+      }
+
+      if (rand() < 0.5) {
+        const treesNear = 1 + Math.floor(rand() * 3);
+        for (let tr = 0; tr < treesNear; tr++) {
+          const tAngle = rand() * Math.PI * 2;
+          const tDist = 0.012 + rand() * 0.015;
+
+          const tangent = new Vector3(-centerNormal.y, centerNormal.x, 0).normalize();
+          if (tangent.lengthSq() < 0.01) tangent.set(0, 0, 1).cross(centerNormal).normalize();
+          const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
+
+          const treeNormal = centerNormal.clone()
+            .addScaledVector(tangent, Math.cos(tAngle) * tDist)
+            .addScaledVector(bitangent, Math.sin(tAngle) * tDist)
+            .normalize();
+
+          const tv = terrainNoise(
+            noise, treeNormal.x, treeNormal.y, treeNormal.z,
+            params.octaves, params.lacunarity, params.persistence, params.scale,
+          );
+          if (tv <= params.threshold) continue;
+
+          const telev = (tv - params.threshold) / (1 - params.threshold);
+          const tDisp = LAND_HEIGHT + telev * MOUNTAIN_HEIGHT;
+          const tSurfR = this.radius + tDisp;
+          const treeScale = MathUtils.lerp(0.014, 0.025, rand());
+          const treeH = treeScale * 2.5;
+
+          dummy.position.copy(treeNormal.clone().multiplyScalar(tSurfR).addScaledVector(treeNormal, -treeH * 0.05));
+          dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), treeNormal);
+          dummy.scale.set(treeScale * 0.7, treeH, treeScale * 0.7);
+          dummy.updateMatrix();
+
+          rockTreeTransforms.push(dummy.matrix.clone());
+        }
+      }
+
+      clusters++;
+    }
+
+    if (rockTreeTransforms.length > 0) {
+      const treeGeo = this.createTeardropGeo(1, 1);
+      const treeMat = new MeshPhongMaterial({
+        color: 0x3a8a2a,
+        vertexColors: true,
+        flatShading: true,
+      });
+      addRimLight(treeMat, 0xffeeaa, 0.7, 3.0);
+
+      const treeInstanced = new InstancedMesh(treeGeo, treeMat, rockTreeTransforms.length);
+      treeInstanced.castShadow = true;
+      treeInstanced.receiveShadow = false;
+
+      for (let i = 0; i < rockTreeTransforms.length; i++) {
+        treeInstanced.setMatrixAt(i, rockTreeTransforms[i]);
+      }
+      treeInstanced.instanceMatrix.needsUpdate = true;
+      this.group.add(treeInstanced);
+    }
+
+    for (let t = 0; t < ROCK_TYPES; t++) {
+      const tforms = transformsByType[t];
+      if (tforms.length === 0) continue;
+
+      const mat = new MeshPhongMaterial({
+        color: rockColors[t],
+        vertexColors: true,
+        flatShading: true,
+        shininess: 5,
+      });
+      addRimLight(mat, 0xffeebb, 0.5, 3.0);
+
+      const instanced = new InstancedMesh(rockGeos[t], mat, tforms.length);
+      instanced.castShadow = true;
+      instanced.receiveShadow = true;
+
+      for (let i = 0; i < tforms.length; i++) {
+        instanced.setMatrixAt(i, tforms[i]);
+      }
+      instanced.instanceMatrix.needsUpdate = true;
       this.group.add(instanced);
     }
   }
