@@ -67,6 +67,7 @@ export class Globe {
   private cloudRing = new Group();
   private cloudDriftAxis = new Vector3(0.2, 1, 0.1).normalize();
   private treeSwayUniforms: { value: number }[] = [];
+  private oceanTime = { value: 0 };
 
   constructor(radius: number = 5, seed: number = 42, terrainType: string = "default") {
     this.radius = radius;
@@ -181,12 +182,27 @@ export class Globe {
     });
 
     mat.onBeforeCompile = (shader) => {
+      shader.uniforms.oceanTime = this.oceanTime;
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "uniform vec3 emissive;",
+        `uniform vec3 emissive;
+uniform float oceanTime;`,
+      );
+
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <dithering_fragment>",
-        `float isOcean = step(vColor.b, vColor.r + vColor.g) < 0.5 ? 1.0 : 0.0;
-if (vColor.b > vColor.r + vColor.g * 0.5) {
-  gl_FragColor.rgb += vec3(0.08, 0.12, 0.18) * isOcean;
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.15, isOcean * 0.3);
+        `if (vColor.b > vColor.r + vColor.g * 0.5) {
+  gl_FragColor.rgb += vec3(0.08, 0.12, 0.18);
+  gl_FragColor.rgb *= 1.05;
+
+  vec3 wp = vViewPosition;
+  float wave1 = sin(wp.x * 60.0 + wp.y * 40.0 + oceanTime * 6.0) * 0.5 + 0.5;
+  float wave2 = sin(wp.y * 55.0 + wp.z * 45.0 - oceanTime * 5.0) * 0.5 + 0.5;
+  float wave3 = sin(wp.z * 50.0 + wp.x * 35.0 + oceanTime * 4.0) * 0.5 + 0.5;
+  float foam = wave1 * wave2 + wave3 * 0.3;
+  foam = smoothstep(0.35, 0.55, foam);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0, 1.0, 1.0), foam * 0.8);
 }
 #include <dithering_fragment>`,
       );
@@ -445,6 +461,7 @@ transformed.z += sway2;`,
     for (const u of this.treeSwayUniforms) {
       u.value += dt;
     }
+    this.oceanTime.value += dt;
   }
 
   addTo(scene: Scene) {
