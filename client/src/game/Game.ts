@@ -7,6 +7,7 @@ import {
   Clock,
   Color,
   Fog,
+  VSMShadowMap,
 } from "three";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
@@ -98,6 +99,8 @@ export class Game {
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = VSMShadowMap;
     this.container.appendChild(this.renderer.domElement);
 
     this.scene = new Scene();
@@ -112,6 +115,18 @@ export class Game {
     this.scene.add(ambient);
     const sun = new DirectionalLight(0xfff0d0, 2.2);
     sun.position.set(10, 12, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 30;
+    sun.shadow.camera.left = -10;
+    sun.shadow.camera.right = 10;
+    sun.shadow.camera.top = 10;
+    sun.shadow.camera.bottom = -10;
+    sun.shadow.radius = 4;
+    sun.shadow.blurSamples = 16;
+    sun.shadow.bias = -0.0005;
     this.scene.add(sun);
     const fill = new DirectionalLight(0x8899cc, 0.5);
     fill.position.set(-5, 3, -8);

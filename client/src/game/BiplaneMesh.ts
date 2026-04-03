@@ -131,5 +131,9 @@ export function createBiplane(color: number = 0xff4444): Group {
     plane.add(wheel);
   }
 
+  plane.traverse((child) => {
+    child.castShadow = true;
+  });
+
   return plane;
 }

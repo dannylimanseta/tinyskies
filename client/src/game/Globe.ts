@@ -66,6 +66,7 @@ export class Globe {
     });
 
     this.surfaceMesh = new Mesh(geo, mat);
+    this.surfaceMesh.receiveShadow = true;
     this.group.add(this.surfaceMesh);
   }
 
@@ -97,8 +98,9 @@ export class Globe {
         new ConeGeometry(coneR, coneH, 5),
         mat,
       );
+      cone.castShadow = true;
 
-      cone.position.copy(surfacePos).addScaledVector(normal, coneH * 0.5);
+      cone.position.copy(surfacePos).addScaledVector(normal, coneH * 0.15);
       cone.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), normal);
 
       this.group.add(cone);
