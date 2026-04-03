@@ -80,7 +80,7 @@ export class Globe {
   }
 
   private createSurface() {
-    const geo = new SphereGeometry(this.radius, 1024, 1024);
+    const geo = new SphereGeometry(this.radius, 512, 512);
     const posAttr = geo.attributes.position;
     const vertexCount = posAttr.count;
     const colors = new Float32Array(vertexCount * 3);
