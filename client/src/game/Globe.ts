@@ -242,8 +242,9 @@ varying vec3 vWorldPos;`,
   sparkleMask *= sin(wp.z * 2.3 + wp.y * 3.9 + oceanTime * 0.35);
   sparkleMask = smoothstep(0.15, 0.5, sparkleMask);
   float sparkle = sp1 * sp2 * sp3 * sp4 + sp2 * sp3 * sp5 * 0.5;
-  sparkle = smoothstep(0.7, 0.97, sparkle) * sparkleMask;
-  gl_FragColor.rgb += vec3(1.0, 1.0, 1.0) * sparkle * 0.6;
+  float sparkleThresh = mix(0.7, 0.3, shallowness);
+  sparkle = smoothstep(sparkleThresh, 0.97, sparkle) * sparkleMask;
+  gl_FragColor.rgb += vec3(1.0, 1.0, 1.0) * sparkle * mix(0.6, 1.0, shallowness);
 }
 vec3 rimViewDir = normalize(vViewPosition);
 vec3 rimNormal = normalize(normal);
