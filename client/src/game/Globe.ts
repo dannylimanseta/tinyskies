@@ -85,15 +85,21 @@ export class Globe {
     const colors = new Float32Array(vertexCount * 3);
 
     const noise = createNoise3D(this.seed);
+    const patchNoise = createNoise3D(this.seed + 555);
     const params = getTerrainParams(this.terrainType);
 
     const LAND_HEIGHT = 0.02;
     const OCEAN_DEPTH = 0.01;
-    const MOUNTAIN_HEIGHT = 0.08;
+    const MOUNTAIN_HEIGHT = 0.22;
 
     const landColors = [
       new Color(0x3a7d2a), new Color(0x4a8f3f),
       new Color(0x5a9f4a), new Color(0x5e9a48),
+    ];
+    const warmPatchColors = [
+      new Color(0x8a9a30), // yellow-green
+      new Color(0xa89530), // golden
+      new Color(0xb08828), // orange-brown
     ];
     const mountainColor = new Color(0xc4b07a);
     const snowColor = new Color(0xe8e8e0);
@@ -132,6 +138,17 @@ export class Globe {
           const idx = Math.floor(t * (landColors.length - 2));
           const frac = t * (landColors.length - 2) - idx;
           color = landColors[idx].clone().lerp(landColors[Math.min(idx + 1, landColors.length - 2)], frac);
+
+          const patch = patchNoise(nx * 4, ny * 4, nz * 4);
+          if (patch > 0.2) {
+            const patchT = Math.min(1, (patch - 0.2) * 2.5);
+            const pIdx = Math.floor(patchT * (warmPatchColors.length - 1));
+            const pFrac = patchT * (warmPatchColors.length - 1) - pIdx;
+            const warmColor = warmPatchColors[pIdx].clone().lerp(
+              warmPatchColors[Math.min(pIdx + 1, warmPatchColors.length - 1)], pFrac,
+            );
+            color.lerp(warmColor, patchT * 0.6);
+          }
         }
 
         displacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
@@ -218,9 +235,9 @@ if (vColor.b > vColor.r + vColor.g * 0.5) {
     const params = getTerrainParams(this.terrainType);
 
     const LAND_HEIGHT = 0.02;
-    const MOUNTAIN_HEIGHT = 0.08;
+    const MOUNTAIN_HEIGHT = 0.22;
 
-    const greenShades = [0x4a9a3a, 0x55a545, 0x48953a];
+    const greenShades = [0x4a9a3a, 0x55a545, 0x48953a, 0x8aaa35, 0xb59a30];
     const matsPerShade = greenShades.length;
     const treesPerShade = Math.ceil(TREE_COUNT / matsPerShade);
 
