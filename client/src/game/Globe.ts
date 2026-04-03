@@ -104,10 +104,8 @@ export class Globe {
     ];
     const mountainColor = new Color(0xc4b07a);
     const snowColor = new Color(0xe8e8e0);
-    const oceanColors = [
-      new Color(0x1a6fa0), new Color(0x2080b0),
-      new Color(0x1878a8), new Color(0x1560a0),
-    ];
+    const oceanShallow = new Color(0x2a8ca0);
+    const oceanDeep = new Color(0x1560a0);
 
     for (let i = 0; i < vertexCount; i++) {
       const x = posAttr.getX(i);
@@ -155,11 +153,7 @@ export class Globe {
         displacement = LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT;
       } else {
         const depth = Math.min(1, (params.threshold - value) * 4);
-        const idx = Math.floor(depth * (oceanColors.length - 1));
-        const frac = depth * (oceanColors.length - 1) - idx;
-        color = oceanColors[idx].clone().lerp(
-          oceanColors[Math.min(idx + 1, oceanColors.length - 1)], frac,
-        );
+        color = oceanShallow.clone().lerp(oceanDeep, depth);
         displacement = -OCEAN_DEPTH * depth;
       }
 
@@ -181,34 +175,64 @@ export class Globe {
       flatShading: true,
     });
 
+    const rimColor = new Color(0xffeebb);
+    const rimIntensity = 0.8;
+    const rimPower = 8.5;
+
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.oceanTime = this.oceanTime;
+      shader.uniforms.rimColor = { value: rimColor };
+      shader.uniforms.rimIntensity = { value: rimIntensity };
+      shader.uniforms.rimPower = { value: rimPower };
+
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+varying vec3 vWorldPos;`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <worldpos_vertex>",
+        `#include <worldpos_vertex>
+vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+      );
 
       shader.fragmentShader = shader.fragmentShader.replace(
         "uniform vec3 emissive;",
         `uniform vec3 emissive;
-uniform float oceanTime;`,
+uniform float oceanTime;
+uniform vec3 rimColor;
+uniform float rimIntensity;
+uniform float rimPower;
+varying vec3 vWorldPos;`,
       );
 
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <dithering_fragment>",
         `if (vColor.b > vColor.r + vColor.g * 0.5) {
-  gl_FragColor.rgb += vec3(0.08, 0.12, 0.18);
-  gl_FragColor.rgb *= 1.05;
+  gl_FragColor.rgb += vec3(0.04, 0.06, 0.10);
 
-  vec3 wp = vViewPosition;
-  float wave1 = sin(wp.x * 60.0 + wp.y * 40.0 + oceanTime * 6.0) * 0.5 + 0.5;
-  float wave2 = sin(wp.y * 55.0 + wp.z * 45.0 - oceanTime * 5.0) * 0.5 + 0.5;
-  float wave3 = sin(wp.z * 50.0 + wp.x * 35.0 + oceanTime * 4.0) * 0.5 + 0.5;
-  float foam = wave1 * wave2 + wave3 * 0.3;
-  foam = smoothstep(0.35, 0.55, foam);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0, 1.0, 1.0), foam * 0.8);
+  vec3 wp = vWorldPos;
+  float w1 = sin(wp.x * 43.0 + wp.y * 27.0 + wp.z * 11.0 + oceanTime * 3.6) * 0.5 + 0.5;
+  float w2 = sin(wp.y * 37.0 + wp.z * 53.0 + wp.x * 7.0 - oceanTime * 2.7) * 0.5 + 0.5;
+  float w3 = sin(wp.z * 31.0 + wp.x * 19.0 + wp.y * 47.0 + oceanTime * 2.1) * 0.5 + 0.5;
+  float w4 = sin(wp.x * 17.0 + wp.z * 29.0 - wp.y * 13.0 + oceanTime * 1.5) * 0.5 + 0.5;
+  float w5 = sin(wp.y * 11.0 + wp.x * 59.0 + wp.z * 23.0 - oceanTime * 1.2) * 0.5 + 0.5;
+  float w6 = sin(wp.z * 41.0 - wp.y * 7.0 + wp.x * 33.0 + oceanTime * 1.8) * 0.5 + 0.5;
+  float w7 = sin(wp.x * 67.0 - wp.z * 43.0 + wp.y * 3.0 - oceanTime * 0.9) * 0.5 + 0.5;
+  float foam = w1 * w2 * w4 * w6 + w3 * w5 * w7 * 0.3;
+  foam = 1.0 - smoothstep(0.002, 0.015, foam);
+  float shallowness = smoothstep(0.1, 0.22, vColor.r);
+  gl_FragColor.rgb += vec3(0.7, 1.0, 1.0) * foam * mix(0.05, 1.0, shallowness);
 }
+vec3 rimViewDir = normalize(vViewPosition);
+vec3 rimNormal = normalize(normal);
+float rimFresnel = 1.0 - abs(dot(rimViewDir, rimNormal));
+vec3 rim = rimColor * rimIntensity * pow(rimFresnel, rimPower);
+gl_FragColor.rgb += rim;
 #include <dithering_fragment>`,
       );
     };
-
-    addRimLight(mat, 0xffeebb, 0.8, 8.5);
+    mat.needsUpdate = true;
     this.surfaceMesh = new Mesh(geo, mat);
     this.surfaceMesh.receiveShadow = true;
     this.group.add(this.surfaceMesh);
