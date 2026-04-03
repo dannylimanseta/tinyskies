@@ -114,11 +114,11 @@ export class Game {
     this.clock = new Clock();
 
     // Bright even lighting across the whole globe
-    const hemi = new HemisphereLight(0x99ccff, 0x66aa44, 1.8);
+    const hemi = new HemisphereLight(0x99ccff, 0x66aa44, 1.4);
     this.scene.add(hemi);
     const ambient = new AmbientLight(0xffffff, 1.0);
     this.scene.add(ambient);
-    const sun = new DirectionalLight(0xfff0d0, 1.7);
+    const sun = new DirectionalLight(0xfff0d0, 3.0);
     sun.position.set(10, 12, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;

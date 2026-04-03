@@ -359,8 +359,8 @@ uniform float swayTime;`,
 float swayHeight = position.y;
 vec4 worldPos = instanceMatrix * vec4(position, 1.0);
 float swayPhase = worldPos.x * 3.0 + worldPos.z * 2.7;
-float sway = sin(swayTime * 1.8 + swayPhase) * 0.035 * swayHeight * swayHeight;
-float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.025 * swayHeight * swayHeight;
+float sway = sin(swayTime * 1.8 + swayPhase) * 0.8 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 1.3 + swayPhase * 0.7) * 0.6 * swayHeight * swayHeight;
 transformed.x += sway;
 transformed.z += sway2;`,
         );
