@@ -1,0 +1,21 @@
+{
+  "name": "@globefly/client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@globefly/shared": "*",
+    "three": "^0.172.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.172.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  }
+}

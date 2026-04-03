@@ -1,0 +1,229 @@
+import {
+  Scene,
+  WebGLRenderer,
+  AmbientLight,
+  DirectionalLight,
+  HemisphereLight,
+  Clock,
+  Color,
+  Fog,
+} from "three";
+import { Globe } from "./Globe";
+import { Plane } from "./Plane";
+import { FlightControls } from "./FlightControls";
+import { CameraRig } from "./CameraRig";
+import { SocketClient } from "../network/SocketClient";
+import { StateSync } from "../network/StateSync";
+import { RemotePlaneManager } from "./RemotePlane";
+import { Lobby } from "../ui/Lobby";
+import { HUD } from "../ui/HUD";
+import type { WorldConfig } from "@globefly/shared";
+
+export class Game {
+  private container: HTMLElement;
+  private renderer!: WebGLRenderer;
+  private scene!: Scene;
+  private clock!: Clock;
+
+  private globe!: Globe;
+  private plane!: Plane;
+  private controls!: FlightControls;
+  private cameraRig!: CameraRig;
+  private remotePlanes!: RemotePlaneManager;
+
+  private socketClient: SocketClient | null = null;
+  private stateSync: StateSync | null = null;
+  private lobby!: Lobby;
+  private hud!: HUD;
+
+  private running = false;
+  private worldConfig: WorldConfig | null = null;
+  private playerName = "Pilot";
+
+  constructor(container: HTMLElement) {
+    this.container = container;
+  }
+
+  start() {
+    this.lobby = new Lobby(this.container, {
+      onCreateWorld: (name, texture) => this.handleCreateWorld(name, texture),
+      onJoinWorld: (slug, playerName) => this.handleJoinWorld(slug, playerName),
+    });
+    this.lobby.show();
+  }
+
+  private async handleCreateWorld(name: string, texture: string) {
+    const serverUrl = this.getServerUrl();
+    try {
+      const res = await fetch(`${serverUrl}/api/worlds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, texture, createdBy: this.playerName }),
+      });
+      const world: WorldConfig = await res.json();
+      this.lobby.showShareUrl(world.slug);
+    } catch (err) {
+      console.error("Failed to create world:", err);
+      this.lobby.showError("Failed to create world. Is the server running?");
+    }
+  }
+
+  private async handleJoinWorld(slug: string, playerName: string) {
+    this.playerName = playerName || "Pilot";
+    const serverUrl = this.getServerUrl();
+
+    try {
+      const res = await fetch(`${serverUrl}/api/worlds/${slug}`);
+      if (!res.ok) throw new Error("World not found");
+      this.worldConfig = await res.json();
+    } catch (err) {
+      console.error("Failed to fetch world:", err);
+      this.lobby.showError("World not found. Check the URL and try again.");
+      return;
+    }
+
+    this.lobby.hide();
+    this.initScene();
+    this.initNetworking(slug);
+    this.running = true;
+    this.tick();
+  }
+
+  private initScene() {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    const texture = this.worldConfig?.texture ?? "earth";
+
+    this.renderer = new WebGLRenderer({ antialias: true });
+    this.renderer.setSize(w, h);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.container.appendChild(this.renderer.domElement);
+
+    this.scene = new Scene();
+    this.scene.background = new Color(0x87ceeb);
+    this.scene.fog = new Fog(0x87ceeb, 15, 40);
+    this.clock = new Clock();
+
+    // Warm outdoor lighting
+    const hemi = new HemisphereLight(0x88bbff, 0x446622, 0.8);
+    this.scene.add(hemi);
+    const ambient = new AmbientLight(0xfff5e0, 0.4);
+    this.scene.add(ambient);
+    const sun = new DirectionalLight(0xfff0d0, 2.2);
+    sun.position.set(10, 12, 5);
+    this.scene.add(sun);
+    const fill = new DirectionalLight(0x8899cc, 0.5);
+    fill.position.set(-5, 3, -8);
+    this.scene.add(fill);
+
+    this.globe = new Globe(globeRadius, texture);
+    this.globe.addTo(this.scene);
+
+    this.plane = new Plane(globeRadius);
+    this.plane.addTo(this.scene);
+
+    this.cameraRig = new CameraRig(w / h);
+    this.cameraRig.snapTo(
+      this.plane.qPosition,
+      this.plane.heading,
+      this.plane.altitude,
+      globeRadius,
+    );
+
+    this.controls = new FlightControls(this.container);
+
+    this.remotePlanes = new RemotePlaneManager(this.scene, globeRadius);
+
+    this.hud = new HUD(this.container);
+    this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
+
+    window.addEventListener("resize", this.onResize);
+  }
+
+  private initNetworking(slug: string) {
+    const serverUrl = this.getServerUrl();
+    this.socketClient = new SocketClient(serverUrl);
+
+    this.socketClient.onPlayerJoined((player) => {
+      this.remotePlanes.addPlayer(player);
+      this.hud.setPlayerCount(this.remotePlanes.count + 1);
+    });
+
+    this.socketClient.onPlayerLeft((playerId) => {
+      this.remotePlanes.removePlayer(playerId);
+      this.hud.setPlayerCount(this.remotePlanes.count + 1);
+    });
+
+    this.socketClient.onPlayerUpdate((player) => {
+      this.remotePlanes.updatePlayer(player);
+    });
+
+    this.socketClient.onWorldState((players) => {
+      for (const p of players) {
+        this.remotePlanes.addPlayer(p);
+      }
+      this.hud.setPlayerCount(this.remotePlanes.count + 1);
+    });
+
+    this.socketClient.joinWorld(slug, this.playerName);
+
+    this.stateSync = new StateSync(this.socketClient, this.plane);
+    this.stateSync.start();
+  }
+
+  private tick = () => {
+    if (!this.running) return;
+    requestAnimationFrame(this.tick);
+
+    const dt = Math.min(this.clock.getDelta(), 0.05);
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+
+    // Update local plane
+    const { turnRate, forward, brake } = this.controls.getState();
+    this.plane.update(dt, turnRate, forward, brake);
+
+    // Update camera
+    this.cameraRig.update(
+      dt,
+      this.plane.qPosition,
+      this.plane.heading,
+      this.plane.altitude,
+      globeRadius,
+    );
+
+    // Update remote planes
+    this.remotePlanes.update(dt);
+
+    // Update HUD
+    this.hud.setSpeed(this.plane.speed);
+    this.hud.setAltitude(this.plane.altitude);
+
+    // Render
+    this.renderer.render(this.scene, this.cameraRig.camera);
+  };
+
+  private onResize = () => {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    this.renderer.setSize(w, h);
+    this.cameraRig.resize(w / h);
+  };
+
+  private getServerUrl(): string {
+    return (
+      (import.meta as any).env?.VITE_SERVER_URL ?? "http://localhost:3001"
+    );
+  }
+
+  dispose() {
+    this.running = false;
+    this.controls?.dispose();
+    this.plane?.dispose();
+    this.globe?.dispose();
+    this.renderer?.dispose();
+    this.stateSync?.stop();
+    this.socketClient?.disconnect();
+    window.removeEventListener("resize", this.onResize);
+  }
+}
