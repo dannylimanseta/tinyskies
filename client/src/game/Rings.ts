@@ -17,8 +17,11 @@ const DIAMOND_COUNT = 15;
 const DIAMOND_SIZE = 0.09;
 const DIAMOND_XP = 10;
 const DIAMOND_COLOR: [number, number, number] = [0.2, 1.0, 0.8];
-const COLLECTION_RADIUS = 0.7;
-const DIAMOND_ALTITUDE = 0.4;
+const COLLECTION_RADIUS = 0.3;
+const LOW_ALTITUDE = 0.4;
+const HIGH_ALTITUDE_MIN = 0.7;
+const HIGH_ALTITUDE_MAX = 1.1;
+const HIGH_CHANCE = 0.35;
 const RESPAWN_DELAY_MIN = 1.5;
 const RESPAWN_DELAY_MAX = 2.5;
 const MIN_SPACING = 1.5;
@@ -31,6 +34,7 @@ const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 
 interface DiamondInstance {
   mesh: Mesh;
   qPosition: Quaternion;
+  altitude: number;
   active: boolean;
   spawnTimer: number;
   spawnDuration: number;
@@ -38,6 +42,13 @@ interface DiamondInstance {
   phaseOffset: number;
   spinAngle: number;
   upAxis: Vector3;
+}
+
+function randomAltitude(): number {
+  if (Math.random() < HIGH_CHANCE) {
+    return HIGH_ALTITUDE_MIN + Math.random() * (HIGH_ALTITUDE_MAX - HIGH_ALTITUDE_MIN);
+  }
+  return LOW_ALTITUDE;
 }
 
 const holoVert = `
@@ -129,8 +140,9 @@ export class RingManager {
     mesh.frustumCulled = false;
 
     const qPos = this.randomSpherePosition();
+    const altitude = randomAltitude();
     const phaseOffset = Math.random() * Math.PI * 2;
-    const worldPos = cartesianFromSpherical(qPos, DIAMOND_ALTITUDE, this.globeRadius);
+    const worldPos = cartesianFromSpherical(qPos, altitude, this.globeRadius);
     const upAxis = worldPos.clone().normalize();
 
     mesh.position.copy(worldPos);
@@ -141,6 +153,7 @@ export class RingManager {
     return {
       mesh,
       qPosition: qPos,
+      altitude,
       active: true,
       spawnTimer: 0,
       spawnDuration: SPAWN_ANIM_DURATION,
@@ -163,12 +176,12 @@ export class RingManager {
       const secondArc = Math.random() * 1.5;
       const finalQ = moveOnSphere(moved, secondHeading, secondArc);
 
-      const candidate = cartesianFromSpherical(finalQ, DIAMOND_ALTITUDE, this.globeRadius);
+      const candidate = cartesianFromSpherical(finalQ, LOW_ALTITUDE, this.globeRadius);
 
       let tooClose = false;
       for (const d of this.diamonds) {
         if (!d.active) continue;
-        const existing = cartesianFromSpherical(d.qPosition, DIAMOND_ALTITUDE, this.globeRadius);
+        const existing = cartesianFromSpherical(d.qPosition, LOW_ALTITUDE, this.globeRadius);
         if (candidate.distanceTo(existing) < MIN_SPACING) {
           tooClose = true;
           break;
@@ -176,7 +189,7 @@ export class RingManager {
       }
 
       if (!tooClose && avoidPlayerQ) {
-        const playerPos = cartesianFromSpherical(avoidPlayerQ, DIAMOND_ALTITUDE, this.globeRadius);
+        const playerPos = cartesianFromSpherical(avoidPlayerQ, LOW_ALTITUDE, this.globeRadius);
         if (candidate.distanceTo(playerPos) < MIN_PLAYER_SPAWN_DIST) {
           tooClose = true;
         }
@@ -209,7 +222,7 @@ export class RingManager {
       d.mesh.scale.setScalar(scale);
 
       const bob = Math.sin(this.time * 1.5 + d.phaseOffset) * 0.03;
-      const worldPos = cartesianFromSpherical(d.qPosition, DIAMOND_ALTITUDE, this.globeRadius);
+      const worldPos = cartesianFromSpherical(d.qPosition, d.altitude, this.globeRadius);
       d.mesh.position.copy(worldPos).addScaledVector(d.upAxis, bob);
 
       d.spinAngle += SPIN_SPEED * dt;
@@ -266,6 +279,7 @@ export class RingManager {
     const d = this.diamonds[inactiveIdx];
 
     d.qPosition = this.randomSpherePosition(avoidPlayerQ);
+    d.altitude = randomAltitude();
     d.active = true;
     d.spawnTimer = 0;
     d.age = 0;
@@ -273,7 +287,7 @@ export class RingManager {
     d.spinAngle = Math.random() * Math.PI * 2;
     d.mesh.visible = true;
 
-    const worldPos = cartesianFromSpherical(d.qPosition, DIAMOND_ALTITUDE, this.globeRadius);
+    const worldPos = cartesianFromSpherical(d.qPosition, d.altitude, this.globeRadius);
     d.upAxis.copy(worldPos).normalize();
     d.mesh.position.copy(worldPos);
     d.mesh.scale.setScalar(0);
