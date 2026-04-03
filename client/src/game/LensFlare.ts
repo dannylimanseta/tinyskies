@@ -112,6 +112,7 @@ export class LensFlare {
 
   update(camera: PerspectiveCamera) {
     const projected = this.sunWorldPos.clone().project(camera);
+    const aspect = camera.aspect;
 
     const behindCamera = projected.z > 1;
     const onScreen = Math.abs(projected.x) < 1.4 && Math.abs(projected.y) < 1.4;
@@ -135,7 +136,7 @@ export class LensFlare {
       const ey = sunY * (1 - t * 2);
 
       el.mesh.position.set(ex, ey, 0);
-      el.mesh.scale.set(el.size, el.size, 1);
+      el.mesh.scale.set(el.size / aspect, el.size, 1);
       el.mesh.visible = true;
       el.material.uniforms.opacity.value = globalOpacity;
     }
