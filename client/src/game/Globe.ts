@@ -3,7 +3,6 @@ import {
   InstancedMesh,
   SphereGeometry,
   BoxGeometry,
-  ConeGeometry,
   CylinderGeometry,
   MeshPhongMaterial,
   ShaderMaterial,
@@ -404,14 +403,16 @@ transformed.z += sway2;`,
   }
 
   private createCoconutTreeGeo(): BufferGeometry {
-    const trunkColor = new Color(0x9B7530);
-    const frondColor = new Color(0x1A6B37);
-    const frondLight = new Color(0x2D8A4E);
+    const trunkColor = new Color(0x6E4F24);
+    const frondShadow = new Color(0x1A6B37).multiplyScalar(0.88);
+    const frondHighlight = new Color(0x2D8A4E).multiplyScalar(0.88);
+    const frondColor = frondShadow.clone().lerp(frondHighlight, 0.43);
+    const frondLight = frondShadow.clone().lerp(frondHighlight, 0.57);
     const coconutColor = new Color(0x5D3A1A);
 
     const parts: { geo: BufferGeometry; color: Color }[] = [];
 
-    const trunk = new CylinderGeometry(0.06, 0.09, 0.55, 6, 4);
+    const trunk = new CylinderGeometry(0.06, 0.09, 0.55, 8, 4);
     const tPos = trunk.attributes.position;
     for (let i = 0; i < tPos.count; i++) {
       const y = tPos.getY(i);
@@ -424,19 +425,67 @@ transformed.z += sway2;`,
 
     const frondCount = 8;
     const tilts = [-0.9, -1.6, -1.0, -1.8, -0.95, -1.7, -1.0, -1.55];
+    /** rotateX tilt scale — upper crown ring is stiffer */
+    const droopLower = 0.48;
+    const droopUpper = 0.2;
+    const crownYBase = 0.52;
+    const crownYShiftTop = 0.018;
     for (let i = 0; i < frondCount; i++) {
-      const frond = new ConeGeometry(0.18, 0.45, 5);
-      frond.scale(0.8, 1.0, 0.5);
-      frond.translate(0, 0.225, 0);
-      frond.rotateZ(tilts[i]);
-      frond.rotateY((i / frondCount) * Math.PI * 2 + 0.1);
-      frond.translate(0, 0.52, 0);
+      // X = width, Y = thin (radial / trunk), Z = spine in tangent plane — broad face horizontal on the globe
+      const frond = new SphereGeometry(0.205, 18, 14);
+      const spineScale = 1.32;
+      const widthScale = 0.55;
+      frond.scale(widthScale, 0.38, spineScale);
+      const fPos = frond.attributes.position;
+      const zSpan = 0.205 * spineScale;
+      const halfW = 0.205 * widthScale;
+      for (let vi = 0; vi < fPos.count; vi++) {
+        const x = fPos.getX(vi);
+        const y = fPos.getY(vi);
+        const z = fPos.getZ(vi);
+        const z01 = MathUtils.clamp((z + zSpan * 0.5) / zSpan, 0, 1);
+        const tip = Math.pow(z01, 1.75);
+        const tipSharp = MathUtils.lerp(1.0, 0.62, tip);
+        let nx = x * tipSharp;
+        let ny = y * MathUtils.lerp(1.0, 0.55, tip);
+        const nz = z;
+        const edgeT = Math.min(1, Math.abs(nx) / halfW);
+        ny += 0.052 * Math.sin(z01 * Math.PI) * (1 - 0.4 * Math.pow(edgeT, 1.2));
+        const w = MathUtils.clamp(nx / halfW, -1, 1);
+        ny += 0.085 * w * w * (0.4 + 0.6 * z01);
+        const edge = Math.pow(Math.abs(nx), 1.35);
+        const fold = edge * (0.032 + 0.03 * z01);
+        ny -= fold;
+        fPos.setX(vi, nx);
+        fPos.setY(vi, ny);
+        fPos.setZ(vi, nz);
+      }
       frond.computeVertexNormals();
+      frond.translate(0, 0, zSpan * 0.5);
+      const upperCrown = i < frondCount / 2;
+      const baseDroop = -tilts[i] * (upperCrown ? droopUpper : droopLower);
+      const yaw = (i / frondCount) * Math.PI * 2 + 0.1;
+      // Some fronds: pitch spine toward +Y first, fan, then droop (not same as one rotateX(droop−pitch))
+      const spineFacesUp = i % 3 === 0;
+      const pitchTowardSky = upperCrown ? 0.24 : 0.34;
+      if (spineFacesUp) {
+        frond.rotateX(-pitchTowardSky);
+        frond.rotateY(yaw);
+        frond.rotateX(baseDroop);
+      } else {
+        frond.rotateX(baseDroop);
+        frond.rotateY(yaw);
+      }
+      frond.translate(
+        0,
+        crownYBase + (upperCrown ? crownYShiftTop : 0),
+        0,
+      );
       parts.push({ geo: frond, color: i % 2 === 0 ? frondColor : frondLight });
     }
 
     for (let c = 0; c < 3; c++) {
-      const coconut = new SphereGeometry(0.032, 4, 3);
+      const coconut = new SphereGeometry(0.032, 8, 6);
       const a = (c / 3) * Math.PI * 2 + 0.5;
       coconut.translate(Math.cos(a) * 0.045, 0.5, Math.sin(a) * 0.045);
       parts.push({ geo: coconut, color: coconutColor });
@@ -534,7 +583,7 @@ transformed.z += sway2;`,
         const telev = (tv - params.threshold) / (1 - params.threshold);
         const displacement = LAND_HEIGHT + telev * MOUNTAIN_HEIGHT;
         const surfaceRadius = this.radius + displacement;
-        const scale = MathUtils.lerp(0.07, 0.12, rand());
+        const scale = MathUtils.lerp(0.09, 0.15, rand());
 
         dummy.position.copy(treeNormal.clone().multiplyScalar(surfaceRadius));
         dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), treeNormal);
@@ -557,7 +606,7 @@ transformed.z += sway2;`,
 
     const mat = new MeshPhongMaterial({
       vertexColors: true,
-      flatShading: true,
+      flatShading: false,
     });
     addRimLight(mat, 0xffeeaa, 0.7, 3.0);
 
