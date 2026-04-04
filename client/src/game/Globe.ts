@@ -50,6 +50,7 @@ void main() {
 
 const TREE_COUNT = 3400;
 const ROCK_COUNT = 400;
+const COCONUT_CLUSTERS = 180;
 const VILLAGE_COUNT = 20;
 const HOUSES_PER_VILLAGE = [8, 10, 12, 14, 16];
 const CLOUD_COUNT = 30;
@@ -82,6 +83,7 @@ export class Globe {
     this.terrainType = terrainType;
     this.createSurface();
     this.createTrees();
+    this.createCoconutTrees();
     this.createRocks();
     this.createVillages();
     this.createClouds();
@@ -399,6 +401,196 @@ transformed.z += sway2;`,
 
       this.group.add(instanced);
     }
+  }
+
+  private createCoconutTreeGeo(): BufferGeometry {
+    const trunkColor = new Color(0x9B7530);
+    const frondColor = new Color(0x1A6B37);
+    const frondLight = new Color(0x2D8A4E);
+    const coconutColor = new Color(0x5D3A1A);
+
+    const parts: { geo: BufferGeometry; color: Color }[] = [];
+
+    const trunk = new CylinderGeometry(0.06, 0.09, 0.55, 6, 4);
+    const tPos = trunk.attributes.position;
+    for (let i = 0; i < tPos.count; i++) {
+      const y = tPos.getY(i);
+      const t = y / 0.55 + 0.5;
+      tPos.setX(i, tPos.getX(i) + t * t * 0.04);
+    }
+    trunk.translate(0, 0.275, 0);
+    trunk.computeVertexNormals();
+    parts.push({ geo: trunk, color: trunkColor });
+
+    const frondCount = 8;
+    const tilts = [-0.9, -1.6, -1.0, -1.8, -0.95, -1.7, -1.0, -1.55];
+    for (let i = 0; i < frondCount; i++) {
+      const frond = new ConeGeometry(0.18, 0.45, 5);
+      frond.scale(0.8, 1.0, 0.5);
+      frond.translate(0, 0.225, 0);
+      frond.rotateZ(tilts[i]);
+      frond.rotateY((i / frondCount) * Math.PI * 2 + 0.1);
+      frond.translate(0, 0.52, 0);
+      frond.computeVertexNormals();
+      parts.push({ geo: frond, color: i % 2 === 0 ? frondColor : frondLight });
+    }
+
+    for (let c = 0; c < 3; c++) {
+      const coconut = new SphereGeometry(0.032, 4, 3);
+      const a = (c / 3) * Math.PI * 2 + 0.5;
+      coconut.translate(Math.cos(a) * 0.045, 0.5, Math.sin(a) * 0.045);
+      parts.push({ geo: coconut, color: coconutColor });
+    }
+
+    return this.mergeColoredParts(parts);
+  }
+
+  private createCoconutTrees() {
+    const rand = seededRandom(300 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    const LAND_HEIGHT = 0.02;
+    const MOUNTAIN_HEIGHT = 0.22;
+    const MAX_ELEVATION = 0.10;
+    const WATER_CHECK_DIST = 0.04;
+    const WATER_CHECKS = 6;
+
+    const transforms: Matrix4[] = [];
+    const dummy = new Object3D();
+    let attempts = 0;
+    let clusters = 0;
+
+    while (clusters < COCONUT_CLUSTERS && attempts < COCONUT_CLUSTERS * 20) {
+      attempts++;
+
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation > MAX_ELEVATION) continue;
+
+      const centerNormal = new Vector3(nx, ny, nz);
+      let hasNearbyWater = false;
+
+      for (let c = 0; c < WATER_CHECKS; c++) {
+        const checkAngle = (c / WATER_CHECKS) * Math.PI * 2;
+        const tangent = new Vector3(-ny, nx, 0);
+        if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+        tangent.normalize();
+        const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
+
+        const cn = centerNormal.clone()
+          .addScaledVector(tangent, Math.cos(checkAngle) * WATER_CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(checkAngle) * WATER_CHECK_DIST)
+          .normalize();
+
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) {
+          hasNearbyWater = true;
+          break;
+        }
+      }
+
+      if (!hasNearbyWater) continue;
+
+      const clusterCount = 4 + Math.floor(rand() * 5);
+
+      for (let t = 0; t < clusterCount; t++) {
+        let treeNormal: Vector3;
+        if (t === 0) {
+          treeNormal = centerNormal.clone();
+        } else {
+          const tangent = new Vector3(-ny, nx, 0);
+          if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+          tangent.normalize();
+          const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
+          const a = rand() * Math.PI * 2;
+          const d = 0.006 + rand() * 0.022;
+          treeNormal = centerNormal.clone()
+            .addScaledVector(tangent, Math.cos(a) * d)
+            .addScaledVector(bitangent, Math.sin(a) * d)
+            .normalize();
+        }
+
+        const tv = terrainNoise(
+          noise, treeNormal.x, treeNormal.y, treeNormal.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (tv <= params.threshold) continue;
+
+        const telev = (tv - params.threshold) / (1 - params.threshold);
+        const displacement = LAND_HEIGHT + telev * MOUNTAIN_HEIGHT;
+        const surfaceRadius = this.radius + displacement;
+        const scale = MathUtils.lerp(0.07, 0.12, rand());
+
+        dummy.position.copy(treeNormal.clone().multiplyScalar(surfaceRadius));
+        dummy.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), treeNormal);
+        dummy.rotateY(rand() * Math.PI * 2);
+        dummy.rotateZ((rand() - 0.4) * 0.12);
+        dummy.scale.set(scale, scale, scale);
+        dummy.updateMatrix();
+
+        transforms.push(dummy.matrix.clone());
+      }
+
+      clusters++;
+    }
+
+    if (transforms.length === 0) return;
+
+    const coconutGeo = this.createCoconutTreeGeo();
+    const swayTime = { value: 0 };
+    this.treeSwayUniforms.push(swayTime);
+
+    const mat = new MeshPhongMaterial({
+      vertexColors: true,
+      flatShading: true,
+    });
+    addRimLight(mat, 0xffeeaa, 0.7, 3.0);
+
+    const rimCompile = mat.onBeforeCompile.bind(mat);
+    mat.onBeforeCompile = (shader, renderer) => {
+      rimCompile(shader, renderer);
+      shader.uniforms.swayTime = swayTime;
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>\nuniform float swayTime;`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+float swayHeight = position.y;
+vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+float swayPhase = worldPos.x * 3.0 + worldPos.z * 2.7;
+float sway = sin(swayTime * 1.2 + swayPhase) * 0.4 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 0.8 + swayPhase * 0.7) * 0.3 * swayHeight * swayHeight;
+transformed.x += sway;
+transformed.z += sway2;`,
+      );
+    };
+
+    const instanced = new InstancedMesh(coconutGeo, mat, transforms.length);
+    instanced.castShadow = true;
+    instanced.receiveShadow = false;
+
+    for (let i = 0; i < transforms.length; i++) {
+      instanced.setMatrixAt(i, transforms[i]);
+    }
+    instanced.instanceMatrix.needsUpdate = true;
+    this.group.add(instanced);
   }
 
   private makeBlockyRock(
