@@ -22,6 +22,7 @@ import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
+import { WakeTrail } from "./WakeTrail";
 import { LensFlare } from "./LensFlare";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
@@ -42,6 +43,7 @@ export class Game {
   private remotePlanes!: RemotePlaneManager;
   private speedLines!: SpeedLines;
   private contrails!: Contrails;
+  private wakeTrail!: WakeTrail;
   private lensFlare!: LensFlare;
   private ringManager!: RingManager;
   private collectVFX!: RingCollectVFX;
@@ -184,6 +186,9 @@ export class Game {
     this.contrails = new Contrails();
     this.scene.add(this.contrails.group);
 
+    this.wakeTrail = new WakeTrail();
+    this.scene.add(this.wakeTrail.group);
+
     this.lensFlare = new LensFlare();
 
     this.ringManager = new RingManager(globeRadius);
@@ -284,10 +289,12 @@ export class Game {
     this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
     this.collectVFX.update(dt);
 
+    this.localPlayer.group.updateMatrixWorld(true);
     if (this.localPlayer.vehicle === "plane") {
       this.speedLines.update(dt, this.localPlayer.speed, this.cameraRig.camera);
-      this.localPlayer.group.updateMatrixWorld(true);
       this.contrails.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
+    } else {
+      this.wakeTrail.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
     }
 
     this.hud.setSpeed(this.localPlayer.speed);
@@ -345,6 +352,7 @@ export class Game {
     this.controls?.dispose();
     this.speedLines?.dispose();
     this.contrails?.dispose();
+    this.wakeTrail?.dispose();
     this.lensFlare?.dispose();
     this.ringManager?.dispose();
     this.collectVFX?.dispose();

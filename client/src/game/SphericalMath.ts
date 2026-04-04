@@ -123,15 +123,17 @@ export function buildPlaneMatrix(
 }
 
 /**
- * Upright hull on the tangent plane (no pitch/bank) — +Z forward in local space.
+ * Hull on the tangent plane with small pitch/roll for bobbing — +Z forward in local space.
  */
 export function buildBoatMatrix(
   qPosition: Quaternion,
   heading: number,
   altitude: number,
   globeRadius: number,
+  pitch: number = 0,
+  roll: number = 0,
 ): Matrix4 {
-  return buildPlaneMatrix(qPosition, heading, 0, 0, altitude, globeRadius);
+  return buildPlaneMatrix(qPosition, heading, pitch, roll, altitude, globeRadius);
 }
 
 /**

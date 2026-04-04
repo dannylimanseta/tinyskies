@@ -57,6 +57,13 @@ export function randomOceanQuaternion(
   return new Quaternion();
 }
 
+const BOB_AMPLITUDE = 0.009;
+const BOB_SPEED = 2.6;
+const PITCH_BOB_AMP = 0.042;
+const PITCH_BOB_SPEED = 2.1;
+const ROLL_BOB_AMP = 0.05;
+const ROLL_BOB_SPEED = 1.55;
+
 export class Boat {
   readonly group: Group;
   readonly vehicle: Vehicle = "boat";
@@ -73,6 +80,10 @@ export class Boat {
   private globeRadius: number;
   private seed: number;
   private terrainType: string;
+  private bobTime = Math.random() * Math.PI * 2;
+  private bobOffset = 0;
+  private bobPitch = 0;
+  private bobRoll = 0;
 
   constructor(globeRadius: number, seed: number, terrainType: string, hullColor?: number) {
     this.globeRadius = globeRadius;
@@ -119,11 +130,17 @@ export class Boat {
     }
 
     const up = tangentFrame(this.qPosition).up;
-    this.altitude =
+    const baseAlt =
       surfaceAltitudeAt(this.seed, this.terrainType, up.x, up.y, up.z) + FREEBOARD;
 
-    this.pitch = 0;
-    this.bankAngle = 0;
+    this.bobTime += dt;
+    this.bobOffset = Math.sin(this.bobTime * BOB_SPEED) * BOB_AMPLITUDE;
+    this.bobPitch = Math.sin(this.bobTime * PITCH_BOB_SPEED + 1.3) * PITCH_BOB_AMP;
+    this.bobRoll = Math.sin(this.bobTime * ROLL_BOB_SPEED + 2.7) * ROLL_BOB_AMP;
+
+    this.altitude = baseAlt + this.bobOffset;
+    this.pitch = this.bobPitch;
+    this.bankAngle = this.bobRoll;
     this.applyMatrix();
   }
 
@@ -133,6 +150,8 @@ export class Boat {
       this.heading,
       this.altitude,
       this.globeRadius,
+      this.bobPitch,
+      this.bobRoll,
     );
     this.group.matrix.copy(m);
     this.group.matrixWorldNeedsUpdate = true;
