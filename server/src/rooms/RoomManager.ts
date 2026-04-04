@@ -2,6 +2,7 @@ import type { Socket } from "socket.io";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
+  Vehicle,
 } from "@globefly/shared";
 import { Room } from "./Room.js";
 
@@ -30,9 +31,10 @@ export class RoomManager {
     slug: string,
     socket: Socket<ClientToServerEvents, ServerToClientEvents>,
     playerName: string,
+    vehicle: Vehicle = "plane",
   ) {
     const room = this.getOrCreateRoom(slug);
-    room.addPlayer(socket, playerName);
+    room.addPlayer(socket, playerName, vehicle);
 
     socket.on("player:move", (state) => {
       room.updatePlayer(socket.id, state);

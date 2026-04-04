@@ -35,6 +35,9 @@ export class CameraRig {
     this.shakeTimer = 0;
   }
 
+  /**
+   * @param tiltScale Multiplier for banking tilt when turning (0 = no tilt, 1 = default).
+   */
   update(
     dt: number,
     planeQPosition: Quaternion,
@@ -43,6 +46,7 @@ export class CameraRig {
     globeRadius: number,
     turnRate: number = 0,
     speedRatio: number = 0,
+    tiltScale: number = 1,
   ) {
     const frame = tangentFrame(planeQPosition);
     const planeWorldPos = cartesianFromSpherical(
@@ -89,7 +93,7 @@ export class CameraRig {
     this.camera.up.copy(camUp);
     this.camera.lookAt(this.currentLookAt);
 
-    const targetTilt = -turnRate * MAX_TILT;
+    const targetTilt = -turnRate * MAX_TILT * tiltScale;
     this.currentTilt += (targetTilt - this.currentTilt) * Math.min(1, TILT_SMOOTH * dt);
     if (Math.abs(this.currentTilt) > 0.0001) {
       this.camera.rotateZ(this.currentTilt);

@@ -3,13 +3,15 @@ import {
   Group,
   Quaternion,
 } from "three";
-import type { PlayerState } from "@globefly/shared";
+import type { PlayerState, Vehicle } from "@globefly/shared";
 import {
   slerpPlayerState,
   deadReckon,
   buildPlaneMatrix,
+  buildBoatMatrix,
 } from "./SphericalMath";
 import { createBiplane } from "./BiplaneMesh";
+import { createBoat } from "./BoatMesh";
 
 const INTERPOLATION_DELAY_MS = 100;
 const CORRECTION_DURATION_MS = 150;
@@ -40,6 +42,7 @@ class RemotePlane {
   readonly id: string;
   readonly name: string;
   readonly group: Group;
+  private readonly vehicle: Vehicle;
 
   private buffer: BufferedSnapshot[] = [];
   private globeRadius: number;
@@ -50,11 +53,14 @@ class RemotePlane {
   private lastRendered: PartialState | null = null;
   private wasDeadReckoning = false;
 
-  constructor(id: string, name: string, globeRadius: number) {
+  constructor(id: string, name: string, globeRadius: number, vehicle: Vehicle = "plane") {
     this.id = id;
     this.name = name;
     this.globeRadius = globeRadius;
-    this.group = createBiplane(nextRemoteColor());
+    this.vehicle = vehicle;
+    const color = nextRemoteColor();
+    this.group =
+      vehicle === "boat" ? createBoat(color) : createBiplane(color);
     this.group.matrixAutoUpdate = false;
   }
 
@@ -164,14 +170,17 @@ class RemotePlane {
 
   private applyToMesh(state: PartialState) {
     const qPos = new Quaternion(state.qx, state.qy, state.qz, state.qw);
-    const m = buildPlaneMatrix(
-      qPos,
-      state.heading,
-      state.pitch,
-      state.bankAngle,
-      state.altitude,
-      this.globeRadius,
-    );
+    const m =
+      this.vehicle === "boat"
+        ? buildBoatMatrix(qPos, state.heading, state.altitude, this.globeRadius)
+        : buildPlaneMatrix(
+            qPos,
+            state.heading,
+            state.pitch,
+            state.bankAngle,
+            state.altitude,
+            this.globeRadius,
+          );
     this.group.matrix.copy(m);
     this.group.matrixWorldNeedsUpdate = true;
   }
@@ -200,7 +209,8 @@ export class RemotePlaneManager {
 
   addPlayer(state: PlayerState) {
     if (this.planes.has(state.id)) return;
-    const rp = new RemotePlane(state.id, state.name, this.globeRadius);
+    const v: Vehicle = state.vehicle === "boat" ? "boat" : "plane";
+    const rp = new RemotePlane(state.id, state.name, this.globeRadius, v);
     rp.pushState(state);
     this.planes.set(state.id, rp);
     this.scene.add(rp.group);

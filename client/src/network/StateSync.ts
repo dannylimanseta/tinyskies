@@ -1,16 +1,28 @@
 import type { SocketClient } from "./SocketClient";
-import type { Plane } from "../game/Plane";
+import type { Quaternion } from "three";
+import type { Vehicle } from "@globefly/shared";
 
 const SEND_RATE_MS = 50; // 20 Hz
 
+export type SyncablePlayer = {
+  qPosition: Quaternion;
+  heading: number;
+  pitch: number;
+  altitude: number;
+  speed: number;
+  bankAngle: number;
+  rollAngle: number;
+  vehicle: Vehicle;
+};
+
 export class StateSync {
   private client: SocketClient;
-  private plane: Plane;
+  private player: SyncablePlayer;
   private interval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(client: SocketClient, plane: Plane) {
+  constructor(client: SocketClient, player: SyncablePlayer) {
     this.client = client;
-    this.plane = plane;
+    this.player = player;
   }
 
   start() {
@@ -29,16 +41,17 @@ export class StateSync {
 
     this.client.sendMove({
       name: "",
-      qx: this.plane.qPosition.x,
-      qy: this.plane.qPosition.y,
-      qz: this.plane.qPosition.z,
-      qw: this.plane.qPosition.w,
-      heading: this.plane.heading,
-      pitch: this.plane.pitch,
-      altitude: this.plane.altitude,
-      speed: this.plane.speed,
-      bankAngle: this.plane.bankAngle + this.plane.rollAngle,
-      rollAngle: this.plane.rollAngle,
+      vehicle: this.player.vehicle,
+      qx: this.player.qPosition.x,
+      qy: this.player.qPosition.y,
+      qz: this.player.qPosition.z,
+      qw: this.player.qPosition.w,
+      heading: this.player.heading,
+      pitch: this.player.pitch,
+      altitude: this.player.altitude,
+      speed: this.player.speed,
+      bankAngle: this.player.bankAngle + this.player.rollAngle,
+      rollAngle: this.player.rollAngle,
       timestamp: Date.now(),
     });
   }

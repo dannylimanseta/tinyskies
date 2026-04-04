@@ -3,6 +3,7 @@ import type {
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
+  Vehicle,
 } from "@globefly/shared";
 
 export class SocketClient {
@@ -33,8 +34,8 @@ export class SocketClient {
     return this.socket.connected;
   }
 
-  joinWorld(slug: string, playerName: string) {
-    this.socket.emit("world:join", slug, playerName);
+  joinWorld(slug: string, playerName: string, vehicle: Vehicle = "plane") {
+    this.socket.emit("world:join", slug, playerName, vehicle);
   }
 
   sendMove(state: Omit<PlayerState, "id">) {

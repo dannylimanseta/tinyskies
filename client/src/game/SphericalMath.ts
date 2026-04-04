@@ -16,6 +16,12 @@ export interface TangentFrame {
  * Given a position quaternion, returns the local tangent frame
  * (up = radial, north = tangent toward pole, east = tangent eastward).
  */
+/** Maps local +Y up to surface normal `(nx,ny,nz)` (unit). */
+export function quaternionFromSurfaceNormal(nx: number, ny: number, nz: number): Quaternion {
+  const n = new Vector3(nx, ny, nz).normalize();
+  return new Quaternion().setFromUnitVectors(REF_UP, n);
+}
+
 export function tangentFrame(qPosition: Quaternion): TangentFrame {
   const up = REF_UP.clone().applyQuaternion(qPosition).normalize();
 
@@ -114,6 +120,18 @@ export function buildPlaneMatrix(
   m.setPosition(pos);
 
   return m;
+}
+
+/**
+ * Upright hull on the tangent plane (no pitch/bank) — +Z forward in local space.
+ */
+export function buildBoatMatrix(
+  qPosition: Quaternion,
+  heading: number,
+  altitude: number,
+  globeRadius: number,
+): Matrix4 {
+  return buildPlaneMatrix(qPosition, heading, 0, 0, altitude, globeRadius);
 }
 
 /**

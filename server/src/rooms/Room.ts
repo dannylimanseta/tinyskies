@@ -3,6 +3,7 @@ import type {
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
+  Vehicle,
 } from "@globefly/shared";
 
 interface ConnectedPlayer {
@@ -29,10 +30,12 @@ export class Room {
   addPlayer(
     socket: Socket<ClientToServerEvents, ServerToClientEvents>,
     name: string,
+    vehicle: Vehicle = "plane",
   ): PlayerState {
     const state: PlayerState = {
       id: socket.id,
       name,
+      vehicle,
       qx: 0,
       qy: 0,
       qz: 0,

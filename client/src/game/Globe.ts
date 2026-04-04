@@ -24,6 +24,7 @@ import {
 import { addRimLight } from "./RimLight";
 import { createNoise3D, terrainNoise, isLand } from "./SimplexNoise";
 import { getTerrainParams } from "./TerrainPresets";
+import { PROP_TERRAIN_SINK, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
 
 const ATMOSPHERE_VERTEX = `
 varying vec3 vNormal;
@@ -55,10 +56,6 @@ const HOUSES_PER_VILLAGE = [8, 10, 12, 14, 16];
 const CLOUD_COUNT = 30;
 const CLOUD_ALTITUDE = 1.0;
 const CLOUD_DRIFT_SPEED = 0.03;
-/** Max radial displacement above base land — shared across surface mesh and props */
-const MOUNTAIN_HEIGHT = 0.52;
-/** Pull props slightly toward globe center vs analytic height — matches tri-interpolated terrain mesh */
-const PROP_TERRAIN_SINK = 0.018;
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -79,14 +76,11 @@ export class Globe {
   private cloudDriftAxis = new Vector3(0.2, 1, 0.1).normalize();
   private treeSwayUniforms: { value: number }[] = [];
   private oceanTime = { value: 0 };
-  /** High-frequency layer for jagged peaks — must match `landDisplacement` everywhere */
-  private readonly ruggedNoise: ReturnType<typeof createNoise3D>;
 
   constructor(radius: number = 5, seed: number = 42, terrainType: string = "default") {
     this.radius = radius;
     this.seed = seed;
     this.terrainType = terrainType;
-    this.ruggedNoise = createNoise3D(seed + 9001);
     this.createSurface();
     this.createTrees();
     this.createCoconutTrees();
@@ -94,35 +88,6 @@ export class Globe {
     this.createVillages();
     this.createClouds();
     this.createAtmosphere();
-  }
-
-  /** Land height above sphere base — same formula as vertex displacement so props align with mesh */
-  private landDisplacement(
-    nx: number,
-    ny: number,
-    nz: number,
-    elevation: number,
-  ): number {
-    const LAND_HEIGHT = 0.02;
-    const rugged = terrainNoise(
-      this.ruggedNoise,
-      nx,
-      ny,
-      nz,
-      5,
-      2.2,
-      0.5,
-      7.0,
-    );
-    const r01 = (rugged + 1) * 0.5;
-    // Jagged micro-detail only on upper elevation band — lowlands stay smooth
-    const peakMask = Math.pow(
-      MathUtils.smoothstep(0.52, 0.86, elevation),
-      1.35,
-    );
-    const jagged = 1 + 0.38 * Math.pow(r01, 1.2) * peakMask;
-    const micro = 0.06 * rugged * elevation * peakMask;
-    return LAND_HEIGHT + elevation * MOUNTAIN_HEIGHT * jagged + micro;
   }
 
   private createSurface() {
@@ -134,9 +99,6 @@ export class Globe {
     const noise = createNoise3D(this.seed);
     const patchNoise = createNoise3D(this.seed + 555);
     const params = getTerrainParams(this.terrainType);
-
-    const LAND_HEIGHT = 0.02;
-    const OCEAN_DEPTH = 0.01;
 
     const landColors = [
       new Color(0x3a7d2a), new Color(0x4a8f3f),
@@ -195,11 +157,15 @@ export class Globe {
           }
         }
 
-        displacement = this.landDisplacement(nx, ny, nz, elevation);
+        displacement = surfaceDisplacementFromValue(
+          this.seed, this.terrainType, nx, ny, nz, value,
+        );
       } else {
         const depth = Math.min(1, (params.threshold - value) * 4);
         color = oceanShallow.clone().lerp(oceanDeep, depth);
-        displacement = -OCEAN_DEPTH * depth;
+        displacement = surfaceDisplacementFromValue(
+          this.seed, this.terrainType, nx, ny, nz, value,
+        );
       }
 
       const newRadius = this.radius + displacement;
@@ -365,7 +331,7 @@ gl_FragColor.rgb += rim;
       const forest = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
       if (forest < 0.3) continue;
 
-      const displacement = this.landDisplacement(nx, ny, nz, elevation);
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, nx, ny, nz);
       const surfaceRadius = this.radius + displacement - PROP_TERRAIN_SINK;
 
       const normal = new Vector3(nx, ny, nz);
@@ -613,12 +579,12 @@ transformed.z += sway2;`,
         );
         if (tv <= params.threshold) continue;
 
-        const telev = (tv - params.threshold) / (1 - params.threshold);
-        const displacement = this.landDisplacement(
+        const displacement = surfaceDisplacementAt(
+          this.seed,
+          this.terrainType,
           treeNormal.x,
           treeNormal.y,
           treeNormal.z,
-          telev,
         );
         const surfaceRadius = this.radius + displacement - PROP_TERRAIN_SINK;
         const scale = MathUtils.lerp(0.09, 0.15, rand());
@@ -840,8 +806,7 @@ transformed.z += sway2;`,
         );
         if (rv <= params.threshold) continue;
 
-        const relev = (rv - params.threshold) / (1 - params.threshold);
-        const displacement = this.landDisplacement(rn.x, rn.y, rn.z, relev);
+        const displacement = surfaceDisplacementAt(this.seed, this.terrainType, rn.x, rn.y, rn.z);
         const surfaceRadius = this.radius + displacement - PROP_TERRAIN_SINK;
 
         const scale = MathUtils.lerp(0.045, 0.12, rand());
@@ -881,12 +846,12 @@ transformed.z += sway2;`,
           );
           if (tv <= params.threshold) continue;
 
-          const telev = (tv - params.threshold) / (1 - params.threshold);
-          const tDisp = this.landDisplacement(
+          const tDisp = surfaceDisplacementAt(
+            this.seed,
+            this.terrainType,
             treeNormal.x,
             treeNormal.y,
             treeNormal.z,
-            telev,
           );
           const tSurfR = this.radius + tDisp - PROP_TERRAIN_SINK;
           const treeScale = MathUtils.lerp(0.014, 0.025, rand());
@@ -1207,7 +1172,7 @@ transformed.z += sway2;`,
         const elevation = (value - params.threshold) / (1 - params.threshold);
         if (elevation < MIN_ELEVATION * 0.5) continue;
 
-        const displacement = this.landDisplacement(nx, ny, nz, elevation);
+        const displacement = surfaceDisplacementAt(this.seed, this.terrainType, nx, ny, nz);
         const surfaceRadius = this.radius + displacement - PROP_TERRAIN_SINK;
 
         const sinkAmount = 0.004;
@@ -1238,13 +1203,12 @@ transformed.z += sway2;`,
             params.octaves, params.lacunarity, params.persistence, params.scale,
           );
           if (tv <= params.threshold) continue;
-          const telev = (tv - params.threshold) / (1 - params.threshold);
-
-          const treeDisplacement = this.landDisplacement(
+          const treeDisplacement = surfaceDisplacementAt(
+            this.seed,
+            this.terrainType,
             treeNormal.x,
             treeNormal.y,
             treeNormal.z,
-            telev,
           );
           const treeSurfaceR = this.radius + treeDisplacement - PROP_TERRAIN_SINK;
           const treeScale = MathUtils.lerp(0.022, 0.04, rand());

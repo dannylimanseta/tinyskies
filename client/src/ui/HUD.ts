@@ -1,10 +1,14 @@
+import type { Vehicle } from "@globefly/shared";
+
 export class HUD {
   private el: HTMLDivElement;
 
   private worldNameEl!: HTMLElement;
+  private vehicleHintEl!: HTMLElement;
   private playerCountEl!: HTMLElement;
   private speedEl!: HTMLElement;
   private altitudeEl!: HTMLElement;
+  private altitudeLabelEl!: HTMLElement;
   private xpLevelEl!: HTMLElement;
   private xpBarFill!: HTMLElement;
   private xpValueEl!: HTMLElement;
@@ -20,6 +24,7 @@ export class HUD {
     this.el.innerHTML = `
       <div class="hud-top">
         <div class="hud-world-name"></div>
+        <div class="hud-vehicle-hint"></div>
         <div class="hud-player-count">1 player</div>
       </div>
       <div class="hud-bottom">
@@ -28,7 +33,7 @@ export class HUD {
           <span class="hud-value hud-speed">1.0</span>
         </div>
         <div class="hud-stat">
-          <span class="hud-label">ALT</span>
+          <span class="hud-label hud-alt-label">ALT</span>
           <span class="hud-value hud-altitude">0.55</span>
         </div>
       </div>
@@ -39,18 +44,15 @@ export class HUD {
         </div>
         <div class="hud-xp-value">0 XP</div>
       </div>
-      <div class="hud-controls">
-        <span>W</span> forward &middot;
-        <span>S</span> brake &middot;
-        <span>A/D</span> turn &middot;
-        <span>E</span> barrel roll
-      </div>
+      <div class="hud-controls"></div>
     `;
 
     this.worldNameEl = this.el.querySelector(".hud-world-name")!;
+    this.vehicleHintEl = this.el.querySelector(".hud-vehicle-hint")!;
     this.playerCountEl = this.el.querySelector(".hud-player-count")!;
     this.speedEl = this.el.querySelector(".hud-speed")!;
     this.altitudeEl = this.el.querySelector(".hud-altitude")!;
+    this.altitudeLabelEl = this.el.querySelector(".hud-alt-label")!;
     this.xpLevelEl = this.el.querySelector(".hud-xp-level")!;
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
@@ -60,6 +62,21 @@ export class HUD {
 
   setWorldName(name: string) {
     this.worldNameEl.textContent = name;
+  }
+
+  setVehicle(vehicle: Vehicle) {
+    if (vehicle === "boat") {
+      this.vehicleHintEl.textContent = "Boat · ocean only";
+      this.altitudeLabelEl.textContent = "SEA";
+    } else {
+      this.vehicleHintEl.textContent = "Plane";
+      this.altitudeLabelEl.textContent = "ALT";
+    }
+    const controls = this.el.querySelector(".hud-controls")!;
+    controls.innerHTML =
+      vehicle === "boat"
+        ? `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn`
+        : `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn &middot; <span>E</span> barrel roll`;
   }
 
   setPlayerCount(count: number) {
@@ -122,6 +139,11 @@ export class HUD {
         font-size: 1rem; font-weight: 600;
         color: rgba(200, 220, 255, 0.7);
         text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      }
+      .hud-vehicle-hint {
+        font-size: 0.72rem;
+        color: rgba(120, 200, 255, 0.55);
+        letter-spacing: 0.04em;
       }
       .hud-player-count {
         font-size: 0.75rem;

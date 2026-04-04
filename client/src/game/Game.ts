@@ -11,8 +11,10 @@ import {
   CanvasTexture,
   SRGBColorSpace,
 } from "three";
+import type { Vehicle, WorldConfig } from "@globefly/shared";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
+import { Boat } from "./Boat";
 import { FlightControls } from "./FlightControls";
 import { CameraRig } from "./CameraRig";
 import { SocketClient } from "../network/SocketClient";
@@ -25,7 +27,6 @@ import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
-import type { WorldConfig } from "@globefly/shared";
 
 export class Game {
   private container: HTMLElement;
@@ -34,7 +35,8 @@ export class Game {
   private clock!: Clock;
 
   private globe!: Globe;
-  private plane!: Plane;
+  /** Local player — plane or boat (same movement / sync shape). */
+  private localPlayer!: Plane | Boat;
   private controls!: FlightControls;
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
@@ -52,6 +54,7 @@ export class Game {
   private running = false;
   private worldConfig: WorldConfig | null = null;
   private playerName = "Pilot";
+  private playerVehicle: Vehicle = "plane";
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -60,7 +63,8 @@ export class Game {
   start() {
     this.lobby = new Lobby(this.container, {
       onCreateWorld: (name, texture) => this.handleCreateWorld(name, texture),
-      onJoinWorld: (slug, playerName) => this.handleJoinWorld(slug, playerName),
+      onJoinWorld: (slug, playerName, vehicle) =>
+        this.handleJoinWorld(slug, playerName, vehicle),
     });
     this.lobby.show();
   }
@@ -81,8 +85,13 @@ export class Game {
     }
   }
 
-  private async handleJoinWorld(slug: string, playerName: string) {
+  private async handleJoinWorld(
+    slug: string,
+    playerName: string,
+    vehicle: Vehicle = "plane",
+  ) {
     this.playerName = playerName || "Pilot";
+    this.playerVehicle = vehicle;
     const serverUrl = this.getServerUrl();
 
     try {
@@ -151,14 +160,18 @@ export class Game {
     this.globe = new Globe(globeRadius, seed, terrainType);
     this.globe.addTo(this.scene);
 
-    this.plane = new Plane(globeRadius);
-    this.plane.addTo(this.scene);
+    if (this.playerVehicle === "boat") {
+      this.localPlayer = new Boat(globeRadius, seed, terrainType);
+    } else {
+      this.localPlayer = new Plane(globeRadius);
+    }
+    this.localPlayer.addTo(this.scene);
 
     this.cameraRig = new CameraRig(w / h);
     this.cameraRig.snapTo(
-      this.plane.qPosition,
-      this.plane.heading,
-      this.plane.altitude,
+      this.localPlayer.qPosition,
+      this.localPlayer.heading,
+      this.localPlayer.altitude,
       globeRadius,
     );
 
@@ -180,7 +193,8 @@ export class Game {
     this.scene.add(this.collectVFX.group);
 
     this.ringManager.onCollect = (xp, worldPos, tier) => {
-      const rolling = this.plane.isRolling;
+      const rolling =
+        this.localPlayer.vehicle === "plane" && this.localPlayer.isRolling;
       const bonusXP = rolling ? xp : 0;
       if (bonusXP > 0) {
         this.ringManager.sessionXP += bonusXP;
@@ -202,6 +216,7 @@ export class Game {
 
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
+    this.hud.setVehicle(this.playerVehicle);
 
     window.addEventListener("resize", this.onResize);
   }
@@ -231,9 +246,9 @@ export class Game {
       this.hud.setPlayerCount(this.remotePlanes.count + 1);
     });
 
-    this.socketClient.joinWorld(slug, this.playerName);
+    this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle);
 
-    this.stateSync = new StateSync(this.socketClient, this.plane);
+    this.stateSync = new StateSync(this.socketClient, this.localPlayer);
     this.stateSync.start();
   }
 
@@ -244,19 +259,19 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
 
-    // Update local plane
     const { turnRate, forward, brake, elevate, barrelRoll } = this.controls.getState();
-    this.plane.update(dt, turnRate, forward, brake, elevate, barrelRoll);
+    this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll);
 
-    // Update camera
+    const cameraTiltScale = this.localPlayer.vehicle === "boat" ? 0.28 : 1;
     this.cameraRig.update(
       dt,
-      this.plane.qPosition,
-      this.plane.heading,
-      this.plane.altitude,
+      this.localPlayer.qPosition,
+      this.localPlayer.heading,
+      this.localPlayer.altitude,
       globeRadius,
       turnRate,
-      this.plane.speedRatio,
+      this.localPlayer.speedRatio,
+      cameraTiltScale,
     );
 
     // Update globe (cloud drift)
@@ -266,24 +281,25 @@ export class Game {
     this.remotePlanes.update(dt);
 
     // Update rings and collection VFX
-    this.ringManager.update(dt, this.plane.qPosition, this.plane.altitude);
+    this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
     this.collectVFX.update(dt);
 
-    // Update speed lines
-    this.speedLines.update(dt, this.plane.speed, this.cameraRig.camera);
+    if (this.localPlayer.vehicle === "plane") {
+      this.speedLines.update(dt, this.localPlayer.speed, this.cameraRig.camera);
+      this.localPlayer.group.updateMatrixWorld(true);
+      this.contrails.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
+    }
 
-    this.plane.group.updateMatrixWorld(true);
-    this.contrails.update(this.plane.group.matrixWorld, this.cameraRig.camera);
-
-    // Update HUD
-    this.hud.setSpeed(this.plane.speed);
-    this.hud.setAltitude(this.plane.altitude);
+    this.hud.setSpeed(this.localPlayer.speed);
+    this.hud.setAltitude(this.localPlayer.altitude);
 
     this.lensFlare.update(this.cameraRig.camera);
 
     // Render
     this.renderer.render(this.scene, this.cameraRig.camera);
-    this.speedLines.render(this.renderer);
+    if (this.localPlayer.vehicle === "plane") {
+      this.speedLines.render(this.renderer);
+    }
     this.lensFlare.render(this.renderer);
   };
 
@@ -332,7 +348,7 @@ export class Game {
     this.lensFlare?.dispose();
     this.ringManager?.dispose();
     this.collectVFX?.dispose();
-    this.plane?.dispose();
+    this.localPlayer?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();
     this.stateSync?.stop();

@@ -1,6 +1,8 @@
+import type { Vehicle } from "@globefly/shared";
+
 interface LobbyCallbacks {
   onCreateWorld: (name: string, texture: string) => void;
-  onJoinWorld: (slug: string, playerName: string) => void;
+  onJoinWorld: (slug: string, playerName: string, vehicle: Vehicle) => void;
 }
 
 interface WorldListItem {
@@ -21,6 +23,7 @@ export class Lobby {
   private container: HTMLElement;
   private el: HTMLDivElement;
   private callbacks: LobbyCallbacks;
+  private selectedVehicle: Vehicle = "plane";
 
   constructor(container: HTMLElement, callbacks: LobbyCallbacks) {
     this.container = container;
@@ -47,6 +50,14 @@ export class Lobby {
               <label>Your Name</label>
               <input type="text" id="player-name" placeholder="Pilot" maxlength="24" />
             </div>
+            <fieldset class="form-group vehicle-fieldset">
+              <legend class="vehicle-legend">How do you want to travel?</legend>
+              <div class="vehicle-seg" role="tablist" aria-label="Vehicle">
+                <button type="button" class="vehicle-btn active" data-vehicle="plane" aria-pressed="true">Plane</button>
+                <button type="button" class="vehicle-btn" data-vehicle="boat" aria-pressed="false">Boat</button>
+              </div>
+              <p class="vehicle-hint">Boats stay on the ocean.</p>
+            </fieldset>
             <div class="form-group">
               <label>World Code</label>
               <input type="text" id="world-slug" placeholder="Paste world code or URL" />
@@ -70,6 +81,14 @@ export class Lobby {
                 ${TEXTURES.map((t) => `<option value="${t.id}">${t.label}</option>`).join("")}
               </select>
             </div>
+            <fieldset class="form-group vehicle-fieldset">
+              <legend class="vehicle-legend">How do you want to travel?</legend>
+              <div class="vehicle-seg vehicle-seg-create" role="tablist" aria-label="Vehicle">
+                <button type="button" class="vehicle-btn active" data-vehicle="plane" aria-pressed="true">Plane</button>
+                <button type="button" class="vehicle-btn" data-vehicle="boat" aria-pressed="false">Boat</button>
+              </div>
+              <p class="vehicle-hint">Boats stay on the ocean.</p>
+            </fieldset>
             <button class="btn btn-primary" id="btn-create">Create World</button>
           </div>
 
@@ -97,12 +116,14 @@ export class Lobby {
       this.el.querySelector("#lobby-share")?.classList.add("hidden");
     });
 
+    this.bindVehicleSegments();
+
     this.el.querySelector("#btn-join")!.addEventListener("click", () => {
       const slug = (this.el.querySelector("#world-slug") as HTMLInputElement).value.trim();
       const name = (this.el.querySelector("#player-name") as HTMLInputElement).value.trim();
       const extracted = this.extractSlug(slug);
       if (!extracted) return;
-      this.callbacks.onJoinWorld(extracted, name || "Pilot");
+      this.callbacks.onJoinWorld(extracted, name || "Pilot", this.selectedVehicle);
     });
 
     this.el.querySelector("#btn-create")!.addEventListener("click", () => {
@@ -120,10 +141,30 @@ export class Lobby {
     this.el.querySelector("#btn-join-created")!.addEventListener("click", () => {
       const slug = (this.el.querySelector("#share-slug") as HTMLInputElement).value;
       const name = (this.el.querySelector("#player-name") as HTMLInputElement).value.trim();
-      this.callbacks.onJoinWorld(slug, name || "Pilot");
+      this.callbacks.onJoinWorld(slug, name || "Pilot", this.selectedVehicle);
     });
 
     this.applyStyles();
+  }
+
+  private bindVehicleSegments() {
+    const setVehicle = (v: Vehicle) => {
+      this.selectedVehicle = v;
+      this.el.querySelectorAll(".vehicle-btn").forEach((btn) => {
+        const b = btn as HTMLButtonElement;
+        const isPlane = b.dataset.vehicle === "plane";
+        const active = (v === "plane" && isPlane) || (v === "boat" && !isPlane);
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+    };
+
+    this.el.querySelectorAll(".vehicle-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = (btn as HTMLButtonElement).dataset.vehicle as Vehicle;
+        if (v === "plane" || v === "boat") setVehicle(v);
+      });
+    });
   }
 
   private extractSlug(input: string): string | null {
@@ -337,6 +378,35 @@ export class Lobby {
         margin-top: 12px; padding: 10px 14px; border-radius: 8px;
         background: rgba(255, 60, 60, 0.1); border: 1px solid rgba(255, 60, 60, 0.2);
         color: #f88; font-size: 0.85rem; text-align: center;
+      }
+      .vehicle-fieldset {
+        border: none; margin: 0; padding: 0;
+      }
+      .vehicle-legend {
+        display: block; font-size: 0.8rem; color: rgba(180, 200, 255, 0.5);
+        margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;
+      }
+      .vehicle-seg {
+        display: flex; gap: 0; width: 100%;
+        border-radius: 8px; overflow: hidden;
+        border: 1px solid rgba(100, 140, 255, 0.2);
+      }
+      .vehicle-btn {
+        flex: 1; padding: 10px 12px; border: none; cursor: pointer;
+        font-size: 0.9rem; font-weight: 500;
+        background: rgba(0, 0, 30, 0.4);
+        color: rgba(160, 180, 220, 0.65);
+        transition: background 0.2s, color 0.2s;
+      }
+      .vehicle-btn + .vehicle-btn { border-left: 1px solid rgba(100, 140, 255, 0.15); }
+      .vehicle-btn:hover { color: rgba(200, 220, 255, 0.9); }
+      .vehicle-btn.active {
+        background: rgba(60, 100, 255, 0.22);
+        color: #c8ddff;
+      }
+      .vehicle-hint {
+        margin: 8px 0 0; font-size: 0.78rem;
+        color: rgba(120, 160, 200, 0.45);
       }
     `;
     document.head.appendChild(style);

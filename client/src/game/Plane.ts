@@ -3,6 +3,7 @@ import {
   Quaternion,
   type Scene,
 } from "three";
+import type { Vehicle } from "@globefly/shared";
 import { buildPlaneMatrix, moveOnSphere } from "./SphericalMath";
 import { createBiplane } from "./BiplaneMesh";
 
@@ -23,6 +24,7 @@ const ROLL_PITCH_AMPLITUDE = 0.02;
 
 export class Plane {
   readonly group: Group;
+  readonly vehicle: Vehicle = "plane";
 
   qPosition = new Quaternion();
   heading = 0;

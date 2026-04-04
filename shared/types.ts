@@ -1,6 +1,10 @@
+export type Vehicle = "plane" | "boat";
+
 export interface PlayerState {
   id: string;
   name: string;
+  /** Omitted or unknown → treat as plane (backward compatible) */
+  vehicle?: Vehicle;
   qx: number;
   qy: number;
   qz: number;
@@ -35,5 +39,9 @@ export interface ServerToClientEvents {
 
 export interface ClientToServerEvents {
   "player:move": (state: Omit<PlayerState, "id">) => void;
-  "world:join": (worldSlug: string, playerName: string) => void;
+  "world:join": (
+    worldSlug: string,
+    playerName: string,
+    vehicle?: Vehicle,
+  ) => void;
 }

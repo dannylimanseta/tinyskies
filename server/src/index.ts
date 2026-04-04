@@ -38,9 +38,10 @@ app.get("/health", (_req, res) => {
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  socket.on("world:join", (slug, playerName) => {
+  socket.on("world:join", (slug, playerName, vehicle) => {
     console.log(`Player ${socket.id} joining world: ${slug}`);
-    roomManager.joinRoom(slug, socket, playerName);
+    const v = vehicle === "boat" ? "boat" : "plane";
+    roomManager.joinRoom(slug, socket, playerName, v);
   });
 
   socket.on("disconnect", () => {
