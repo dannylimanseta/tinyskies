@@ -118,6 +118,10 @@ export class Plane {
     this.group.matrixWorldNeedsUpdate = true;
   }
 
+  get speedRatio(): number {
+    return Math.max(0, (this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
+  }
+
   addTo(scene: Scene) {
     scene.add(this.group);
   }

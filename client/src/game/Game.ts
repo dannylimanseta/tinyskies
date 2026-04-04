@@ -255,6 +255,8 @@ export class Game {
       this.plane.heading,
       this.plane.altitude,
       globeRadius,
+      turnRate,
+      this.plane.speedRatio,
     );
 
     // Update globe (cloud drift)

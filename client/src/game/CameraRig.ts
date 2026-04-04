@@ -2,9 +2,14 @@ import { PerspectiveCamera, Vector3, Quaternion } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 
 const FOLLOW_DISTANCE = 1.2;
+const FOLLOW_DISTANCE_BOOST = 0.6;
 const FOLLOW_HEIGHT = 0.7;
+const FOLLOW_HEIGHT_BOOST = 0.15;
 const POSITION_SMOOTH = 10.0;
 const LOOKAT_SMOOTH = 12.0;
+const MAX_TILT = 0.06;
+const TILT_SMOOTH = 5.0;
+const ZOOM_SMOOTH = 3.0;
 
 export class CameraRig {
   readonly camera: PerspectiveCamera;
@@ -16,6 +21,8 @@ export class CameraRig {
   private shakeIntensity = 0;
   private shakeDuration = 0;
   private shakeTimer = 0;
+  private currentTilt = 0;
+  private currentZoom = 0;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(60, aspect, 0.01, 200);
@@ -34,6 +41,8 @@ export class CameraRig {
     planeHeading: number,
     planeAltitude: number,
     globeRadius: number,
+    turnRate: number = 0,
+    speedRatio: number = 0,
   ) {
     const frame = tangentFrame(planeQPosition);
     const planeWorldPos = cartesianFromSpherical(
@@ -42,7 +51,10 @@ export class CameraRig {
       globeRadius,
     );
 
-    // Camera target: behind and above the plane in its local frame
+    this.currentZoom += (speedRatio - this.currentZoom) * Math.min(1, ZOOM_SMOOTH * dt);
+    const dist = FOLLOW_DISTANCE + FOLLOW_DISTANCE_BOOST * this.currentZoom;
+    const height = FOLLOW_HEIGHT + FOLLOW_HEIGHT_BOOST * this.currentZoom;
+
     const forward = new Vector3()
       .addScaledVector(frame.north, Math.cos(planeHeading))
       .addScaledVector(frame.east, Math.sin(planeHeading))
@@ -50,8 +62,8 @@ export class CameraRig {
 
     this.targetPos
       .copy(planeWorldPos)
-      .addScaledVector(forward, -FOLLOW_DISTANCE)
-      .addScaledVector(frame.up, FOLLOW_HEIGHT);
+      .addScaledVector(forward, -dist)
+      .addScaledVector(frame.up, height);
 
     this.targetLookAt.copy(planeWorldPos).addScaledVector(forward, 0.5);
 
@@ -76,6 +88,12 @@ export class CameraRig {
     const camUp = this.currentPos.clone().normalize();
     this.camera.up.copy(camUp);
     this.camera.lookAt(this.currentLookAt);
+
+    const targetTilt = -turnRate * MAX_TILT;
+    this.currentTilt += (targetTilt - this.currentTilt) * Math.min(1, TILT_SMOOTH * dt);
+    if (Math.abs(this.currentTilt) > 0.0001) {
+      this.camera.rotateZ(this.currentTilt);
+    }
   }
 
   resize(aspect: number) {
