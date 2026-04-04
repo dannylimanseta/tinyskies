@@ -19,7 +19,7 @@ const MAX_ALTITUDE = 3.0;
 
 type PartialState = Pick<
   PlayerState,
-  "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed"
+  "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed" | "bankAngle" | "rollAngle"
 >;
 
 interface BufferedSnapshot {
@@ -148,6 +148,7 @@ class RemotePlane {
       return {
         qx: 0, qy: 0, qz: 0, qw: 1,
         heading: 0, pitch: 0, altitude: 0.4, speed: 1.0,
+        bankAngle: 0, rollAngle: 0,
       };
     }
 
@@ -167,7 +168,7 @@ class RemotePlane {
       qPos,
       state.heading,
       state.pitch,
-      0,
+      state.bankAngle,
       state.altitude,
       this.globeRadius,
     );

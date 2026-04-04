@@ -41,6 +41,8 @@ export class Room {
       pitch: 0,
       altitude: 0.4,
       speed: 1.0,
+      bankAngle: 0,
+      rollAngle: 0,
       timestamp: Date.now(),
     };
 

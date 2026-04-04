@@ -136,7 +136,7 @@ export function slerpPlayerState(
   a: PlayerState,
   b: PlayerState,
   t: number,
-): Pick<PlayerState, "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed"> {
+): Pick<PlayerState, "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed" | "bankAngle" | "rollAngle"> {
   const qA = new Quaternion(a.qx, a.qy, a.qz, a.qw);
   const qB = new Quaternion(b.qx, b.qy, b.qz, b.qw);
   const qResult = qA.slerp(qB, t);
@@ -150,6 +150,8 @@ export function slerpPlayerState(
     pitch: a.pitch + (b.pitch - a.pitch) * t,
     altitude: a.altitude + (b.altitude - a.altitude) * t,
     speed: a.speed + (b.speed - a.speed) * t,
+    bankAngle: a.bankAngle + (b.bankAngle - a.bankAngle) * t,
+    rollAngle: a.rollAngle + (b.rollAngle - a.rollAngle) * t,
   };
 }
 
@@ -163,7 +165,7 @@ export function deadReckon(
   globeRadius: number,
   minAlt: number,
   maxAlt: number,
-): Pick<PlayerState, "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed"> {
+): Pick<PlayerState, "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed" | "bankAngle" | "rollAngle"> {
   const qPos = new Quaternion(state.qx, state.qy, state.qz, state.qw);
 
   const arcAngle =
@@ -175,6 +177,7 @@ export function deadReckon(
     Math.min(maxAlt, state.altitude + Math.sin(state.pitch) * state.speed * elapsed),
   );
 
+  const decay = Math.exp(-8 * elapsed);
   return {
     qx: predicted.x,
     qy: predicted.y,
@@ -184,5 +187,7 @@ export function deadReckon(
     pitch: state.pitch,
     altitude: predictedAlt,
     speed: state.speed,
+    bankAngle: state.bankAngle * decay,
+    rollAngle: state.rollAngle * decay,
   };
 }

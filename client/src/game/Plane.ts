@@ -32,7 +32,7 @@ export class Plane {
   bankAngle = 0;
   isRolling = false;
   private rollProgress = 0;
-  private rollAngle = 0;
+  rollAngle = 0;
   private rollAltOffset = 0;
   private rollPitchOffset = 0;
 

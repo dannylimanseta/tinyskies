@@ -9,6 +9,8 @@ export interface PlayerState {
   pitch: number;
   altitude: number;
   speed: number;
+  bankAngle: number;
+  rollAngle: number;
   timestamp: number;
 }
 

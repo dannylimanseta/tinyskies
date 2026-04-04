@@ -37,6 +37,8 @@ export class StateSync {
       pitch: this.plane.pitch,
       altitude: this.plane.altitude,
       speed: this.plane.speed,
+      bankAngle: this.plane.bankAngle + this.plane.rollAngle,
+      rollAngle: this.plane.rollAngle,
       timestamp: Date.now(),
     });
   }
