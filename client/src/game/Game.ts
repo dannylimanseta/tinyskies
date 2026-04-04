@@ -11,7 +11,7 @@ import {
   CanvasTexture,
   SRGBColorSpace,
 } from "three";
-import type { Vehicle, WorldConfig } from "@globefly/shared";
+import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig } from "@globefly/shared";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
@@ -57,6 +57,7 @@ export class Game {
   private worldConfig: WorldConfig | null = null;
   private playerName = "Pilot";
   private playerVehicle: Vehicle = "plane";
+  private vehicleFeatures!: VehicleGameFeatures;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -117,6 +118,7 @@ export class Game {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    this.vehicleFeatures = getVehicleFeatures(this.playerVehicle);
 
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
@@ -184,14 +186,17 @@ export class Game {
     this.speedLines = new SpeedLines();
 
     this.contrails = new Contrails();
+    this.contrails.group.visible = this.vehicleFeatures.contrails;
     this.scene.add(this.contrails.group);
 
     this.wakeTrail = new WakeTrail();
+    this.wakeTrail.group.visible = this.vehicleFeatures.wakeTrail;
     this.scene.add(this.wakeTrail.group);
 
     this.lensFlare = new LensFlare();
 
     this.ringManager = new RingManager(globeRadius);
+    this.ringManager.setConsumerActive(this.vehicleFeatures.collectibleDiamonds);
     this.scene.add(this.ringManager.group);
 
     this.collectVFX = new RingCollectVFX();
@@ -199,7 +204,7 @@ export class Game {
 
     this.ringManager.onCollect = (xp, worldPos, tier) => {
       const rolling =
-        this.localPlayer.vehicle === "plane" && this.localPlayer.isRolling;
+        this.vehicleFeatures.barrelRollBonus && this.localPlayer.isRolling;
       const bonusXP = rolling ? xp : 0;
       if (bonusXP > 0) {
         this.ringManager.sessionXP += bonusXP;
@@ -221,7 +226,9 @@ export class Game {
 
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
-    this.hud.setVehicle(this.playerVehicle);
+    this.hud.setVehicle(this.playerVehicle, {
+      showXpProgression: this.vehicleFeatures.xpProgressionUI,
+    });
 
     window.addEventListener("resize", this.onResize);
   }
@@ -267,7 +274,7 @@ export class Game {
     const { turnRate, forward, brake, elevate, barrelRoll } = this.controls.getState();
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll);
 
-    const cameraTiltScale = this.localPlayer.vehicle === "boat" ? 0.28 : 1;
+    const cameraTiltScale = this.vehicleFeatures.cameraTiltScale;
     this.cameraRig.update(
       dt,
       this.localPlayer.qPosition,
@@ -285,15 +292,19 @@ export class Game {
     // Update remote planes
     this.remotePlanes.update(dt);
 
-    // Update rings and collection VFX
-    this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
-    this.collectVFX.update(dt);
+    if (this.vehicleFeatures.collectibleDiamonds) {
+      this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
+      this.collectVFX.update(dt);
+    }
 
     this.localPlayer.group.updateMatrixWorld(true);
-    if (this.localPlayer.vehicle === "plane") {
+    if (this.vehicleFeatures.speedLines) {
       this.speedLines.update(dt, this.localPlayer.speed, this.cameraRig.camera);
+    }
+    if (this.vehicleFeatures.contrails) {
       this.contrails.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
-    } else {
+    }
+    if (this.vehicleFeatures.wakeTrail) {
       this.wakeTrail.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
     }
 
@@ -304,7 +315,7 @@ export class Game {
 
     // Render
     this.renderer.render(this.scene, this.cameraRig.camera);
-    if (this.localPlayer.vehicle === "plane") {
+    if (this.vehicleFeatures.speedLines) {
       this.speedLines.render(this.renderer);
     }
     this.lensFlare.render(this.renderer);

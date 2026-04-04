@@ -103,11 +103,18 @@ export class RingManager {
   private globeRadius: number;
   private time = 0;
   private pendingRespawns: { timer: number; delay: number }[] = [];
+  /** When false (e.g. boat mode), diamonds are hidden and logic does not run. */
+  private consumerActive = true;
 
   sessionXP = 0;
   level = 1;
   onCollect: CollectCallback | null = null;
   onLevelUp: ((level: number) => void) | null = null;
+
+  setConsumerActive(active: boolean) {
+    this.consumerActive = active;
+    this.group.visible = active;
+  }
 
   constructor(globeRadius: number) {
     this.globeRadius = globeRadius;
@@ -205,6 +212,8 @@ export class RingManager {
   }
 
   update(dt: number, planeQ: Quaternion, planeAltitude: number) {
+    if (!this.consumerActive) return;
+
     this.time += dt;
 
     const planePos = cartesianFromSpherical(planeQ, planeAltitude, this.globeRadius);

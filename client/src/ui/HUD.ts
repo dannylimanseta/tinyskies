@@ -9,6 +9,7 @@ export class HUD {
   private speedEl!: HTMLElement;
   private altitudeEl!: HTMLElement;
   private altitudeLabelEl!: HTMLElement;
+  private xpPanelEl!: HTMLElement;
   private xpLevelEl!: HTMLElement;
   private xpBarFill!: HTMLElement;
   private xpValueEl!: HTMLElement;
@@ -53,6 +54,7 @@ export class HUD {
     this.speedEl = this.el.querySelector(".hud-speed")!;
     this.altitudeEl = this.el.querySelector(".hud-altitude")!;
     this.altitudeLabelEl = this.el.querySelector(".hud-alt-label")!;
+    this.xpPanelEl = this.el.querySelector(".hud-xp-panel")!;
     this.xpLevelEl = this.el.querySelector(".hud-xp-level")!;
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
@@ -64,7 +66,10 @@ export class HUD {
     this.worldNameEl.textContent = name;
   }
 
-  setVehicle(vehicle: Vehicle) {
+  setVehicle(vehicle: Vehicle, options?: { showXpProgression?: boolean }) {
+    const showXp = options?.showXpProgression ?? true;
+    this.xpPanelEl.style.display = showXp ? "flex" : "none";
+
     if (vehicle === "boat") {
       this.vehicleHintEl.textContent = "Boat · ocean only";
       this.altitudeLabelEl.textContent = "SEA";

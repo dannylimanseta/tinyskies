@@ -1,5 +1,8 @@
 export type Vehicle = "plane" | "boat";
 
+export type { VehicleGameFeatures } from "./vehicleCapabilities";
+export { getVehicleFeatures } from "./vehicleCapabilities";
+
 export interface PlayerState {
   id: string;
   name: string;
