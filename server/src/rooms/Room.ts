@@ -39,7 +39,7 @@ export class Room {
       qw: 1,
       heading: 0,
       pitch: 0,
-      altitude: 0.4,
+      altitude: 0.55,
       speed: 1.0,
       bankAngle: 0,
       rollAngle: 0,

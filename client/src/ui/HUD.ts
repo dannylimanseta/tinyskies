@@ -29,7 +29,7 @@ export class HUD {
         </div>
         <div class="hud-stat">
           <span class="hud-label">ALT</span>
-          <span class="hud-value hud-altitude">0.4</span>
+          <span class="hud-value hud-altitude">0.55</span>
         </div>
       </div>
       <div class="hud-xp-panel">

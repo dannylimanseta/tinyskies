@@ -10,8 +10,8 @@ const TERRAIN_PRESETS: Record<string, TerrainParams> = {
   default: {
     scale: 1.5,
     octaves: 4,
-    lacunarity: 2.0,
-    persistence: 0.5,
+    lacunarity: 2.05,
+    persistence: 0.48,
     threshold: 0.0,
   },
   archipelago: {
@@ -25,7 +25,7 @@ const TERRAIN_PRESETS: Record<string, TerrainParams> = {
     scale: 0.8,
     octaves: 3,
     lacunarity: 2.0,
-    persistence: 0.55,
+    persistence: 0.54,
     threshold: -0.15,
   },
   waterworld: {

@@ -147,7 +147,7 @@ class RemotePlane {
     if (!lastSnap) {
       return {
         qx: 0, qy: 0, qz: 0, qw: 1,
-        heading: 0, pitch: 0, altitude: 0.4, speed: 1.0,
+        heading: 0, pitch: 0, altitude: 0.55, speed: 1.0,
         bankAngle: 0, rollAngle: 0,
       };
     }
