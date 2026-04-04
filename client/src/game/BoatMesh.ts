@@ -66,18 +66,40 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
     boat.add(wall);
   }
 
-  // Bow taper — first step matches hull width for seamless join
-  const taperSteps = [
-    { w: 2.3, z: -1.65, len: 0.35 },
-    { w: 1.8, z: -1.95, len: 0.4 },
-    { w: 1.2, z: -2.25, len: 0.35 },
-    { w: 0.6, z: -2.5, len: 0.3 },
-    { w: 0.15, z: -2.72, len: 0.2 },
-  ];
-  for (const t of taperSteps) {
-    const seg = new Mesh(new BoxGeometry(s * t.w, s * 0.60, s * t.len), hullMat);
-    seg.position.set(0, hullY, s * t.z);
-    boat.add(seg);
+  // Bow — two straight angled planks converging to a point
+  const bowBackZ = 1.6;   // front edge of main hull (hullLen/2 - main hull offset)
+  const bowTipZ = 2.75;
+  const bowHalfW = 1.075; // hull wall centre-line (hullW/2 - wallThick/2) in s units
+  const bowDz = bowTipZ - bowBackZ;
+  const bowPlankLen = Math.sqrt(bowHalfW * bowHalfW + bowDz * bowDz);
+  const bowAngle = Math.atan2(bowHalfW, bowDz);
+
+  for (const side of [-1, 1]) {
+    const plank = new Mesh(new BoxGeometry(wallThick, hullH, s * bowPlankLen), hullMat);
+    plank.position.set(side * s * bowHalfW * 0.5, hullY, -s * (bowBackZ + bowTipZ) * 0.5);
+    plank.rotation.y = side * bowAngle;
+    boat.add(plank);
+  }
+
+  // Bow bottom plate
+  const bowBot = new Mesh(new BoxGeometry(s * 1.4, wallThick * 0.5, s * 1.0), hullMat);
+  bowBot.position.set(0, hullY - hullH * 0.5 + wallThick * 0.25, -s * 1.85);
+  boat.add(bowBot);
+
+  // Bow deck — tapering strips that follow the hull plank angle
+  const bowDeckSteps = 6;
+  const bowDeckEnd = 2.5;
+  const bowDeckStepLen = (bowDeckEnd - bowBackZ) / bowDeckSteps;
+  for (let i = 0; i < bowDeckSteps; i++) {
+    const zCenter = bowBackZ + bowDeckStepLen * (i + 0.5);
+    const t = 1 - (zCenter - bowBackZ) / (bowTipZ - bowBackZ);
+    const stripW = Math.max(0.12, bowHalfW * 2 * t - 0.2);
+    const strip = new Mesh(
+      new BoxGeometry(s * stripW, s * 0.06, s * (bowDeckStepLen + 0.02)),
+      deckMat,
+    );
+    strip.position.set(0, deckY, -s * zCenter);
+    boat.add(strip);
   }
 
   // Stern taper — wall panels (open top like main hull)
@@ -110,8 +132,9 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
 
   // ==================== DECK (floor inside the hull) ====================
 
-  const deck = new Mesh(new BoxGeometry(hullW - wallThick * 2, s * 0.06, hullLen - wallThick), deckMat);
-  deck.position.set(0, deckY, s * 0.2);
+  const deckLen = hullLen + s * 0.15;
+  const deck = new Mesh(new BoxGeometry(hullW - wallThick * 2, s * 0.06, deckLen), deckMat);
+  deck.position.set(0, deckY, s * 0.12);
   boat.add(deck);
 
   // ==================== FOAM WATERLINE ====================
@@ -127,20 +150,16 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
     boat.add(strip);
   }
 
-  // Bow foam — follows taper
-  const bowFoam = [
-    { w: 2.34, z: -1.65, len: 0.38 },
-    { w: 1.84, z: -1.95, len: 0.44 },
-    { w: 1.24, z: -2.25, len: 0.38 },
-    { w: 0.64, z: -2.5, len: 0.34 },
-    { w: 0.20, z: -2.72, len: 0.24 },
-  ];
-  for (const t of bowFoam) {
-    for (const side of [-1, 1]) {
-      const strip = new Mesh(new BoxGeometry(foamSide, foamH, s * t.len), foamMat);
-      strip.position.set(side * (s * t.w * 0.5 + foamSide * 0.3), foamY, s * t.z);
-      boat.add(strip);
-    }
+  // Bow foam — two angled strips following the hull planks
+  for (const side of [-1, 1]) {
+    const strip = new Mesh(new BoxGeometry(foamSide, foamH, s * bowPlankLen), foamMat);
+    strip.position.set(
+      side * (s * bowHalfW * 0.5 + foamSide * 0.4),
+      foamY,
+      -s * (bowBackZ + bowTipZ) * 0.5,
+    );
+    strip.rotation.y = side * bowAngle;
+    boat.add(strip);
   }
 
   // Stern foam
@@ -163,7 +182,7 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
 
   // Bow tip foam
   const bowTipFoam = new Mesh(new BoxGeometry(s * 0.16, foamH, foamSide), foamMat);
-  bowTipFoam.position.set(0, foamY, -s * 2.84);
+  bowTipFoam.position.set(0, foamY, -s * bowTipZ);
   boat.add(bowTipFoam);
 
   // ==================== WHEELHOUSE ====================
