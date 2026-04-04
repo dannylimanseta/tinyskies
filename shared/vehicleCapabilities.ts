@@ -32,8 +32,8 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     barrelRollBonus: true,
   },
   boat: {
-    collectibleDiamonds: false,
-    xpProgressionUI: false,
+    collectibleDiamonds: true,
+    xpProgressionUI: true,
     speedLines: false,
     contrails: false,
     wakeTrail: true,

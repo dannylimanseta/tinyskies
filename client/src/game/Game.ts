@@ -195,7 +195,11 @@ export class Game {
 
     this.lensFlare = new LensFlare();
 
-    this.ringManager = new RingManager(globeRadius);
+    this.ringManager = new RingManager(globeRadius, {
+      mode: this.playerVehicle === "boat" ? "boat" : "plane",
+      seed,
+      terrainType,
+    });
     this.ringManager.setConsumerActive(this.vehicleFeatures.collectibleDiamonds);
     this.scene.add(this.ringManager.group);
 

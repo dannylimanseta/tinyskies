@@ -11,10 +11,24 @@ import {
 import {
   moveOnSphere,
   cartesianFromSpherical,
+  quaternionFromSurfaceNormal,
 } from "./SphericalMath";
+import { isLand } from "./SimplexNoise";
+import { surfaceAltitudeAt } from "./TerrainSurface";
+
+/** Plane: air collectibles. Boat: ocean-surface collectibles only. */
+export type RingCollectMode = "plane" | "boat";
+
+export interface RingManagerOptions {
+  mode?: RingCollectMode;
+  seed?: number;
+  terrainType?: string;
+}
 
 const DIAMOND_COUNT = 15;
 const DIAMOND_SIZE = 0.09;
+/** Boat diamonds use a smaller mesh than planes (same shape). */
+const BOAT_DIAMOND_SCALE = 0.55;
 const DIAMOND_XP = 10;
 const DIAMOND_COLOR: [number, number, number] = [0.2, 1.0, 0.8];
 const COLLECTION_RADIUS = 0.3;
@@ -28,6 +42,13 @@ const MIN_SPACING = 1.5;
 const MIN_PLAYER_SPAWN_DIST = 2.0;
 const SPAWN_ANIM_DURATION = 0.5;
 const SPIN_SPEED = 1.8;
+/** Idle bob: slight lift + smaller wiggle along surface normal. */
+const DIAMOND_BOB_LIFT = 0.012;
+const DIAMOND_BOB_AMP = 0.017;
+
+/** Height above true water surface so boat diamonds read clearly above the ocean. */
+const BOAT_FLOAT_MIN = 0.062;
+const BOAT_FLOAT_MAX = 0.118;
 
 const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 6600, 8200];
 
@@ -44,7 +65,7 @@ interface DiamondInstance {
   upAxis: Vector3;
 }
 
-function randomAltitude(): number {
+function randomPlaneAltitude(): number {
   if (Math.random() < HIGH_CHANCE) {
     return HIGH_ALTITUDE_MIN + Math.random() * (HIGH_ALTITUDE_MAX - HIGH_ALTITUDE_MIN);
   }
@@ -105,6 +126,9 @@ export class RingManager {
   private pendingRespawns: { timer: number; delay: number }[] = [];
   /** When false (e.g. boat mode), diamonds are hidden and logic does not run. */
   private consumerActive = true;
+  private readonly mode: RingCollectMode;
+  private readonly seed: number;
+  private readonly terrainType: string;
 
   sessionXP = 0;
   level = 1;
@@ -116,10 +140,15 @@ export class RingManager {
     this.group.visible = active;
   }
 
-  constructor(globeRadius: number) {
+  constructor(globeRadius: number, options?: RingManagerOptions) {
     this.globeRadius = globeRadius;
+    this.mode = options?.mode ?? "plane";
+    this.seed = options?.seed ?? 0;
+    this.terrainType = options?.terrainType ?? "default";
 
-    this.geometry = new OctahedronGeometry(DIAMOND_SIZE, 0);
+    const baseSize =
+      this.mode === "boat" ? DIAMOND_SIZE * BOAT_DIAMOND_SCALE : DIAMOND_SIZE;
+    this.geometry = new OctahedronGeometry(baseSize, 0);
     this.geometry.scale(1, 1.5, 1);
 
     for (let i = 0; i < DIAMOND_COUNT; i++) {
@@ -147,7 +176,7 @@ export class RingManager {
     mesh.frustumCulled = false;
 
     const qPos = this.randomSpherePosition();
-    const altitude = randomAltitude();
+    const altitude = this.altitudeForDiamond(qPos);
     const phaseOffset = Math.random() * Math.PI * 2;
     const worldPos = cartesianFromSpherical(qPos, altitude, this.globeRadius);
     const upAxis = worldPos.clone().normalize();
@@ -171,8 +200,22 @@ export class RingManager {
     };
   }
 
+  private altitudeForDiamond(q: Quaternion): number {
+    if (this.mode === "plane") {
+      return randomPlaneAltitude();
+    }
+    const p = cartesianFromSpherical(q, 0, this.globeRadius).normalize();
+    return (
+      surfaceAltitudeAt(this.seed, this.terrainType, p.x, p.y, p.z) +
+      BOAT_FLOAT_MIN +
+      Math.random() * (BOAT_FLOAT_MAX - BOAT_FLOAT_MIN)
+    );
+  }
+
   private randomSpherePosition(avoidPlayerQ?: Quaternion): Quaternion {
-    const maxAttempts = 50;
+    const maxAttempts = this.mode === "boat" ? 100 : 50;
+    const altSample = this.mode === "boat" ? 0 : LOW_ALTITUDE;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const q = new Quaternion();
       const randomHeading = Math.random() * Math.PI * 2;
@@ -183,12 +226,19 @@ export class RingManager {
       const secondArc = Math.random() * 1.5;
       const finalQ = moveOnSphere(moved, secondHeading, secondArc);
 
-      const candidate = cartesianFromSpherical(finalQ, LOW_ALTITUDE, this.globeRadius);
+      if (this.mode === "boat") {
+        const surf = cartesianFromSpherical(finalQ, 0, this.globeRadius).normalize();
+        if (isLand(this.seed, this.terrainType, surf.x, surf.y, surf.z)) {
+          continue;
+        }
+      }
+
+      const candidate = cartesianFromSpherical(finalQ, altSample, this.globeRadius);
 
       let tooClose = false;
       for (const d of this.diamonds) {
         if (!d.active) continue;
-        const existing = cartesianFromSpherical(d.qPosition, LOW_ALTITUDE, this.globeRadius);
+        const existing = cartesianFromSpherical(d.qPosition, altSample, this.globeRadius);
         if (candidate.distanceTo(existing) < MIN_SPACING) {
           tooClose = true;
           break;
@@ -196,7 +246,7 @@ export class RingManager {
       }
 
       if (!tooClose && avoidPlayerQ) {
-        const playerPos = cartesianFromSpherical(avoidPlayerQ, LOW_ALTITUDE, this.globeRadius);
+        const playerPos = cartesianFromSpherical(avoidPlayerQ, altSample, this.globeRadius);
         if (candidate.distanceTo(playerPos) < MIN_PLAYER_SPAWN_DIST) {
           tooClose = true;
         }
@@ -205,10 +255,57 @@ export class RingManager {
       if (!tooClose) return finalQ;
     }
 
+    if (this.mode === "boat") {
+      for (let k = 0; k < 200; k++) {
+        const q = new Quaternion();
+        const h = Math.random() * Math.PI * 2;
+        const a = 0.5 + Math.random() * 2.0;
+        const finalQ = moveOnSphere(q, h, a);
+        const surf = cartesianFromSpherical(finalQ, 0, this.globeRadius).normalize();
+        if (isLand(this.seed, this.terrainType, surf.x, surf.y, surf.z)) continue;
+
+        const candidate = cartesianFromSpherical(finalQ, altSample, this.globeRadius);
+        let tooClose = false;
+        for (const d of this.diamonds) {
+          if (!d.active) continue;
+          const existing = cartesianFromSpherical(d.qPosition, altSample, this.globeRadius);
+          if (candidate.distanceTo(existing) < MIN_SPACING) {
+            tooClose = true;
+            break;
+          }
+        }
+        if (!tooClose && avoidPlayerQ) {
+          const playerPos = cartesianFromSpherical(avoidPlayerQ, altSample, this.globeRadius);
+          if (candidate.distanceTo(playerPos) < MIN_PLAYER_SPAWN_DIST) tooClose = true;
+        }
+        if (!tooClose) return finalQ;
+      }
+    }
+
+    if (this.mode === "boat") {
+      return this.lastResortOceanQuaternion();
+    }
+
     const fallbackQ = new Quaternion();
     const h = Math.random() * Math.PI * 2;
     const a = 0.5 + Math.random() * 2.0;
     return moveOnSphere(fallbackQ, h, a);
+  }
+
+  /** Deterministic ocean point when random placement fails (same idea as boat spawn). */
+  private lastResortOceanQuaternion(): Quaternion {
+    const q = new Quaternion();
+    for (let k = 0; k < 96; k++) {
+      const phi = (k / 96) * Math.PI;
+      const theta = k * 0.6180339887 * Math.PI * 2;
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
+      if (!isLand(this.seed, this.terrainType, nx, ny, nz)) {
+        return quaternionFromSurfaceNormal(nx, ny, nz);
+      }
+    }
+    return q;
   }
 
   update(dt: number, planeQ: Quaternion, planeAltitude: number) {
@@ -230,7 +327,9 @@ export class RingManager {
 
       d.mesh.scale.setScalar(scale);
 
-      const bob = Math.sin(this.time * 1.5 + d.phaseOffset) * 0.03;
+      const bob =
+        DIAMOND_BOB_LIFT +
+        Math.sin(this.time * 1.5 + d.phaseOffset) * DIAMOND_BOB_AMP;
       const worldPos = cartesianFromSpherical(d.qPosition, d.altitude, this.globeRadius);
       d.mesh.position.copy(worldPos).addScaledVector(d.upAxis, bob);
 
@@ -288,7 +387,7 @@ export class RingManager {
     const d = this.diamonds[inactiveIdx];
 
     d.qPosition = this.randomSpherePosition(avoidPlayerQ);
-    d.altitude = randomAltitude();
+    d.altitude = this.altitudeForDiamond(d.qPosition);
     d.active = true;
     d.spawnTimer = 0;
     d.age = 0;
