@@ -167,6 +167,13 @@ export class Game {
     back.position.set(-3, 10, -6);
     this.scene.add(back);
 
+    const sun2 = new DirectionalLight(0xfff0d0, 2.0);
+    sun2.position.set(-10, -12, -5);
+    this.scene.add(sun2);
+    const fill2 = new DirectionalLight(0xaabbdd, 0.8);
+    fill2.position.set(8, -8, -10);
+    this.scene.add(fill2);
+
     const seed = this.worldConfig?.seed ?? 42;
     const terrainType = this.worldConfig?.terrainType ?? "default";
     this.gameSeed = seed;
