@@ -24,6 +24,7 @@ import { RemotePlaneManager } from "./RemotePlane";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
+import { CarpetTrail } from "./CarpetTrail";
 import { LensFlare } from "./LensFlare";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
@@ -44,6 +45,7 @@ export class Game {
   private speedLines!: SpeedLines;
   private contrails!: Contrails;
   private wakeTrail!: WakeTrail;
+  private carpetTrail!: CarpetTrail;
   private lensFlare!: LensFlare;
   private ringManager!: RingManager;
   private collectVFX!: RingCollectVFX;
@@ -197,6 +199,10 @@ export class Game {
     this.wakeTrail.group.visible = this.vehicleFeatures.wakeTrail;
     this.scene.add(this.wakeTrail.group);
 
+    this.carpetTrail = new CarpetTrail();
+    this.carpetTrail.group.visible = this.vehicleFeatures.carpetTrail;
+    this.scene.add(this.carpetTrail.group);
+
     this.lensFlare = new LensFlare();
 
     const ringMode = this.playerVehicle === "boat"
@@ -298,6 +304,7 @@ export class Game {
       this.vehicleFeatures.cameraTiltScale,
       this.vehicleFeatures.cameraFollowDistance,
       this.vehicleFeatures.cameraFollowHeight,
+      this.vehicleFeatures.cameraSpeedZoom,
     );
 
     // Update globe (cloud drift)
@@ -320,6 +327,13 @@ export class Game {
     }
     if (this.vehicleFeatures.wakeTrail) {
       this.wakeTrail.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
+    }
+    if (this.vehicleFeatures.carpetTrail) {
+      this.carpetTrail.update(
+        this.localPlayer.group.matrixWorld,
+        this.cameraRig.camera,
+        this.localPlayer.speedRatio,
+      );
     }
 
     this.hud.setSpeed(this.localPlayer.speed);

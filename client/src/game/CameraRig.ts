@@ -49,6 +49,7 @@ export class CameraRig {
     tiltScale: number = 1,
     followDist: number = FOLLOW_DISTANCE,
     followHeight: number = FOLLOW_HEIGHT,
+    speedZoom: number = 1,
   ) {
     const frame = tangentFrame(planeQPosition);
     const planeWorldPos = cartesianFromSpherical(
@@ -58,8 +59,8 @@ export class CameraRig {
     );
 
     this.currentZoom += (speedRatio - this.currentZoom) * Math.min(1, ZOOM_SMOOTH * dt);
-    const dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom;
-    const height = followHeight + FOLLOW_HEIGHT_BOOST * this.currentZoom;
+    const dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom * speedZoom;
+    const height = followHeight + FOLLOW_HEIGHT_BOOST * this.currentZoom * speedZoom;
 
     const forward = new Vector3()
       .addScaledVector(frame.north, Math.cos(planeHeading))

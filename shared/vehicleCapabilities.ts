@@ -15,6 +15,7 @@ export interface VehicleGameFeatures {
   speedLines: boolean;
   contrails: boolean;
   wakeTrail: boolean;
+  carpetTrail: boolean;
   /** Multiplier for camera roll when turning (1 = full plane tilt) */
   cameraTiltScale: number;
   /** Extra XP when collecting while barrel rolling */
@@ -23,6 +24,8 @@ export interface VehicleGameFeatures {
   cameraFollowDistance: number;
   /** Camera height above the vehicle */
   cameraFollowHeight: number;
+  /** How much the camera zooms out at max speed (0 = none, 1 = full default) */
+  cameraSpeedZoom: number;
 }
 
 const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
@@ -32,10 +35,12 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     speedLines: true,
     contrails: true,
     wakeTrail: false,
+    carpetTrail: false,
     cameraTiltScale: 1,
     barrelRollBonus: true,
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
+    cameraSpeedZoom: 1,
   },
   boat: {
     collectibleDiamonds: true,
@@ -43,10 +48,12 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     speedLines: false,
     contrails: false,
     wakeTrail: true,
+    carpetTrail: false,
     cameraTiltScale: 0.28,
     barrelRollBonus: false,
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
+    cameraSpeedZoom: 1,
   },
   carpet: {
     collectibleDiamonds: true,
@@ -54,10 +61,12 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     speedLines: false,
     contrails: false,
     wakeTrail: false,
+    carpetTrail: true,
     cameraTiltScale: 0.5,
     barrelRollBonus: false,
     cameraFollowDistance: 0.6,
     cameraFollowHeight: 0.3,
+    cameraSpeedZoom: 0.25,
   },
 };
 
