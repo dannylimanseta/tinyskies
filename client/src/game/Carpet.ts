@@ -2,11 +2,12 @@ import {
   Group,
   Object3D,
   Quaternion,
+  type IUniform,
   type Scene,
 } from "three";
 import type { Vehicle } from "@globefly/shared";
 import { buildPlaneMatrix, moveOnSphere, tangentFrame } from "./SphericalMath";
-import { createCarpet } from "./CarpetMesh";
+import { createCarpet, carpetWobbleY } from "./CarpetMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
 const CRUISE_SPEED = 0.9;
@@ -45,10 +46,10 @@ export class Carpet {
   private seed: number;
   private terrainType: string;
   private prevAltitude = 0;
-  private tassels: Object3D[] = [];
-  /** Max rotation angle (radians) for tassels at full speed — trails them backward & upward. */
+  private tassels: { obj: Object3D; baseY: number; cx: number; cz: number }[] = [];
   private static readonly TASSEL_CURL_MAX = Math.PI / 2;
   private tasselCurl = 0;
+  private timeUniform: IUniform<number> | null = null;
 
   constructor(globeRadius: number, seed: number, terrainType: string) {
     this.globeRadius = globeRadius;
@@ -58,8 +59,9 @@ export class Carpet {
     this.group.matrixAutoUpdate = false;
     for (let i = 0; i < 4; i++) {
       const t = this.group.getObjectByName(`tassel${i}`);
-      if (t) this.tassels.push(t);
+      if (t) this.tassels.push({ obj: t, baseY: t.position.y, cx: t.position.x, cz: t.position.z });
     }
+    this.timeUniform = this.group.userData.timeUniform ?? null;
 
     const up = tangentFrame(this.qPosition).up;
     this.altitude =
@@ -77,6 +79,8 @@ export class Carpet {
     elevate: boolean = false,
     _barrelRoll: boolean = false,
   ) {
+    if (this.timeUniform) this.timeUniform.value += dt;
+
     if (forward) {
       this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
     } else if (brake) {
@@ -114,7 +118,11 @@ export class Carpet {
 
     const targetCurl = this.speedRatio * Carpet.TASSEL_CURL_MAX;
     this.tasselCurl += (targetCurl - this.tasselCurl) * Math.min(1, 3.0 * dt);
-    for (const t of this.tassels) t.rotation.x = -this.tasselCurl;
+    const time = this.timeUniform?.value ?? 0;
+    for (const t of this.tassels) {
+      t.obj.rotation.x = -this.tasselCurl;
+      t.obj.position.y = t.baseY + carpetWobbleY(t.cx, t.cz, time);
+    }
 
     this.applyMatrix();
   }
