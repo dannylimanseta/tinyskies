@@ -10,6 +10,7 @@ const LOOKAT_SMOOTH = 12.0;
 const MAX_TILT = 0.06;
 const TILT_SMOOTH = 5.0;
 const ZOOM_SMOOTH = 3.0;
+const BASE_FOV = 60;
 
 export class CameraRig {
   readonly camera: PerspectiveCamera;
@@ -50,6 +51,7 @@ export class CameraRig {
     followDist: number = FOLLOW_DISTANCE,
     followHeight: number = FOLLOW_HEIGHT,
     speedZoom: number = 1,
+    fovBoost: number = 20,
   ) {
     const frame = tangentFrame(planeQPosition);
     const planeWorldPos = cartesianFromSpherical(
@@ -61,6 +63,12 @@ export class CameraRig {
     this.currentZoom += (speedRatio - this.currentZoom) * Math.min(1, ZOOM_SMOOTH * dt);
     const dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom * speedZoom;
     const height = followHeight + FOLLOW_HEIGHT_BOOST * this.currentZoom * speedZoom;
+
+    const targetFov = BASE_FOV + fovBoost * this.currentZoom;
+    if (Math.abs(this.camera.fov - targetFov) > 0.01) {
+      this.camera.fov = targetFov;
+      this.camera.updateProjectionMatrix();
+    }
 
     const forward = new Vector3()
       .addScaledVector(frame.north, Math.cos(planeHeading))

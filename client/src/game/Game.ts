@@ -315,6 +315,7 @@ export class Game {
       this.vehicleFeatures.cameraFollowDistance,
       this.vehicleFeatures.cameraFollowHeight,
       this.vehicleFeatures.cameraSpeedZoom,
+      this.vehicleFeatures.cameraFovBoost,
     );
 
     // Update globe (cloud drift)
@@ -350,6 +351,7 @@ export class Game {
         this.localPlayer.heading,
         globeRadius,
         this.localPlayer.speed,
+        elevate,
         this.gameSeed,
         this.gameTerrainType,
         this.cameraRig.camera,

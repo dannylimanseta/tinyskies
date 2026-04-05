@@ -26,6 +26,8 @@ export interface VehicleGameFeatures {
   cameraFollowHeight: number;
   /** How much the camera zooms out at max speed (0 = none, 1 = full default) */
   cameraSpeedZoom: number;
+  /** FOV increase in degrees at max speed */
+  cameraFovBoost: number;
 }
 
 const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
@@ -40,7 +42,8 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     barrelRollBonus: true,
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
-    cameraSpeedZoom: 1,
+    cameraSpeedZoom: 0,
+    cameraFovBoost: 10,
   },
   boat: {
     collectibleDiamonds: true,
@@ -53,12 +56,13 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     barrelRollBonus: false,
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
-    cameraSpeedZoom: 1,
+    cameraSpeedZoom: 0,
+    cameraFovBoost: 10,
   },
   carpet: {
     collectibleDiamonds: true,
     xpProgressionUI: true,
-    speedLines: false,
+    speedLines: true,
     contrails: false,
     wakeTrail: false,
     carpetTrail: true,
@@ -66,7 +70,8 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     barrelRollBonus: false,
     cameraFollowDistance: 0.6,
     cameraFollowHeight: 0.3,
-    cameraSpeedZoom: 0.25,
+    cameraSpeedZoom: -0.4,
+    cameraFovBoost: 50,
   },
 };
 
