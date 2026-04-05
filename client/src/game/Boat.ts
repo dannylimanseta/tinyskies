@@ -15,7 +15,7 @@ const BRAKE_DECEL = 0.85;
 const ACCEL = 0.35;
 const MAX_SPEED = 0.42;
 const COAST_DECAY = 0.07;
-const FREEBOARD = 0.018;
+const FREEBOARD = 0.015;
 /** Yaw rate multiplier — higher = snappier turns. */
 const TURN_SCALE = 0.92;
 
