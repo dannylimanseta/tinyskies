@@ -328,7 +328,7 @@ export class Game {
     this.globe.update(dt);
 
     // Update remote planes
-    this.remotePlanes.update(dt);
+    this.remotePlanes.update(dt, this.cameraRig.camera);
 
     if (this.vehicleFeatures.collectibleDiamonds) {
       this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);

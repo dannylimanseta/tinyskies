@@ -2,6 +2,7 @@ import {
   Scene,
   Group,
   Quaternion,
+  type Camera,
 } from "three";
 import type { PlayerState, Vehicle } from "@globefly/shared";
 import {
@@ -13,6 +14,7 @@ import {
 import { createBiplane } from "./BiplaneMesh";
 import { createBoat } from "./BoatMesh";
 import { createCarpet } from "./CarpetMesh";
+import { PlayerBeacon } from "./PlayerBeacon";
 
 const INTERPOLATION_DELAY_MS = 100;
 const CORRECTION_DURATION_MS = 150;
@@ -43,6 +45,7 @@ class RemotePlane {
   readonly id: string;
   readonly name: string;
   readonly group: Group;
+  readonly beacon: PlayerBeacon;
   private readonly vehicle: Vehicle;
 
   private buffer: BufferedSnapshot[] = [];
@@ -67,6 +70,7 @@ class RemotePlane {
           ? createCarpet(color)
           : createBiplane(color);
     this.group.matrixAutoUpdate = false;
+    this.beacon = new PlayerBeacon(color);
   }
 
   pushState(state: PlayerState) {
@@ -188,6 +192,9 @@ class RemotePlane {
           );
     this.group.matrix.copy(m);
     this.group.matrixWorldNeedsUpdate = true;
+
+    const pos = this.group.position.setFromMatrixPosition(m);
+    this.beacon.mesh.position.copy(pos);
   }
 
   dispose() {
@@ -195,6 +202,7 @@ class RemotePlane {
       if ((child as any).geometry) (child as any).geometry.dispose();
       if ((child as any).material) (child as any).material.dispose();
     });
+    this.beacon.dispose();
   }
 }
 
@@ -221,12 +229,14 @@ export class RemotePlaneManager {
     rp.pushState(state);
     this.planes.set(state.id, rp);
     this.scene.add(rp.group);
+    this.scene.add(rp.beacon.mesh);
   }
 
   removePlayer(playerId: string) {
     const rp = this.planes.get(playerId);
     if (!rp) return;
     this.scene.remove(rp.group);
+    this.scene.remove(rp.beacon.mesh);
     rp.dispose();
     this.planes.delete(playerId);
   }
@@ -240,9 +250,10 @@ export class RemotePlaneManager {
     rp.pushState(state);
   }
 
-  update(dt: number) {
+  update(dt: number, camera?: Camera) {
     for (const [, rp] of this.planes) {
       rp.update(dt);
+      if (camera) rp.beacon.update(camera);
     }
   }
 
