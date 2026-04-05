@@ -46,6 +46,7 @@ class RemotePlane {
   readonly name: string;
   readonly group: Group;
   readonly beacon: PlayerBeacon;
+  readonly vehicleType: Vehicle;
   private readonly vehicle: Vehicle;
 
   private buffer: BufferedSnapshot[] = [];
@@ -62,6 +63,7 @@ class RemotePlane {
     this.name = name;
     this.globeRadius = globeRadius;
     this.vehicle = vehicle;
+    this.vehicleType = vehicle;
     const color = nextRemoteColor();
     this.group =
       vehicle === "boat"
@@ -244,6 +246,14 @@ export class RemotePlaneManager {
   updatePlayer(state: PlayerState) {
     const rp = this.planes.get(state.id);
     if (!rp) {
+      this.addPlayer(state);
+      return;
+    }
+    const incomingVehicle: Vehicle =
+      state.vehicle === "boat" ? "boat" :
+      state.vehicle === "carpet" ? "carpet" : "plane";
+    if (rp.vehicleType !== incomingVehicle) {
+      this.removePlayer(state.id);
       this.addPlayer(state);
       return;
     }

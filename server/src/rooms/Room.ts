@@ -79,7 +79,12 @@ export class Room {
     const player = this.players.get(socketId);
     if (!player) return;
 
-    const fullState: PlayerState = { ...state, id: socketId };
+    const fullState: PlayerState = {
+      ...state,
+      id: socketId,
+      name: player.state.name,
+      vehicle: state.vehicle || player.state.vehicle,
+    };
     player.state = fullState;
 
     // Broadcast to all other players
