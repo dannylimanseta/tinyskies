@@ -21,8 +21,8 @@ const POOL_SIZE = 400;
 const PARTICLE_LIFETIME_MIN = 0.8;
 const PARTICLE_LIFETIME_MAX = 2.0;
 const EMIT_PER_FRAME = 6;
-const SPLASH_UP_SPEED = 0.16;
-const SPLASH_OUT_SPEED = 0.09;
+const SPLASH_UP_SPEED = 0.12;
+const SPLASH_OUT_SPEED = 0.18;
 const GRAVITY = 0.22;
 
 const splashVert = `
@@ -155,7 +155,7 @@ class SplashParticles {
       positions[i * 3] = p.px;
       positions[i * 3 + 1] = p.py;
       positions[i * 3 + 2] = p.pz;
-      alphas[i] = fadeIn * (1 - t) * (1 - t) * 0.9;
+      alphas[i] = fadeIn * (1 - t) * (1 - t) * 0.4;
       sizes[i] = (1 - t * 0.5) * 0.12;
     }
 
@@ -186,6 +186,7 @@ export class CarpetWake {
     heading: number,
     globeRadius: number,
     speed: number,
+    elevating: boolean,
     seed: number,
     terrainType: string,
     _camera: unknown,
@@ -194,7 +195,8 @@ export class CarpetWake {
     const up = frame.up;
     const overWater = !isLand(seed, terrainType, up.x, up.y, up.z);
 
-    const target = overWater && speed > 0.3 ? 1 : 0;
+    const speedFade = Math.min(1, Math.max(0, (speed - 0.5) / 0.4));
+    const target = overWater && speed > 0.5 && !elevating ? speedFade : 0;
     this.waterAlpha += (target - this.waterAlpha) * 0.08;
 
     this.splash.update(dt, this.waterAlpha, up);
@@ -210,12 +212,12 @@ export class CarpetWake {
 
     const right = new Vector3().crossVectors(forward, up).normalize();
 
-    const leftDir = forward.clone().multiplyScalar(-1)
+    const leftDir = forward.clone().multiplyScalar(1000)
       .addScaledVector(right, -SPREAD_ANGLE).normalize();
-    const rightDir = forward.clone().multiplyScalar(-1)
+    const rightDir = forward.clone().multiplyScalar(1000)
       .addScaledVector(right, SPREAD_ANGLE).normalize();
 
-    const offset = 0.015;
+    const offset = 0.008;
     const leftPos = surfacePos.clone().addScaledVector(leftDir, offset).addScaledVector(right, -0.008);
     const rightPos = surfacePos.clone().addScaledVector(rightDir, offset).addScaledVector(right, 0.008);
 
