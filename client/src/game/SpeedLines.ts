@@ -14,6 +14,7 @@ import {
 const LINE_COUNT = 24;
 const SPEED_THRESHOLD = 0.8;
 const MAX_SPEED = 1.5;
+const BOOST_THRESHOLD = 1.2;
 
 interface Streak {
   angle: number;
@@ -39,11 +40,12 @@ uniform float opacity;
 uniform float life;
 varying vec2 vUv;
 void main() {
-  float along = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.6, vUv.x);
-  float across = 1.0 - abs(vUv.y - 0.5) * 2.0;
-  across = pow(across, 1.5);
-  float fade = smoothstep(0.0, 0.2, life) * smoothstep(1.0, 0.6, life);
-  float a = along * across * fade * opacity;
+  float taper = smoothstep(0.0, 0.25, vUv.x) * smoothstep(1.0, 0.75, vUv.x);
+  float halfW = taper * 0.35;
+  float d = abs(vUv.y - 0.5);
+  float shape = 1.0 - smoothstep(halfW * 0.3, halfW, d);
+  float fade = smoothstep(0.0, 0.4, life) * smoothstep(1.0, 0.5, life);
+  float a = shape * fade * opacity;
   gl_FragColor = vec4(1.0, 1.0, 1.0, a);
 }
 `;
@@ -92,7 +94,7 @@ export class SpeedLines {
   private spawn(idx: number) {
     const s = this.streaks[idx];
     s.angle = Math.random() * Math.PI * 2;
-    s.length = 0.25 + Math.random() * 0.35;
+    s.length = 0.35 + Math.random() * 0.49;
     s.width = 0.006 + Math.random() * 0.008;
     s.offset = 0.95 + Math.random() * 0.15;
     s.speed = 0.5 + Math.random() * 0.8;
@@ -148,7 +150,10 @@ export class SpeedLines {
 
       mesh.position.set(cx, cy, 0);
       mesh.rotation.z = s.angle + Math.PI;
-      mesh.scale.set(s.length, s.width, 1);
+      const boostMul = planeSpeed > BOOST_THRESHOLD
+        ? 1 + 4 * Math.min(1, (planeSpeed - BOOST_THRESHOLD) / (MAX_SPEED - BOOST_THRESHOLD))
+        : 1;
+      mesh.scale.set(s.length, s.width * boostMul, 1);
       mesh.visible = true;
 
       mat.uniforms.opacity.value = globalOpacity;

@@ -11,7 +11,8 @@ const CRUISE_SPEED = 1.5;
 const BRAKE_DECEL = 3.0;
 const ACCEL = 2.5;
 const MIN_SPEED = 0.5;
-const MAX_SPEED = 1.5;
+const MAX_SPEED = 1.2;
+const BOOST_SPEED = 1.65;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 const ALTITUDE_SPEED = 0.75;
@@ -56,7 +57,11 @@ export class Plane {
     barrelRoll: boolean = false,
   ) {
     if (forward) {
-      this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
+      if (this.speed < MAX_SPEED) {
+        this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
+      } else {
+        this.speed = Math.max(MAX_SPEED, this.speed - 0.2 * dt);
+      }
     } else if (brake) {
       this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
     } else {
@@ -107,6 +112,10 @@ export class Plane {
     this.applyMatrix();
   }
 
+  speedBoost() {
+    this.speed = BOOST_SPEED;
+  }
+
   applyMatrix() {
     const m = buildPlaneMatrix(
       this.qPosition,
@@ -121,7 +130,7 @@ export class Plane {
   }
 
   get speedRatio(): number {
-    return Math.max(0, (this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
+    return Math.max(0, (this.speed - MIN_SPEED) / (BOOST_SPEED - MIN_SPEED));
   }
 
   addTo(scene: Scene) {

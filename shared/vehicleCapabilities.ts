@@ -43,7 +43,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
     cameraSpeedZoom: 0,
-    cameraFovBoost: 10,
+    cameraFovBoost: 40,
   },
   boat: {
     collectibleDiamonds: true,

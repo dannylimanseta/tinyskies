@@ -314,6 +314,9 @@ export class Game {
       }
       this.collectVFX.play(worldPos, tier);
       this.cameraRig.shake();
+      if (this.localPlayer instanceof Plane) {
+        this.localPlayer.speedBoost();
+      }
       this.hud.showXPGain(xp + bonusXP, rolling);
       this.hud.setXP(
         this.ringManager.getXP(),
