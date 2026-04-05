@@ -56,7 +56,7 @@ export class Game {
   private carpetLeaves!: CarpetLeaves;
   private gameSeed = 42;
   private gameTerrainType = "default";
-  private lensFlare!: LensFlare;
+  private lensFlare: LensFlare | null = null;
   private starfield: Starfield | null = null;
   private aurora: Aurora | null = null;
   private playerLight: PointLight | null = null;
@@ -246,8 +246,10 @@ export class Game {
     this.carpetLeaves.group.visible = this.vehicleFeatures.carpetTrail;
     this.scene.add(this.carpetLeaves.group);
 
-    this.lensFlare = new LensFlare();
-    this.lensFlare.setColorScale(preset.flareColorScale);
+    if (this.timeOfDay === "day") {
+      this.lensFlare = new LensFlare();
+      this.lensFlare.setColorScale(preset.flareColorScale);
+    }
 
     if (preset.stars) {
       this.starfield = new Starfield();
@@ -423,7 +425,7 @@ export class Game {
     this.hud.setSpeed(this.localPlayer.speed);
     this.hud.setAltitude(this.localPlayer.altitude);
 
-    this.lensFlare.update(this.cameraRig.camera);
+    this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
 
     // Render
@@ -431,7 +433,7 @@ export class Game {
     if (this.vehicleFeatures.speedLines) {
       this.speedLines.render(this.renderer);
     }
-    this.lensFlare.render(this.renderer);
+    this.lensFlare?.render(this.renderer);
   };
 
   private onResize = () => {
