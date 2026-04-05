@@ -65,6 +65,7 @@ export class Lobby {
               <div class="vehicle-seg time-seg" role="tablist" aria-label="Time of Day">
                 <button type="button" class="vehicle-btn time-btn active" data-time="day" aria-pressed="true">Day</button>
                 <button type="button" class="vehicle-btn time-btn" data-time="evening" aria-pressed="false">Evening</button>
+                <button type="button" class="vehicle-btn time-btn" data-time="night" aria-pressed="false">Night</button>
               </div>
             </fieldset>
             <div class="form-group">
@@ -104,6 +105,7 @@ export class Lobby {
               <div class="vehicle-seg time-seg time-seg-create" role="tablist" aria-label="Time of Day">
                 <button type="button" class="vehicle-btn time-btn active" data-time="day" aria-pressed="true">Day</button>
                 <button type="button" class="vehicle-btn time-btn" data-time="evening" aria-pressed="false">Evening</button>
+                <button type="button" class="vehicle-btn time-btn" data-time="night" aria-pressed="false">Night</button>
               </div>
             </fieldset>
             <button class="btn btn-primary" id="btn-create">Create World</button>
@@ -198,7 +200,7 @@ export class Lobby {
     this.el.querySelectorAll(".time-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const t = (btn as HTMLButtonElement).dataset.time as TimeOfDay;
-        if (t === "day" || t === "evening") setTime(t);
+        if (t === "day" || t === "evening" || t === "night") setTime(t);
       });
     });
   }

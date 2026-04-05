@@ -81,8 +81,9 @@ export class Globe {
   private oceanShallowColor: number;
   private oceanDeepColor: number;
   private foamColorValue: Color;
+  private rimColorValue: Color;
 
-  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff) {
+  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb) {
     this.radius = radius;
     this.seed = seed;
     this.terrainType = terrainType;
@@ -90,6 +91,7 @@ export class Globe {
     this.oceanShallowColor = oceanShallow;
     this.oceanDeepColor = oceanDeep;
     this.foamColorValue = new Color(foamColor);
+    this.rimColorValue = new Color(rimColor);
     this.createSurface();
     this.createTrees();
     this.createCoconutTrees();
@@ -195,7 +197,7 @@ export class Globe {
       flatShading: true,
     });
 
-    const rimColor = new Color(0xffeebb);
+    const rimColor = this.rimColorValue;
     const rimIntensity = 0.8;
     const rimPower = 8.5;
 

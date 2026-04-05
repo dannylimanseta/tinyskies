@@ -7,6 +7,7 @@ import {
   Clock,
   Color,
   Fog,
+  PointLight,
   VSMShadowMap,
   CanvasTexture,
   SRGBColorSpace,
@@ -29,6 +30,7 @@ import { CarpetTrail } from "./CarpetTrail";
 import { CarpetWake } from "./CarpetWake";
 import { CarpetLeaves } from "./CarpetLeaves";
 import { LensFlare } from "./LensFlare";
+import { Starfield } from "./Starfield";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby } from "../ui/Lobby";
@@ -54,6 +56,8 @@ export class Game {
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare!: LensFlare;
+  private starfield: Starfield | null = null;
+  private playerLight: PointLight | null = null;
   private ringManager!: RingManager;
   private collectVFX!: RingCollectVFX;
 
@@ -192,7 +196,7 @@ export class Game {
     const terrainType = this.worldConfig?.terrainType ?? "default";
     this.gameSeed = seed;
     this.gameTerrainType = terrainType;
-    this.globe = new Globe(globeRadius, seed, terrainType, preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep, preset.oceanFoam);
+    this.globe = new Globe(globeRadius, seed, terrainType, preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep, preset.oceanFoam, preset.rimColor);
     this.globe.addTo(this.scene);
 
     if (this.playerVehicle === "boat") {
@@ -242,6 +246,14 @@ export class Game {
 
     this.lensFlare = new LensFlare();
     this.lensFlare.setColorScale(preset.flareColorScale);
+
+    if (preset.stars) {
+      this.starfield = new Starfield();
+      this.scene.add(this.starfield.points);
+
+      this.playerLight = new PointLight(0xffaa55, 0.4, 4.0, 1.5);
+      this.scene.add(this.playerLight);
+    }
 
     const ringMode = this.playerVehicle === "boat"
       ? "boat"
@@ -358,6 +370,11 @@ export class Game {
     }
 
     this.localPlayer.group.updateMatrixWorld(true);
+    if (this.playerLight) {
+      this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      const up = this.playerLight.position.clone().normalize();
+      this.playerLight.position.addScaledVector(up, 0.15);
+    }
     if (this.vehicleFeatures.speedLines) {
       this.speedLines.update(dt, this.localPlayer.speed, this.cameraRig.camera);
     }
@@ -445,6 +462,7 @@ export class Game {
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
     this.lensFlare?.dispose();
+    this.starfield?.dispose();
     this.ringManager?.dispose();
     this.collectVFX?.dispose();
     this.localPlayer?.dispose();

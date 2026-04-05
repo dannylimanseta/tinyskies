@@ -30,8 +30,11 @@ export interface SkyPreset {
   oceanDeep: number;
   oceanFoam: number;
 
+  rimColor: number;
+
   atmosphereGlow: number;
   flareColorScale: [number, number, number];
+  stars: boolean;
 }
 
 const DAY_PRESET: SkyPreset = {
@@ -76,8 +79,11 @@ const DAY_PRESET: SkyPreset = {
   oceanDeep: 0x1560a0,
   oceanFoam: 0xb3ffff,
 
+  rimColor: 0xffeebb,
+
   atmosphereGlow: 0xeeddbb,
   flareColorScale: [1.0, 1.0, 1.0],
+  stars: false,
 };
 
 const EVENING_PRESET: SkyPreset = {
@@ -120,14 +126,64 @@ const EVENING_PRESET: SkyPreset = {
   oceanDeep: 0x302868,
   oceanFoam: 0xff9944,
 
+  rimColor: 0xffdd44,
+
   atmosphereGlow: 0xffcc44,
   flareColorScale: [1.0, 0.75, 0.4],
+  stars: false,
+};
+
+const NIGHT_PRESET: SkyPreset = {
+  skyGradient: [
+    { stop: 0.0, color: "#020408" },
+    { stop: 0.15, color: "#06081a" },
+    { stop: 0.3, color: "#0a1028" },
+    { stop: 0.45, color: "#0e1838" },
+    { stop: 0.55, color: "#101c44" },
+    { stop: 0.65, color: "#122050" },
+    { stop: 0.75, color: "#16285a" },
+    { stop: 0.85, color: "#1a3068" },
+    { stop: 1.0, color: "#1e3878" },
+  ],
+  fogColor: 0x081828,
+  fogNear: 10,
+  fogFar: 30,
+
+  hemiSkyColor: 0x1a2244,
+  hemiGroundColor: 0x0a1418,
+  hemiIntensity: 0.3,
+
+  ambientColor: 0x8899cc,
+  ambientIntensity: 0.15,
+
+  sunColor: 0xccddff,
+  sunIntensity: 0.4,
+  sun2Color: 0x667799,
+  sun2Intensity: 0.15,
+
+  fillColor: 0x445588,
+  fillIntensity: 0.2,
+  fill2Color: 0x334466,
+  fill2Intensity: 0.1,
+
+  backColor: 0x445566,
+  backIntensity: 0.15,
+
+  oceanShallow: 0x0c1a30,
+  oceanDeep: 0x060e1e,
+  oceanFoam: 0x3366aa,
+
+  rimColor: 0x4488ff,
+
+  atmosphereGlow: 0x3366dd,
+  flareColorScale: [0.3, 0.4, 0.8],
+  stars: true,
 };
 
 const SKY_PRESETS: Record<TimeOfDay, SkyPreset> = {
   day: DAY_PRESET,
   evening: EVENING_PRESET,
-  night: DAY_PRESET,
+  night: NIGHT_PRESET,
 };
 
 export function getSkyPreset(time: TimeOfDay): SkyPreset {
