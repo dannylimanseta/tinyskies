@@ -2,6 +2,8 @@ import type { Vehicle } from "@globefly/shared";
 
 export class HUD {
   private el: HTMLDivElement;
+  private hidden = false;
+  private onKey: (e: KeyboardEvent) => void;
 
   private worldNameEl!: HTMLElement;
   private vehicleHintEl!: HTMLElement;
@@ -19,6 +21,14 @@ export class HUD {
     this.el.id = "hud";
     this.buildUI();
     container.appendChild(this.el);
+
+    this.onKey = (e: KeyboardEvent) => {
+      if (e.key === "h" || e.key === "H") {
+        this.hidden = !this.hidden;
+        this.el.style.display = this.hidden ? "none" : "";
+      }
+    };
+    window.addEventListener("keydown", this.onKey);
   }
 
   private buildUI() {
@@ -261,6 +271,7 @@ export class HUD {
   }
 
   dispose() {
+    window.removeEventListener("keydown", this.onKey);
     this.el.remove();
   }
 }
