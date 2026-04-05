@@ -55,8 +55,9 @@ export class Lobby {
               <div class="vehicle-seg" role="tablist" aria-label="Vehicle">
                 <button type="button" class="vehicle-btn active" data-vehicle="plane" aria-pressed="true">Plane</button>
                 <button type="button" class="vehicle-btn" data-vehicle="boat" aria-pressed="false">Boat</button>
+                <button type="button" class="vehicle-btn" data-vehicle="carpet" aria-pressed="false">Carpet</button>
               </div>
-              <p class="vehicle-hint">Boats stay on the ocean.</p>
+              <p class="vehicle-hint">Boats stay on the ocean. Carpet hugs the terrain.</p>
             </fieldset>
             <div class="form-group">
               <label>World Code</label>
@@ -86,8 +87,9 @@ export class Lobby {
               <div class="vehicle-seg vehicle-seg-create" role="tablist" aria-label="Vehicle">
                 <button type="button" class="vehicle-btn active" data-vehicle="plane" aria-pressed="true">Plane</button>
                 <button type="button" class="vehicle-btn" data-vehicle="boat" aria-pressed="false">Boat</button>
+                <button type="button" class="vehicle-btn" data-vehicle="carpet" aria-pressed="false">Carpet</button>
               </div>
-              <p class="vehicle-hint">Boats stay on the ocean.</p>
+              <p class="vehicle-hint">Boats stay on the ocean. Carpet hugs the terrain.</p>
             </fieldset>
             <button class="btn btn-primary" id="btn-create">Create World</button>
           </div>
@@ -152,8 +154,7 @@ export class Lobby {
       this.selectedVehicle = v;
       this.el.querySelectorAll(".vehicle-btn").forEach((btn) => {
         const b = btn as HTMLButtonElement;
-        const isPlane = b.dataset.vehicle === "plane";
-        const active = (v === "plane" && isPlane) || (v === "boat" && !isPlane);
+        const active = b.dataset.vehicle === v;
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
       });
@@ -162,7 +163,7 @@ export class Lobby {
     this.el.querySelectorAll(".vehicle-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const v = (btn as HTMLButtonElement).dataset.vehicle as Vehicle;
-        if (v === "plane" || v === "boat") setVehicle(v);
+        if (v === "plane" || v === "boat" || v === "carpet") setVehicle(v);
       });
     });
   }

@@ -19,6 +19,10 @@ export interface VehicleGameFeatures {
   cameraTiltScale: number;
   /** Extra XP when collecting while barrel rolling */
   barrelRollBonus: boolean;
+  /** Camera follow distance behind the vehicle */
+  cameraFollowDistance: number;
+  /** Camera height above the vehicle */
+  cameraFollowHeight: number;
 }
 
 const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
@@ -30,6 +34,8 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     wakeTrail: false,
     cameraTiltScale: 1,
     barrelRollBonus: true,
+    cameraFollowDistance: 1.2,
+    cameraFollowHeight: 0.7,
   },
   boat: {
     collectibleDiamonds: true,
@@ -39,9 +45,23 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     wakeTrail: true,
     cameraTiltScale: 0.28,
     barrelRollBonus: false,
+    cameraFollowDistance: 1.2,
+    cameraFollowHeight: 0.7,
+  },
+  carpet: {
+    collectibleDiamonds: true,
+    xpProgressionUI: true,
+    speedLines: false,
+    contrails: false,
+    wakeTrail: false,
+    cameraTiltScale: 0.5,
+    barrelRollBonus: false,
+    cameraFollowDistance: 0.6,
+    cameraFollowHeight: 0.3,
   },
 };
 
 export function getVehicleFeatures(vehicle: Vehicle | undefined): VehicleGameFeatures {
-  return vehicle === "boat" ? VEHICLE_FEATURES.boat : VEHICLE_FEATURES.plane;
+  if (vehicle && vehicle in VEHICLE_FEATURES) return VEHICLE_FEATURES[vehicle];
+  return VEHICLE_FEATURES.plane;
 }

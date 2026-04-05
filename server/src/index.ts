@@ -40,7 +40,7 @@ io.on("connection", (socket) => {
 
   socket.on("world:join", (slug, playerName, vehicle) => {
     console.log(`Player ${socket.id} joining world: ${slug}`);
-    const v = vehicle === "boat" ? "boat" : "plane";
+    const v = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
     roomManager.joinRoom(slug, socket, playerName, v);
   });
 

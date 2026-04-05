@@ -12,6 +12,7 @@ import {
 } from "./SphericalMath";
 import { createBiplane } from "./BiplaneMesh";
 import { createBoat } from "./BoatMesh";
+import { createCarpet } from "./CarpetMesh";
 
 const INTERPOLATION_DELAY_MS = 100;
 const CORRECTION_DURATION_MS = 150;
@@ -60,7 +61,11 @@ class RemotePlane {
     this.vehicle = vehicle;
     const color = nextRemoteColor();
     this.group =
-      vehicle === "boat" ? createBoat(color) : createBiplane(color);
+      vehicle === "boat"
+        ? createBoat(color)
+        : vehicle === "carpet"
+          ? createCarpet(color)
+          : createBiplane(color);
     this.group.matrixAutoUpdate = false;
   }
 
@@ -209,7 +214,9 @@ export class RemotePlaneManager {
 
   addPlayer(state: PlayerState) {
     if (this.planes.has(state.id)) return;
-    const v: Vehicle = state.vehicle === "boat" ? "boat" : "plane";
+    const v: Vehicle =
+      state.vehicle === "boat" ? "boat" :
+      state.vehicle === "carpet" ? "carpet" : "plane";
     const rp = new RemotePlane(state.id, state.name, this.globeRadius, v);
     rp.pushState(state);
     this.planes.set(state.id, rp);

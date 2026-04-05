@@ -15,6 +15,7 @@ import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldC
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
+import { Carpet } from "./Carpet";
 import { FlightControls } from "./FlightControls";
 import { CameraRig } from "./CameraRig";
 import { SocketClient } from "../network/SocketClient";
@@ -36,8 +37,7 @@ export class Game {
   private clock!: Clock;
 
   private globe!: Globe;
-  /** Local player — plane or boat (same movement / sync shape). */
-  private localPlayer!: Plane | Boat;
+  private localPlayer!: Plane | Boat | Carpet;
   private controls!: FlightControls;
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
@@ -166,6 +166,8 @@ export class Game {
 
     if (this.playerVehicle === "boat") {
       this.localPlayer = new Boat(globeRadius, seed, terrainType);
+    } else if (this.playerVehicle === "carpet") {
+      this.localPlayer = new Carpet(globeRadius, seed, terrainType);
     } else {
       this.localPlayer = new Plane(globeRadius);
     }
@@ -177,6 +179,8 @@ export class Game {
       this.localPlayer.heading,
       this.localPlayer.altitude,
       globeRadius,
+      this.vehicleFeatures.cameraFollowDistance,
+      this.vehicleFeatures.cameraFollowHeight,
     );
 
     this.controls = new FlightControls(this.container);
@@ -195,8 +199,13 @@ export class Game {
 
     this.lensFlare = new LensFlare();
 
+    const ringMode = this.playerVehicle === "boat"
+      ? "boat"
+      : this.playerVehicle === "carpet"
+        ? "carpet"
+        : "plane";
     this.ringManager = new RingManager(globeRadius, {
-      mode: this.playerVehicle === "boat" ? "boat" : "plane",
+      mode: ringMode,
       seed,
       terrainType,
     });
@@ -278,7 +287,6 @@ export class Game {
     const { turnRate, forward, brake, elevate, barrelRoll } = this.controls.getState();
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll);
 
-    const cameraTiltScale = this.vehicleFeatures.cameraTiltScale;
     this.cameraRig.update(
       dt,
       this.localPlayer.qPosition,
@@ -287,7 +295,9 @@ export class Game {
       globeRadius,
       turnRate,
       this.localPlayer.speedRatio,
-      cameraTiltScale,
+      this.vehicleFeatures.cameraTiltScale,
+      this.vehicleFeatures.cameraFollowDistance,
+      this.vehicleFeatures.cameraFollowHeight,
     );
 
     // Update globe (cloud drift)

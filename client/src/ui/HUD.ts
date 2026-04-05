@@ -73,15 +73,21 @@ export class HUD {
     if (vehicle === "boat") {
       this.vehicleHintEl.textContent = "Boat · ocean only";
       this.altitudeLabelEl.textContent = "SEA";
+    } else if (vehicle === "carpet") {
+      this.vehicleHintEl.textContent = "Magic Carpet";
+      this.altitudeLabelEl.textContent = "ALT";
     } else {
       this.vehicleHintEl.textContent = "Plane";
       this.altitudeLabelEl.textContent = "ALT";
     }
     const controls = this.el.querySelector(".hud-controls")!;
-    controls.innerHTML =
-      vehicle === "boat"
-        ? `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn`
-        : `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn &middot; <span>E</span> barrel roll`;
+    if (vehicle === "boat") {
+      controls.innerHTML = `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn`;
+    } else if (vehicle === "carpet") {
+      controls.innerHTML = `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn &middot; <span>Space</span> lift`;
+    } else {
+      controls.innerHTML = `<span>W</span> forward &middot; <span>S</span> brake &middot; <span>A/D</span> turn &middot; <span>E</span> barrel roll`;
+    }
   }
 
   setPlayerCount(count: number) {

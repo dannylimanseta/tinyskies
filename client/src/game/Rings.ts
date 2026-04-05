@@ -16,8 +16,8 @@ import {
 import { isLand } from "./SimplexNoise";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
-/** Plane: air collectibles. Boat: ocean-surface collectibles only. */
-export type RingCollectMode = "plane" | "boat";
+/** Plane: air collectibles. Boat: ocean-surface. Carpet: land-surface. */
+export type RingCollectMode = "plane" | "boat" | "carpet";
 
 export interface RingManagerOptions {
   mode?: RingCollectMode;
@@ -49,6 +49,10 @@ const DIAMOND_BOB_AMP = 0.017;
 /** Height above true water surface so boat diamonds read clearly above the ocean. */
 const BOAT_FLOAT_MIN = 0.062;
 const BOAT_FLOAT_MAX = 0.118;
+
+/** Height above terrain surface for carpet (land) diamonds. */
+const CARPET_FLOAT_MIN = 0.06;
+const CARPET_FLOAT_MAX = 0.14;
 
 const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 6600, 8200];
 
@@ -147,7 +151,9 @@ export class RingManager {
     this.terrainType = options?.terrainType ?? "default";
 
     const baseSize =
-      this.mode === "boat" ? DIAMOND_SIZE * BOAT_DIAMOND_SCALE : DIAMOND_SIZE;
+      this.mode === "boat" || this.mode === "carpet"
+        ? DIAMOND_SIZE * BOAT_DIAMOND_SCALE
+        : DIAMOND_SIZE;
     this.geometry = new OctahedronGeometry(baseSize, 0);
     this.geometry.scale(1, 1.5, 1);
 
@@ -205,16 +211,20 @@ export class RingManager {
       return randomPlaneAltitude();
     }
     const p = cartesianFromSpherical(q, 0, this.globeRadius).normalize();
-    return (
-      surfaceAltitudeAt(this.seed, this.terrainType, p.x, p.y, p.z) +
-      BOAT_FLOAT_MIN +
-      Math.random() * (BOAT_FLOAT_MAX - BOAT_FLOAT_MIN)
-    );
+    const surfAlt = surfaceAltitudeAt(this.seed, this.terrainType, p.x, p.y, p.z);
+    if (this.mode === "carpet") {
+      return surfAlt + CARPET_FLOAT_MIN + Math.random() * (CARPET_FLOAT_MAX - CARPET_FLOAT_MIN);
+    }
+    return surfAlt + BOAT_FLOAT_MIN + Math.random() * (BOAT_FLOAT_MAX - BOAT_FLOAT_MIN);
+  }
+
+  private needsTerrainFilter(): boolean {
+    return this.mode === "boat" || this.mode === "carpet";
   }
 
   private randomSpherePosition(avoidPlayerQ?: Quaternion): Quaternion {
-    const maxAttempts = this.mode === "boat" ? 100 : 50;
-    const altSample = this.mode === "boat" ? 0 : LOW_ALTITUDE;
+    const maxAttempts = this.needsTerrainFilter() ? 100 : 50;
+    const altSample = this.needsTerrainFilter() ? 0 : LOW_ALTITUDE;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const q = new Quaternion();
@@ -226,11 +236,11 @@ export class RingManager {
       const secondArc = Math.random() * 1.5;
       const finalQ = moveOnSphere(moved, secondHeading, secondArc);
 
-      if (this.mode === "boat") {
+      if (this.needsTerrainFilter()) {
         const surf = cartesianFromSpherical(finalQ, 0, this.globeRadius).normalize();
-        if (isLand(this.seed, this.terrainType, surf.x, surf.y, surf.z)) {
-          continue;
-        }
+        const land = isLand(this.seed, this.terrainType, surf.x, surf.y, surf.z);
+        if (this.mode === "boat" && land) continue;
+        if (this.mode === "carpet" && !land) continue;
       }
 
       const candidate = cartesianFromSpherical(finalQ, altSample, this.globeRadius);
@@ -255,14 +265,16 @@ export class RingManager {
       if (!tooClose) return finalQ;
     }
 
-    if (this.mode === "boat") {
+    if (this.needsTerrainFilter()) {
       for (let k = 0; k < 200; k++) {
         const q = new Quaternion();
         const h = Math.random() * Math.PI * 2;
         const a = 0.5 + Math.random() * 2.0;
         const finalQ = moveOnSphere(q, h, a);
         const surf = cartesianFromSpherical(finalQ, 0, this.globeRadius).normalize();
-        if (isLand(this.seed, this.terrainType, surf.x, surf.y, surf.z)) continue;
+        const land = isLand(this.seed, this.terrainType, surf.x, surf.y, surf.z);
+        if (this.mode === "boat" && land) continue;
+        if (this.mode === "carpet" && !land) continue;
 
         const candidate = cartesianFromSpherical(finalQ, altSample, this.globeRadius);
         let tooClose = false;
@@ -285,6 +297,9 @@ export class RingManager {
     if (this.mode === "boat") {
       return this.lastResortOceanQuaternion();
     }
+    if (this.mode === "carpet") {
+      return this.lastResortLandQuaternion();
+    }
 
     const fallbackQ = new Quaternion();
     const h = Math.random() * Math.PI * 2;
@@ -302,6 +317,22 @@ export class RingManager {
       const ny = Math.sin(phi) * Math.sin(theta);
       const nz = Math.cos(phi);
       if (!isLand(this.seed, this.terrainType, nx, ny, nz)) {
+        return quaternionFromSurfaceNormal(nx, ny, nz);
+      }
+    }
+    return q;
+  }
+
+  /** Deterministic land point when random placement fails. */
+  private lastResortLandQuaternion(): Quaternion {
+    const q = new Quaternion();
+    for (let k = 0; k < 96; k++) {
+      const phi = (k / 96) * Math.PI;
+      const theta = k * 0.6180339887 * Math.PI * 2;
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
+      if (isLand(this.seed, this.terrainType, nx, ny, nz)) {
         return quaternionFromSurfaceNormal(nx, ny, nz);
       }
     }
