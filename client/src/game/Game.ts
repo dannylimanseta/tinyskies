@@ -9,6 +9,7 @@ import {
   Fog,
   PointLight,
   Vector3,
+  MeshPhongMaterial,
   VSMShadowMap,
   CanvasTexture,
   SRGBColorSpace,
@@ -79,6 +80,7 @@ export class Game {
 
   private introActive = false;
   private introTimer = 0;
+  private vehicleFlashTimer = 0;
   private introStartPos = new Vector3();
   private introEndPos = new Vector3();
   private introEndLookAt = new Vector3();
@@ -329,6 +331,10 @@ export class Game {
       this.hud.showLevelUp(level);
     };
 
+    this.collectVFX.onAbsorb = () => {
+      this.vehicleFlashTimer = 0.35;
+    };
+
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
     this.hud.setVehicle(this.playerVehicle, {
@@ -459,12 +465,26 @@ export class Game {
     // Update remote planes
     this.remotePlanes.update(dt, this.cameraRig.camera);
 
+    this.localPlayer.group.updateMatrixWorld(true);
+
     if (this.vehicleFeatures.collectibleDiamonds) {
       this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
-      this.collectVFX.update(dt);
+      const playerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      this.collectVFX.update(dt, playerPos);
     }
 
-    this.localPlayer.group.updateMatrixWorld(true);
+    if (this.vehicleFlashTimer > 0) {
+      this.vehicleFlashTimer -= dt;
+      const intensity = Math.max(0, this.vehicleFlashTimer / 0.35);
+      const emissiveVal = intensity * intensity;
+      this.localPlayer.group.traverse((child) => {
+        const mat = (child as any).material;
+        if (mat instanceof MeshPhongMaterial) {
+          mat.emissive.setRGB(emissiveVal * 0.4, emissiveVal * 1.0, emissiveVal * 0.8);
+        }
+      });
+    }
+
     if (this.playerLight) {
       this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
       const up = this.playerLight.position.clone().normalize();

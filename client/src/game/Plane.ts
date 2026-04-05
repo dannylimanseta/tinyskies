@@ -60,7 +60,7 @@ export class Plane {
       if (this.speed < MAX_SPEED) {
         this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
       } else {
-        this.speed = Math.max(MAX_SPEED, this.speed - 0.2 * dt);
+        this.speed = Math.max(MAX_SPEED, this.speed - 0.13 * dt);
       }
     } else if (brake) {
       this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
@@ -130,7 +130,13 @@ export class Plane {
   }
 
   get speedRatio(): number {
-    return Math.max(0, (this.speed - MIN_SPEED) / (BOOST_SPEED - MIN_SPEED));
+    if (this.speed <= MIN_SPEED) return 0;
+    if (this.speed <= MAX_SPEED) {
+      return 0.167 * ((this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
+    }
+    const t = Math.min(1, (this.speed - MAX_SPEED) / (BOOST_SPEED - MAX_SPEED));
+    const eased = t * (2 - t);
+    return 0.167 + 0.833 * eased;
   }
 
   addTo(scene: Scene) {
