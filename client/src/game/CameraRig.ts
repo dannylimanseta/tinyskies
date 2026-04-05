@@ -116,6 +116,18 @@ export class CameraRig {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Drive camera directly (used for intro flythrough). */
+  setPositionAndLookAt(pos: Vector3, lookAt: Vector3, rollZ = 0) {
+    this.currentPos.copy(pos);
+    this.currentLookAt.copy(lookAt);
+    this.camera.position.copy(pos);
+    this.camera.up.copy(pos.clone().normalize());
+    this.camera.lookAt(lookAt);
+    if (Math.abs(rollZ) > 0.0001) {
+      this.camera.rotateZ(rollZ);
+    }
+  }
+
   /** Snap immediately to the target (no smoothing), e.g. on spawn. */
   snapTo(
     planeQPosition: Quaternion,

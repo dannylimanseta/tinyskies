@@ -67,7 +67,7 @@ export class Carpet {
     this.altitude =
       surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z) + HOVER_HEIGHT;
     this.prevAltitude = this.altitude;
-    this.speed = CRUISE_SPEED;
+    this.speed = MIN_SPEED;
     this.applyMatrix();
   }
 

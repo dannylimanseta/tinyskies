@@ -270,6 +270,16 @@ export class HUD {
     document.head.appendChild(style);
   }
 
+  show() {
+    this.hidden = false;
+    this.el.style.display = "";
+  }
+
+  hideUI() {
+    this.hidden = true;
+    this.el.style.display = "none";
+  }
+
   dispose() {
     window.removeEventListener("keydown", this.onKey);
     this.el.remove();

@@ -95,7 +95,7 @@ export class Boat {
     const up = tangentFrame(this.qPosition).up;
     this.altitude =
       surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z) + FREEBOARD;
-    this.speed = CRUISE_SPEED;
+    this.speed = 0;
     this.applyMatrix();
   }
 

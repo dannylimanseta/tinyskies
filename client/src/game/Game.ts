@@ -8,10 +8,12 @@ import {
   Color,
   Fog,
   PointLight,
+  Vector3,
   VSMShadowMap,
   CanvasTexture,
   SRGBColorSpace,
 } from "three";
+import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig, type TimeOfDay } from "@globefly/shared";
 import { getSkyPreset, type SkyPreset } from "./SkyPresets";
 import { Globe } from "./Globe";
@@ -74,6 +76,12 @@ export class Game {
   private playerVehicle: Vehicle = "plane";
   private timeOfDay: TimeOfDay = "day";
   private vehicleFeatures!: VehicleGameFeatures;
+
+  private introActive = false;
+  private introTimer = 0;
+  private introStartPos = new Vector3();
+  private introEndPos = new Vector3();
+  private introEndLookAt = new Vector3();
 
   private hemiLight!: HemisphereLight;
   private ambientLight!: AmbientLight;
@@ -211,14 +219,30 @@ export class Game {
     this.localPlayer.addTo(this.scene);
 
     this.cameraRig = new CameraRig(w / h);
-    this.cameraRig.snapTo(
+
+    const playerWorldPos = cartesianFromSpherical(
       this.localPlayer.qPosition,
-      this.localPlayer.heading,
       this.localPlayer.altitude,
       globeRadius,
-      this.vehicleFeatures.cameraFollowDistance,
-      this.vehicleFeatures.cameraFollowHeight,
     );
+    const frame = tangentFrame(this.localPlayer.qPosition);
+    const fwd = new Vector3()
+      .addScaledVector(frame.north, Math.cos(this.localPlayer.heading))
+      .addScaledVector(frame.east, Math.sin(this.localPlayer.heading))
+      .normalize();
+
+    this.introEndPos
+      .copy(playerWorldPos)
+      .addScaledVector(fwd, -this.vehicleFeatures.cameraFollowDistance)
+      .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
+    this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
+
+    const surfaceNormal = playerWorldPos.clone().normalize();
+    this.introStartPos.copy(surfaceNormal).multiplyScalar(14);
+
+    this.cameraRig.setPositionAndLookAt(this.introStartPos, new Vector3(0, 0, 0));
+    this.introActive = true;
+    this.introTimer = 0;
 
     this.controls = new FlightControls(this.container);
 
@@ -307,6 +331,7 @@ export class Game {
     this.hud.setVehicle(this.playerVehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
     });
+    this.hud.hideUI();
 
     window.addEventListener("resize", this.onResize);
   }
@@ -342,12 +367,70 @@ export class Game {
     this.stateSync.start();
   }
 
+  private static readonly INTRO_DURATION = 4.5;
+
   private tick = () => {
     if (!this.running) return;
     requestAnimationFrame(this.tick);
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
+
+    if (this.introActive) {
+      this.introTimer += dt;
+      const raw = Math.min(this.introTimer / Game.INTRO_DURATION, 1);
+      const t = 1 - Math.pow(1 - raw, 3);
+
+      this.localPlayer.update(dt, 0, false, false, false, false);
+
+      const playerWorldPos = cartesianFromSpherical(
+        this.localPlayer.qPosition,
+        this.localPlayer.altitude,
+        globeRadius,
+      );
+      const frame = tangentFrame(this.localPlayer.qPosition);
+      const fwd = new Vector3()
+        .addScaledVector(frame.north, Math.cos(this.localPlayer.heading))
+        .addScaledVector(frame.east, Math.sin(this.localPlayer.heading))
+        .normalize();
+      this.introEndPos
+        .copy(playerWorldPos)
+        .addScaledVector(fwd, -this.vehicleFeatures.cameraFollowDistance)
+        .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
+      this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
+
+      const pos = new Vector3().lerpVectors(this.introStartPos, this.introEndPos, t);
+      const lookAt = new Vector3().lerpVectors(new Vector3(0, 0, 0), this.introEndLookAt, t);
+      const rollZ = 0.5 * (1 - t);
+      this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ);
+
+      this.globe.update(dt);
+      this.remotePlanes.update(dt, this.cameraRig.camera);
+      this.aurora?.update(dt, this.cameraRig.camera);
+
+      this.localPlayer.group.updateMatrixWorld(true);
+      if (this.playerLight) {
+        this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+        const up = this.playerLight.position.clone().normalize();
+        this.playerLight.position.addScaledVector(up, 0.15);
+      }
+
+      this.renderer.render(this.scene, this.cameraRig.camera);
+
+      if (raw >= 1) {
+        this.introActive = false;
+        this.cameraRig.snapTo(
+          this.localPlayer.qPosition,
+          this.localPlayer.heading,
+          this.localPlayer.altitude,
+          globeRadius,
+          this.vehicleFeatures.cameraFollowDistance,
+          this.vehicleFeatures.cameraFollowHeight,
+        );
+        this.hud.show();
+      }
+      return;
+    }
 
     const { turnRate, forward, brake, elevate, barrelRoll } = this.controls.getState();
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll);
