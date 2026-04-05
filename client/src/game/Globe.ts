@@ -76,11 +76,20 @@ export class Globe {
   private cloudDriftAxis = new Vector3(0.2, 1, 0.1).normalize();
   private treeSwayUniforms: { value: number }[] = [];
   private oceanTime = { value: 0 };
+  private atmosphereGlowColor: number;
+  private atmosphereGlowUniform!: { value: Color };
+  private oceanShallowColor: number;
+  private oceanDeepColor: number;
+  private foamColorValue: Color;
 
-  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default") {
+  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff) {
     this.radius = radius;
     this.seed = seed;
     this.terrainType = terrainType;
+    this.atmosphereGlowColor = atmosphereGlow;
+    this.oceanShallowColor = oceanShallow;
+    this.oceanDeepColor = oceanDeep;
+    this.foamColorValue = new Color(foamColor);
     this.createSurface();
     this.createTrees();
     this.createCoconutTrees();
@@ -111,8 +120,8 @@ export class Globe {
     ];
     const mountainColor = new Color(0xc4b07a);
     const snowColor = new Color(0xe8e8e0);
-    const oceanShallow = new Color(0x2a8ca0);
-    const oceanDeep = new Color(0x1560a0);
+    const oceanShallow = new Color(this.oceanShallowColor);
+    const oceanDeep = new Color(this.oceanDeepColor);
 
     for (let i = 0; i < vertexCount; i++) {
       const x = posAttr.getX(i);
@@ -195,6 +204,7 @@ export class Globe {
       shader.uniforms.rimColor = { value: rimColor };
       shader.uniforms.rimIntensity = { value: rimIntensity };
       shader.uniforms.rimPower = { value: rimPower };
+      shader.uniforms.foamColor = { value: this.foamColorValue };
 
       shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
@@ -214,6 +224,7 @@ uniform float oceanTime;
 uniform vec3 rimColor;
 uniform float rimIntensity;
 uniform float rimPower;
+uniform vec3 foamColor;
 varying vec3 vWorldPos;`,
       );
 
@@ -233,7 +244,7 @@ varying vec3 vWorldPos;`,
   float foam = w1 * w2 * w4 * w6 + w3 * w5 * w7 * 0.3;
   foam = 1.0 - smoothstep(0.002, 0.015, foam);
   float shallowness = smoothstep(0.1, 0.22, vColor.r);
-  gl_FragColor.rgb += vec3(0.7, 1.0, 1.0) * foam * mix(0.05, 1.0, shallowness);
+  gl_FragColor.rgb += foamColor * foam * mix(0.05, 1.0, shallowness);
 
   float sp1 = sin(wp.x * 40.0 + wp.y * 23.0 + wp.z * 9.0 + oceanTime * 3.5);
   float sp2 = sin(wp.y * 35.0 + wp.z * 29.0 + wp.x * 13.0 - oceanTime * 2.8);
@@ -1396,11 +1407,12 @@ transformed.z += sway2;`,
 
   private createAtmosphere() {
     const geo = new SphereGeometry(this.radius * 1.45, 48, 48);
+    this.atmosphereGlowUniform = { value: new Color(this.atmosphereGlowColor) };
     const mat = new ShaderMaterial({
       vertexShader: ATMOSPHERE_VERTEX,
       fragmentShader: ATMOSPHERE_FRAGMENT,
       uniforms: {
-        glowColor: { value: new Color(0xeeddbb) },
+        glowColor: this.atmosphereGlowUniform,
       },
       side: BackSide,
       blending: AdditiveBlending,
@@ -1410,6 +1422,10 @@ transformed.z += sway2;`,
 
     this.atmosphereMesh = new Mesh(geo, mat);
     this.group.add(this.atmosphereMesh);
+  }
+
+  setAtmosphereGlow(color: number) {
+    this.atmosphereGlowUniform.value.set(color);
   }
 
   update(dt: number) {

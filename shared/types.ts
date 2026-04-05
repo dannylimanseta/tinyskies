@@ -1,4 +1,5 @@
 export type Vehicle = "plane" | "boat" | "carpet";
+export type TimeOfDay = "day" | "evening" | "night";
 
 export type { VehicleGameFeatures } from "./vehicleCapabilities";
 export { getVehicleFeatures } from "./vehicleCapabilities";

@@ -11,7 +11,8 @@ import {
   CanvasTexture,
   SRGBColorSpace,
 } from "three";
-import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig } from "@globefly/shared";
+import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig, type TimeOfDay } from "@globefly/shared";
+import { getSkyPreset, type SkyPreset } from "./SkyPresets";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
@@ -65,7 +66,18 @@ export class Game {
   private worldConfig: WorldConfig | null = null;
   private playerName = "Pilot";
   private playerVehicle: Vehicle = "plane";
+  private timeOfDay: TimeOfDay = "day";
   private vehicleFeatures!: VehicleGameFeatures;
+
+  private hemiLight!: HemisphereLight;
+  private ambientLight!: AmbientLight;
+  private sunLight!: DirectionalLight;
+  private sun2Light!: DirectionalLight;
+  private fillLight!: DirectionalLight;
+  private fill2Light!: DirectionalLight;
+  private backLight!: DirectionalLight;
+  private skyCanvas!: HTMLCanvasElement;
+  private skyTexture!: CanvasTexture;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -74,8 +86,8 @@ export class Game {
   start() {
     this.lobby = new Lobby(this.container, {
       onCreateWorld: (name, texture) => this.handleCreateWorld(name, texture),
-      onJoinWorld: (slug, playerName, vehicle) =>
-        this.handleJoinWorld(slug, playerName, vehicle),
+      onJoinWorld: (slug, playerName, vehicle, timeOfDay) =>
+        this.handleJoinWorld(slug, playerName, vehicle, timeOfDay),
     });
     this.lobby.show();
   }
@@ -100,9 +112,11 @@ export class Game {
     slug: string,
     playerName: string,
     vehicle: Vehicle = "plane",
+    timeOfDay: TimeOfDay = "day",
   ) {
     this.playerName = playerName || "Pilot";
     this.playerVehicle = vehicle;
+    this.timeOfDay = timeOfDay;
     const serverUrl = this.getServerUrl();
 
     try {
@@ -136,49 +150,49 @@ export class Game {
     this.container.appendChild(this.renderer.domElement);
 
     this.scene = new Scene();
-    this.scene.background = this.createSkyGradient();
-    this.scene.fog = new Fog(0xa0d8f0, 15, 40);
+    const preset = getSkyPreset(this.timeOfDay);
+    this.scene.background = this.createSkyGradient(preset.skyGradient);
+    this.scene.fog = new Fog(preset.fogColor, preset.fogNear, preset.fogFar);
     this.clock = new Clock();
 
-    // Bright even lighting across the whole globe
-    const hemi = new HemisphereLight(0x99ccff, 0x66aa44, 1.4);
-    this.scene.add(hemi);
-    const ambient = new AmbientLight(0xffffff, 1.0);
-    this.scene.add(ambient);
-    const sun = new DirectionalLight(0xfff0d0, 3.0);
-    sun.position.set(10, 12, 5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 30;
-    sun.shadow.camera.left = -10;
-    sun.shadow.camera.right = 10;
-    sun.shadow.camera.top = 10;
-    sun.shadow.camera.bottom = -10;
-    sun.shadow.radius = 4;
-    sun.shadow.blurSamples = 16;
-    sun.shadow.bias = -0.0005;
-    this.scene.add(sun);
-    const fill = new DirectionalLight(0xaabbdd, 1.0);
-    fill.position.set(-8, -5, -10);
-    this.scene.add(fill);
-    const back = new DirectionalLight(0xccddee, 0.8);
-    back.position.set(-3, 10, -6);
-    this.scene.add(back);
+    this.hemiLight = new HemisphereLight(preset.hemiSkyColor, preset.hemiGroundColor, preset.hemiIntensity);
+    this.scene.add(this.hemiLight);
+    this.ambientLight = new AmbientLight(preset.ambientColor, preset.ambientIntensity);
+    this.scene.add(this.ambientLight);
+    this.sunLight = new DirectionalLight(preset.sunColor, preset.sunIntensity);
+    this.sunLight.position.set(10, 12, 5);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.mapSize.width = 2048;
+    this.sunLight.shadow.mapSize.height = 2048;
+    this.sunLight.shadow.camera.near = 1;
+    this.sunLight.shadow.camera.far = 30;
+    this.sunLight.shadow.camera.left = -10;
+    this.sunLight.shadow.camera.right = 10;
+    this.sunLight.shadow.camera.top = 10;
+    this.sunLight.shadow.camera.bottom = -10;
+    this.sunLight.shadow.radius = 4;
+    this.sunLight.shadow.blurSamples = 16;
+    this.sunLight.shadow.bias = -0.0005;
+    this.scene.add(this.sunLight);
+    this.fillLight = new DirectionalLight(preset.fillColor, preset.fillIntensity);
+    this.fillLight.position.set(-8, -5, -10);
+    this.scene.add(this.fillLight);
+    this.backLight = new DirectionalLight(preset.backColor, preset.backIntensity);
+    this.backLight.position.set(-3, 10, -6);
+    this.scene.add(this.backLight);
 
-    const sun2 = new DirectionalLight(0xfff0d0, 2.0);
-    sun2.position.set(-10, -12, -5);
-    this.scene.add(sun2);
-    const fill2 = new DirectionalLight(0xaabbdd, 0.8);
-    fill2.position.set(8, -8, -10);
-    this.scene.add(fill2);
+    this.sun2Light = new DirectionalLight(preset.sun2Color, preset.sun2Intensity);
+    this.sun2Light.position.set(-10, -12, -5);
+    this.scene.add(this.sun2Light);
+    this.fill2Light = new DirectionalLight(preset.fill2Color, preset.fill2Intensity);
+    this.fill2Light.position.set(8, -8, -10);
+    this.scene.add(this.fill2Light);
 
     const seed = this.worldConfig?.seed ?? 42;
     const terrainType = this.worldConfig?.terrainType ?? "default";
     this.gameSeed = seed;
     this.gameTerrainType = terrainType;
-    this.globe = new Globe(globeRadius, seed, terrainType);
+    this.globe = new Globe(globeRadius, seed, terrainType, preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep, preset.oceanFoam);
     this.globe.addTo(this.scene);
 
     if (this.playerVehicle === "boat") {
@@ -227,6 +241,7 @@ export class Game {
     this.scene.add(this.carpetLeaves.group);
 
     this.lensFlare = new LensFlare();
+    this.lensFlare.setColorScale(preset.flareColorScale);
 
     const ringMode = this.playerVehicle === "boat"
       ? "boat"
@@ -401,28 +416,20 @@ export class Game {
     this.cameraRig.resize(w / h);
   };
 
-  private createSkyGradient(): CanvasTexture {
-    const canvas = document.createElement("canvas");
-    canvas.width = 2;
-    canvas.height = 512;
-    const ctx = canvas.getContext("2d")!;
+  private createSkyGradient(stops: { stop: number; color: string }[]): CanvasTexture {
+    this.skyCanvas = document.createElement("canvas");
+    this.skyCanvas.width = 2;
+    this.skyCanvas.height = 512;
+    const ctx = this.skyCanvas.getContext("2d")!;
     const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-    gradient.addColorStop(0.0, "#0a1e4a");
-    gradient.addColorStop(0.1, "#12306e");
-    gradient.addColorStop(0.2, "#1c4a90");
-    gradient.addColorStop(0.3, "#2866b0");
-    gradient.addColorStop(0.4, "#3580cc");
-    gradient.addColorStop(0.5, "#4898dc");
-    gradient.addColorStop(0.6, "#60b0ea");
-    gradient.addColorStop(0.7, "#78c4f2");
-    gradient.addColorStop(0.8, "#90d4f8");
-    gradient.addColorStop(0.9, "#a8e0fc");
-    gradient.addColorStop(1.0, "#c0ecff");
+    for (const s of stops) {
+      gradient.addColorStop(s.stop, s.color);
+    }
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 2, 512);
-    const tex = new CanvasTexture(canvas);
-    tex.colorSpace = SRGBColorSpace;
-    return tex;
+    this.skyTexture = new CanvasTexture(this.skyCanvas);
+    this.skyTexture.colorSpace = SRGBColorSpace;
+    return this.skyTexture;
   }
 
   private getServerUrl(): string {

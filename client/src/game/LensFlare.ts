@@ -64,6 +64,7 @@ interface FlareElement {
   material: ShaderMaterial;
   offset: number;
   size: number;
+  baseColor: number[];
 }
 
 export class LensFlare {
@@ -106,7 +107,16 @@ export class LensFlare {
       const mesh = new Mesh(this.geo, mat);
       mesh.visible = false;
       this.orthoScene.add(mesh);
-      this.elements.push({ mesh, material: mat, offset: d.offset, size: d.size });
+      this.elements.push({ mesh, material: mat, offset: d.offset, size: d.size, baseColor: [...d.color] });
+    }
+  }
+
+  setColorScale(scale: [number, number, number]) {
+    for (const el of this.elements) {
+      const c = el.material.uniforms.color.value as number[];
+      c[0] = el.baseColor[0] * scale[0];
+      c[1] = el.baseColor[1] * scale[1];
+      c[2] = el.baseColor[2] * scale[2];
     }
   }
 

@@ -1,8 +1,8 @@
-import type { Vehicle } from "@globefly/shared";
+import type { Vehicle, TimeOfDay } from "@globefly/shared";
 
 interface LobbyCallbacks {
   onCreateWorld: (name: string, texture: string) => void;
-  onJoinWorld: (slug: string, playerName: string, vehicle: Vehicle) => void;
+  onJoinWorld: (slug: string, playerName: string, vehicle: Vehicle, timeOfDay: TimeOfDay) => void;
 }
 
 interface WorldListItem {
@@ -24,6 +24,7 @@ export class Lobby {
   private el: HTMLDivElement;
   private callbacks: LobbyCallbacks;
   private selectedVehicle: Vehicle = "plane";
+  private selectedTimeOfDay: TimeOfDay = "day";
 
   constructor(container: HTMLElement, callbacks: LobbyCallbacks) {
     this.container = container;
@@ -59,6 +60,13 @@ export class Lobby {
               </div>
               <p class="vehicle-hint">Boats stay on the ocean. Carpet hugs the terrain.</p>
             </fieldset>
+            <fieldset class="form-group vehicle-fieldset">
+              <legend class="vehicle-legend">Time of Day</legend>
+              <div class="vehicle-seg time-seg" role="tablist" aria-label="Time of Day">
+                <button type="button" class="vehicle-btn time-btn active" data-time="day" aria-pressed="true">Day</button>
+                <button type="button" class="vehicle-btn time-btn" data-time="evening" aria-pressed="false">Evening</button>
+              </div>
+            </fieldset>
             <div class="form-group">
               <label>World Code</label>
               <input type="text" id="world-slug" placeholder="Paste world code or URL" />
@@ -91,6 +99,13 @@ export class Lobby {
               </div>
               <p class="vehicle-hint">Boats stay on the ocean. Carpet hugs the terrain.</p>
             </fieldset>
+            <fieldset class="form-group vehicle-fieldset">
+              <legend class="vehicle-legend">Time of Day</legend>
+              <div class="vehicle-seg time-seg time-seg-create" role="tablist" aria-label="Time of Day">
+                <button type="button" class="vehicle-btn time-btn active" data-time="day" aria-pressed="true">Day</button>
+                <button type="button" class="vehicle-btn time-btn" data-time="evening" aria-pressed="false">Evening</button>
+              </div>
+            </fieldset>
             <button class="btn btn-primary" id="btn-create">Create World</button>
           </div>
 
@@ -119,13 +134,14 @@ export class Lobby {
     });
 
     this.bindVehicleSegments();
+    this.bindTimeOfDaySegments();
 
     this.el.querySelector("#btn-join")!.addEventListener("click", () => {
       const slug = (this.el.querySelector("#world-slug") as HTMLInputElement).value.trim();
       const name = (this.el.querySelector("#player-name") as HTMLInputElement).value.trim();
       const extracted = this.extractSlug(slug);
       if (!extracted) return;
-      this.callbacks.onJoinWorld(extracted, name || "Pilot", this.selectedVehicle);
+      this.callbacks.onJoinWorld(extracted, name || "Pilot", this.selectedVehicle, this.selectedTimeOfDay);
     });
 
     this.el.querySelector("#btn-create")!.addEventListener("click", () => {
@@ -143,7 +159,7 @@ export class Lobby {
     this.el.querySelector("#btn-join-created")!.addEventListener("click", () => {
       const slug = (this.el.querySelector("#share-slug") as HTMLInputElement).value;
       const name = (this.el.querySelector("#player-name") as HTMLInputElement).value.trim();
-      this.callbacks.onJoinWorld(slug, name || "Pilot", this.selectedVehicle);
+      this.callbacks.onJoinWorld(slug, name || "Pilot", this.selectedVehicle, this.selectedTimeOfDay);
     });
 
     this.applyStyles();
@@ -164,6 +180,25 @@ export class Lobby {
       btn.addEventListener("click", () => {
         const v = (btn as HTMLButtonElement).dataset.vehicle as Vehicle;
         if (v === "plane" || v === "boat" || v === "carpet") setVehicle(v);
+      });
+    });
+  }
+
+  private bindTimeOfDaySegments() {
+    const setTime = (t: TimeOfDay) => {
+      this.selectedTimeOfDay = t;
+      this.el.querySelectorAll(".time-btn").forEach((btn) => {
+        const b = btn as HTMLButtonElement;
+        const active = b.dataset.time === t;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+    };
+
+    this.el.querySelectorAll(".time-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const t = (btn as HTMLButtonElement).dataset.time as TimeOfDay;
+        if (t === "day" || t === "evening") setTime(t);
       });
     });
   }
