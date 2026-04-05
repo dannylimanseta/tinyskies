@@ -26,6 +26,7 @@ import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
 import { CarpetTrail } from "./CarpetTrail";
 import { CarpetWake } from "./CarpetWake";
+import { CarpetLeaves } from "./CarpetLeaves";
 import { LensFlare } from "./LensFlare";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
@@ -48,6 +49,7 @@ export class Game {
   private wakeTrail!: WakeTrail;
   private carpetTrail!: CarpetTrail;
   private carpetWake!: CarpetWake;
+  private carpetLeaves!: CarpetLeaves;
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare!: LensFlare;
@@ -213,6 +215,10 @@ export class Game {
     this.carpetWake.group.visible = this.vehicleFeatures.carpetTrail;
     this.scene.add(this.carpetWake.group);
 
+    this.carpetLeaves = new CarpetLeaves();
+    this.carpetLeaves.group.visible = this.vehicleFeatures.carpetTrail;
+    this.scene.add(this.carpetLeaves.group);
+
     this.lensFlare = new LensFlare();
 
     const ringMode = this.playerVehicle === "boat"
@@ -355,6 +361,16 @@ export class Game {
         this.gameSeed,
         this.gameTerrainType,
         this.cameraRig.camera,
+      );
+      this.carpetLeaves.update(
+        dt,
+        this.localPlayer.qPosition,
+        this.localPlayer.heading,
+        globeRadius,
+        this.localPlayer.speed,
+        this.localPlayer.altitude,
+        this.gameSeed,
+        this.gameTerrainType,
       );
     }
 
