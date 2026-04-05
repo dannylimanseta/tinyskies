@@ -31,6 +31,7 @@ export interface SkyPreset {
   oceanFoam: number;
 
   rimColor: number;
+  cloudOpacity: number;
 
   atmosphereGlow: number;
   flareColorScale: [number, number, number];
@@ -80,6 +81,7 @@ const DAY_PRESET: SkyPreset = {
   oceanFoam: 0xb3ffff,
 
   rimColor: 0xffeebb,
+  cloudOpacity: 0.2,
 
   atmosphereGlow: 0xeeddbb,
   flareColorScale: [1.0, 1.0, 1.0],
@@ -104,29 +106,30 @@ const EVENING_PRESET: SkyPreset = {
 
   hemiSkyColor: 0xff9944,
   hemiGroundColor: 0x554422,
-  hemiIntensity: 0.9,
+  hemiIntensity: 1.1,
 
   ambientColor: 0xffd8a0,
-  ambientIntensity: 0.4,
+  ambientIntensity: 0.6,
 
   sunColor: 0xffaa40,
-  sunIntensity: 2.5,
+  sunIntensity: 2.8,
   sun2Color: 0xaa6640,
-  sun2Intensity: 0.6,
+  sun2Intensity: 0.8,
 
   fillColor: 0xcc8855,
-  fillIntensity: 0.5,
+  fillIntensity: 0.7,
   fill2Color: 0x886644,
-  fill2Intensity: 0.3,
+  fill2Intensity: 0.4,
 
   backColor: 0xaa7766,
-  backIntensity: 0.4,
+  backIntensity: 0.5,
 
   oceanShallow: 0x5a4a98,
   oceanDeep: 0x302868,
   oceanFoam: 0xff9944,
 
-  rimColor: 0xffdd44,
+  rimColor: 0xffaa30,
+  cloudOpacity: 0.2,
 
   atmosphereGlow: 0xffcc44,
   flareColorScale: [1.0, 0.75, 0.4],
@@ -149,31 +152,32 @@ const NIGHT_PRESET: SkyPreset = {
   fogNear: 10,
   fogFar: 30,
 
-  hemiSkyColor: 0x1a2244,
-  hemiGroundColor: 0x0a1418,
-  hemiIntensity: 0.3,
+  hemiSkyColor: 0x223366,
+  hemiGroundColor: 0x112020,
+  hemiIntensity: 0.5,
 
   ambientColor: 0x8899cc,
-  ambientIntensity: 0.15,
+  ambientIntensity: 0.3,
 
   sunColor: 0xccddff,
-  sunIntensity: 0.4,
+  sunIntensity: 0.7,
   sun2Color: 0x667799,
-  sun2Intensity: 0.15,
+  sun2Intensity: 0.3,
 
   fillColor: 0x445588,
-  fillIntensity: 0.2,
+  fillIntensity: 0.35,
   fill2Color: 0x334466,
-  fill2Intensity: 0.1,
+  fill2Intensity: 0.2,
 
   backColor: 0x445566,
-  backIntensity: 0.15,
+  backIntensity: 0.25,
 
   oceanShallow: 0x0c1a30,
   oceanDeep: 0x060e1e,
   oceanFoam: 0x3366aa,
 
   rimColor: 0x4488ff,
+  cloudOpacity: 0.06,
 
   atmosphereGlow: 0x3366dd,
   flareColorScale: [0.3, 0.4, 0.8],

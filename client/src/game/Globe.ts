@@ -82,8 +82,9 @@ export class Globe {
   private oceanDeepColor: number;
   private foamColorValue: Color;
   private rimColorValue: Color;
+  private cloudOpacityValue: number;
 
-  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb) {
+  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb, cloudOpacity: number = 0.2) {
     this.radius = radius;
     this.seed = seed;
     this.terrainType = terrainType;
@@ -92,6 +93,7 @@ export class Globe {
     this.oceanDeepColor = oceanDeep;
     this.foamColorValue = new Color(foamColor);
     this.rimColorValue = new Color(rimColor);
+    this.cloudOpacityValue = cloudOpacity;
     this.createSurface();
     this.createTrees();
     this.createCoconutTrees();
@@ -1317,7 +1319,7 @@ transformed.z += sway2;`,
     const cloudMat = new ShaderMaterial({
       uniforms: {
         cloudColor: { value: new Color(0xffe8cc) },
-        opacity: { value: 0.2 },
+        opacity: { value: this.cloudOpacityValue },
       },
       vertexShader: `
         varying vec3 vNormal;

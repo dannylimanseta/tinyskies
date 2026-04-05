@@ -196,7 +196,7 @@ export class Game {
     const terrainType = this.worldConfig?.terrainType ?? "default";
     this.gameSeed = seed;
     this.gameTerrainType = terrainType;
-    this.globe = new Globe(globeRadius, seed, terrainType, preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep, preset.oceanFoam, preset.rimColor);
+    this.globe = new Globe(globeRadius, seed, terrainType, preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep, preset.oceanFoam, preset.rimColor, preset.cloudOpacity);
     this.globe.addTo(this.scene);
 
     if (this.playerVehicle === "boat") {
@@ -249,7 +249,7 @@ export class Game {
 
     if (preset.stars) {
       this.starfield = new Starfield();
-      this.scene.add(this.starfield.points);
+      this.scene.add(this.starfield.group);
 
       this.playerLight = new PointLight(0xffaa55, 0.4, 4.0, 1.5);
       this.scene.add(this.playerLight);
