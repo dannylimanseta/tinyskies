@@ -31,6 +31,7 @@ import { CarpetWake } from "./CarpetWake";
 import { CarpetLeaves } from "./CarpetLeaves";
 import { LensFlare } from "./LensFlare";
 import { Starfield } from "./Starfield";
+import { Aurora } from "./Aurora";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby } from "../ui/Lobby";
@@ -57,6 +58,7 @@ export class Game {
   private gameTerrainType = "default";
   private lensFlare!: LensFlare;
   private starfield: Starfield | null = null;
+  private aurora: Aurora | null = null;
   private playerLight: PointLight | null = null;
   private ringManager!: RingManager;
   private collectVFX!: RingCollectVFX;
@@ -251,8 +253,13 @@ export class Game {
       this.starfield = new Starfield();
       this.scene.add(this.starfield.group);
 
-      this.playerLight = new PointLight(0xffaa55, 0.4, 4.0, 1.5);
+      this.playerLight = new PointLight(0xffaa55, 0.8, 4.0, 1.5);
       this.scene.add(this.playerLight);
+    }
+
+    if (preset.aurora) {
+      this.aurora = new Aurora();
+      this.scene.add(this.aurora.group);
     }
 
     const ringMode = this.playerVehicle === "boat"
@@ -417,6 +424,7 @@ export class Game {
     this.hud.setAltitude(this.localPlayer.altitude);
 
     this.lensFlare.update(this.cameraRig.camera);
+    this.aurora?.update(dt, this.cameraRig.camera);
 
     // Render
     this.renderer.render(this.scene, this.cameraRig.camera);
@@ -463,6 +471,7 @@ export class Game {
     this.wakeTrail?.dispose();
     this.lensFlare?.dispose();
     this.starfield?.dispose();
+    this.aurora?.dispose();
     this.ringManager?.dispose();
     this.collectVFX?.dispose();
     this.localPlayer?.dispose();

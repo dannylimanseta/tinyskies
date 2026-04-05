@@ -36,6 +36,7 @@ export interface SkyPreset {
   atmosphereGlow: number;
   flareColorScale: [number, number, number];
   stars: boolean;
+  aurora: boolean;
 }
 
 const DAY_PRESET: SkyPreset = {
@@ -86,6 +87,7 @@ const DAY_PRESET: SkyPreset = {
   atmosphereGlow: 0xeeddbb,
   flareColorScale: [1.0, 1.0, 1.0],
   stars: false,
+  aurora: false,
 };
 
 const EVENING_PRESET: SkyPreset = {
@@ -134,6 +136,7 @@ const EVENING_PRESET: SkyPreset = {
   atmosphereGlow: 0xffcc44,
   flareColorScale: [1.0, 0.75, 0.4],
   stars: false,
+  aurora: false,
 };
 
 const NIGHT_PRESET: SkyPreset = {
@@ -182,6 +185,7 @@ const NIGHT_PRESET: SkyPreset = {
   atmosphereGlow: 0x3366dd,
   flareColorScale: [0.3, 0.4, 0.8],
   stars: true,
+  aurora: true,
 };
 
 const SKY_PRESETS: Record<TimeOfDay, SkyPreset> = {
