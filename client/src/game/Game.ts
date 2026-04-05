@@ -25,6 +25,7 @@ import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
 import { CarpetTrail } from "./CarpetTrail";
+import { CarpetWake } from "./CarpetWake";
 import { LensFlare } from "./LensFlare";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
@@ -46,6 +47,9 @@ export class Game {
   private contrails!: Contrails;
   private wakeTrail!: WakeTrail;
   private carpetTrail!: CarpetTrail;
+  private carpetWake!: CarpetWake;
+  private gameSeed = 42;
+  private gameTerrainType = "default";
   private lensFlare!: LensFlare;
   private ringManager!: RingManager;
   private collectVFX!: RingCollectVFX;
@@ -163,6 +167,8 @@ export class Game {
 
     const seed = this.worldConfig?.seed ?? 42;
     const terrainType = this.worldConfig?.terrainType ?? "default";
+    this.gameSeed = seed;
+    this.gameTerrainType = terrainType;
     this.globe = new Globe(globeRadius, seed, terrainType);
     this.globe.addTo(this.scene);
 
@@ -202,6 +208,10 @@ export class Game {
     this.carpetTrail = new CarpetTrail();
     this.carpetTrail.group.visible = this.vehicleFeatures.carpetTrail;
     this.scene.add(this.carpetTrail.group);
+
+    this.carpetWake = new CarpetWake();
+    this.carpetWake.group.visible = this.vehicleFeatures.carpetTrail;
+    this.scene.add(this.carpetWake.group);
 
     this.lensFlare = new LensFlare();
 
@@ -333,6 +343,16 @@ export class Game {
         this.localPlayer.group.matrixWorld,
         this.cameraRig.camera,
         this.localPlayer.speedRatio,
+      );
+      this.carpetWake.update(
+        dt,
+        this.localPlayer.qPosition,
+        this.localPlayer.heading,
+        globeRadius,
+        this.localPlayer.speed,
+        this.gameSeed,
+        this.gameTerrainType,
+        this.cameraRig.camera,
       );
     }
 
