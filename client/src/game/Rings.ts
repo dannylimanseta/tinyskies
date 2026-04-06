@@ -30,7 +30,6 @@ const DIAMOND_SIZE = 0.09;
 /** Boat diamonds use a smaller mesh than planes (same shape). */
 const BOAT_DIAMOND_SCALE = 0.55;
 const DIAMOND_XP = 10;
-const DIAMOND_COLOR: [number, number, number] = [0.2, 1.0, 0.8];
 const COLLECTION_RADIUS = 0.3;
 const LOW_ALTITUDE = 0.55;
 const HIGH_ALTITUDE_MIN = 0.9;
@@ -79,37 +78,45 @@ function randomPlaneAltitude(): number {
 const holoVert = `
 varying vec3 vWorldPos;
 varying vec3 vNorm;
+varying vec3 vViewDir;
 
 void main() {
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
   vWorldPos = worldPos.xyz;
   vNorm = normalize(normalMatrix * normal);
+  vViewDir = normalize(cameraPosition - worldPos.xyz);
   gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
 `;
 
 const holoFrag = `
-uniform vec3 baseColor;
 uniform float time;
 uniform float phaseOffset;
 uniform float spawnScale;
 
 varying vec3 vWorldPos;
 varying vec3 vNorm;
+varying vec3 vViewDir;
+
+vec3 hueShift(float h) {
+  vec3 k = mod(vec3(h * 6.0, h * 6.0 + 4.0, h * 6.0 + 2.0), 6.0);
+  return clamp(min(k, 4.0 - k), 0.0, 1.0);
+}
 
 void main() {
-  vec3 viewDir = normalize(cameraPosition - vWorldPos);
-  float fresnel = 1.0 - abs(dot(viewDir, vNorm));
-  fresnel = pow(fresnel, 1.2);
+  float fresnel = 1.0 - abs(dot(vViewDir, vNorm));
+  fresnel = pow(fresnel, 1.0);
 
-  float pulse = 0.75 + 0.25 * sin(time * 2.5 + phaseOffset);
+  float facetAngle = dot(vNorm, vec3(0.577, 0.577, 0.577));
+  float hue = fract(fresnel * 1.2 + facetAngle * 0.4 + time * 0.15 + phaseOffset * 0.16);
+  vec3 rainbow = hueShift(hue);
 
-  float facetGlint = 0.9 + 0.1 * sin(dot(vNorm, vec3(1.0, 2.0, 0.5)) * 20.0 + time * 4.0);
+  float glint = 0.85 + 0.15 * sin(facetAngle * 30.0 + time * 5.0);
+  float pulse = 0.8 + 0.2 * sin(time * 2.5 + phaseOffset);
 
-  vec3 holoShift = baseColor + vec3(fresnel * 0.4, fresnel * 0.15, fresnel * 0.25);
+  vec3 col = mix(rainbow, vec3(1.0), fresnel * 0.2) * (0.8 + fresnel * 0.6) * glint * pulse;
 
-  float alpha = (0.3 + fresnel * 0.55) * pulse * facetGlint * spawnScale;
-  vec3 col = holoShift * (1.0 + fresnel * 1.0) * pulse * facetGlint;
+  float alpha = (0.2 + fresnel * 0.4) * pulse * glint * spawnScale;
 
   gl_FragColor = vec4(col, alpha);
 }
@@ -167,7 +174,6 @@ export class RingManager {
       vertexShader: holoVert,
       fragmentShader: holoFrag,
       uniforms: {
-        baseColor: { value: DIAMOND_COLOR },
         time: { value: 0 },
         phaseOffset: { value: Math.random() * Math.PI * 2 },
         spawnScale: { value: 0 },
