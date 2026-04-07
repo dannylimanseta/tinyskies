@@ -39,6 +39,7 @@ export interface ServerToClientEvents {
   "player:update": (player: PlayerState) => void;
   "world:state": (players: PlayerState[]) => void;
   "world:config": (config: WorldConfig) => void;
+  "world:full": (slug: string) => void;
 }
 
 export interface ClientToServerEvents {
@@ -47,5 +48,6 @@ export interface ClientToServerEvents {
     worldSlug: string,
     playerName: string,
     vehicle?: Vehicle,
+    reservationId?: string,
   ) => void;
 }

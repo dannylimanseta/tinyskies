@@ -34,8 +34,8 @@ export class SocketClient {
     return this.socket.connected;
   }
 
-  joinWorld(slug: string, playerName: string, vehicle: Vehicle = "plane") {
-    this.socket.emit("world:join", slug, playerName, vehicle);
+  joinWorld(slug: string, playerName: string, vehicle: Vehicle = "plane", reservationId?: string) {
+    this.socket.emit("world:join", slug, playerName, vehicle, reservationId);
   }
 
   sendMove(state: Omit<PlayerState, "id">) {
@@ -56,6 +56,10 @@ export class SocketClient {
 
   onWorldState(cb: (players: PlayerState[]) => void) {
     this.socket.on("world:state", cb);
+  }
+
+  onWorldFull(cb: (slug: string) => void) {
+    this.socket.on("world:full", cb);
   }
 
   disconnect() {

@@ -38,10 +38,10 @@ app.get("/health", (_req, res) => {
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  socket.on("world:join", (slug, playerName, vehicle) => {
+  socket.on("world:join", (slug, playerName, vehicle, reservationId) => {
     console.log(`Player ${socket.id} joining world: ${slug}`);
     const v = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
-    roomManager.joinRoom(slug, socket, playerName, v);
+    roomManager.joinRoom(slug, socket, playerName, v, reservationId);
   });
 
   socket.on("disconnect", () => {
@@ -49,6 +49,17 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`GlobeFly server running on http://localhost:${PORT}`);
+async function bootstrap() {
+  await roomManager.loadWorldSlugs(prisma);
+  console.log(`Loaded ${roomManager.getAllWorldSlugs().length} world(s) into cache`);
+  roomManager.startOverflowCleanup(prisma);
+
+  httpServer.listen(PORT, () => {
+    console.log(`Tiny Skies server running on http://localhost:${PORT}`);
+  });
+}
+
+bootstrap().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });

@@ -11,6 +11,8 @@ interface ConnectedPlayer {
   state: PlayerState;
 }
 
+export const MAX_PLAYERS = 15;
+
 export class Room {
   readonly slug: string;
   private players = new Map<string, ConnectedPlayer>();
@@ -27,11 +29,16 @@ export class Room {
     return this.players.size === 0;
   }
 
+  get isFull() {
+    return this.players.size >= MAX_PLAYERS;
+  }
+
   addPlayer(
     socket: Socket<ClientToServerEvents, ServerToClientEvents>,
     name: string,
     vehicle: Vehicle = "plane",
-  ): PlayerState {
+  ): PlayerState | null {
+    if (this.isFull) return null;
     const state: PlayerState = {
       id: socket.id,
       name,

@@ -109,6 +109,7 @@ export class Game {
   private previewActive = false;
   private previewAngle = 0;
   private loadingEl: HTMLDivElement | null = null;
+  private reservationId?: string;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -122,24 +123,14 @@ export class Game {
     const serverUrl = this.getServerUrl();
 
     try {
-      const listRes = await fetch(`${serverUrl}/api/worlds`);
-      if (!listRes.ok) throw new Error("Failed to fetch world list");
-      let worlds = await listRes.json();
-
-      if (worlds.length === 0) {
-        const createRes = await fetch(`${serverUrl}/api/worlds`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "GlobeFly World", texture: "earth", createdBy: "System" }),
-        });
-        if (!createRes.ok) throw new Error("Failed to create default world");
-        worlds = [await createRes.json()];
-      }
-
-      this.worldSlug = worlds[0].slug;
-      const configRes = await fetch(`${serverUrl}/api/worlds/${this.worldSlug}`);
-      if (!configRes.ok) throw new Error("Failed to fetch world config");
-      this.worldConfig = await configRes.json();
+      const joinRes = await fetch(`${serverUrl}/api/worlds/auto-join`, {
+        method: "POST",
+      });
+      if (!joinRes.ok) throw new Error("Failed to auto-join world");
+      const data = await joinRes.json();
+      this.worldSlug = data.slug;
+      this.reservationId = data.reservationId;
+      this.worldConfig = data;
     } catch (err) {
       console.error("Server error:", err);
       this.showLoadingError();
@@ -175,7 +166,7 @@ export class Game {
     this.loadingEl = document.createElement("div");
     this.loadingEl.id = "loading-overlay";
     this.loadingEl.innerHTML = `
-      <h1 class="loading-title">GlobeFly</h1>
+      <h1 class="loading-title">Tiny Skies</h1>
     `;
     Object.assign(this.loadingEl.style, {
       position: "fixed",
@@ -221,7 +212,7 @@ export class Game {
         <h1 class="loading-title" style="font-size:3rem;font-weight:800;margin:0;
           background:linear-gradient(135deg,#4488ff,#44ddff);
           -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-          background-clip:text;animation:none;">GlobeFly</h1>
+          background-clip:text;animation:none;">Tiny Skies</h1>
         <p style="color:rgba(180,200,255,0.5);margin:16px 0 20px;font-size:0.9rem;">
           Could not connect to server
         </p>
@@ -534,6 +525,9 @@ export class Game {
 
   /* ── Networking ──────────────────────────────────────────────────── */
 
+  private worldFullRetries = 0;
+  private static readonly MAX_WORLD_FULL_RETRIES = 3;
+
   private initNetworking(slug: string) {
     const serverUrl = this.getServerUrl();
     this.socketClient = new SocketClient(serverUrl);
@@ -559,10 +553,66 @@ export class Game {
       this.hud.setPlayerCount(this.remotePlanes.count + 1);
     });
 
-    this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle);
+    this.socketClient.onWorldFull(() => {
+      this.handleWorldFull();
+    });
+
+    this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle, this.reservationId);
 
     this.stateSync = new StateSync(this.socketClient, this.localPlayer);
     this.stateSync.start();
+  }
+
+  private async handleWorldFull() {
+    this.worldFullRetries++;
+    if (this.worldFullRetries > Game.MAX_WORLD_FULL_RETRIES) {
+      console.error("Max world:full retries exceeded");
+      return;
+    }
+
+    console.log(`World full, retrying auto-join (attempt ${this.worldFullRetries})...`);
+
+    this.socketClient?.disconnect();
+    this.stateSync?.stop();
+
+    const toast = document.createElement("div");
+    Object.assign(toast.style, {
+      position: "fixed",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      padding: "16px 28px",
+      borderRadius: "12px",
+      background: "rgba(0, 0, 0, 0.7)",
+      backdropFilter: "blur(12px)",
+      color: "white",
+      fontFamily: "'Inter', system-ui, sans-serif",
+      fontSize: "0.95rem",
+      zIndex: "300",
+    });
+    toast.textContent = "Finding a new world...";
+    this.container.appendChild(toast);
+
+    try {
+      const serverUrl = this.getServerUrl();
+      const joinRes = await fetch(`${serverUrl}/api/worlds/auto-join`, {
+        method: "POST",
+      });
+      if (!joinRes.ok) throw new Error("Failed to auto-join");
+      const data = await joinRes.json();
+
+      this.worldSlug = data.slug;
+      this.reservationId = data.reservationId;
+      this.worldConfig = data;
+
+      this.hud.setWorldName(data.name ?? "Unknown World");
+
+      this.initNetworking(this.worldSlug);
+    } catch (err) {
+      console.error("Retry auto-join failed:", err);
+    } finally {
+      toast.remove();
+    }
   }
 
   /* ── Main game loop ──────────────────────────────────────────────── */
