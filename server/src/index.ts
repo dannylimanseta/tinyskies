@@ -7,8 +7,10 @@ import type {
   ServerToClientEvents,
   ClientToServerEvents,
 } from "@globefly/shared";
+import { nanoid } from "nanoid";
 import { RoomManager } from "./rooms/RoomManager.js";
 import { createWorldsRouter } from "./routes/worlds.js";
+import { generateUniqueWorldName } from "./utils/worldNames.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
@@ -49,7 +51,37 @@ io.on("connection", (socket) => {
   });
 });
 
+const SEED_WORLD_COUNT = 20;
+
+async function ensureWorldsSeeded() {
+  const count = await prisma.world.count();
+  if (count >= SEED_WORLD_COUNT) return;
+
+  console.log(`Only ${count} world(s) in DB, seeding to ${SEED_WORLD_COUNT}...`);
+  const existing = await prisma.world.findMany({ select: { name: true } });
+  const usedNames = new Set(existing.map((w) => w.name));
+
+  const toCreate = [];
+  for (let i = count; i < SEED_WORLD_COUNT; i++) {
+    const name = generateUniqueWorldName(usedNames);
+    usedNames.add(name);
+    toCreate.push({
+      slug: nanoid(10),
+      name,
+      texture: "earth",
+      globeRadius: 5.0,
+      seed: Math.floor(Math.random() * 2147483647),
+      terrainType: "default",
+      createdBy: "System",
+    });
+  }
+
+  await prisma.world.createMany({ data: toCreate });
+  console.log(`Seeded ${toCreate.length} new world(s)`);
+}
+
 async function bootstrap() {
+  await ensureWorldsSeeded();
   await roomManager.loadWorldSlugs(prisma);
   console.log(`Loaded ${roomManager.getAllWorldSlugs().length} world(s) into cache`);
   roomManager.startOverflowCleanup(prisma);
