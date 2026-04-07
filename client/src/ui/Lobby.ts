@@ -27,6 +27,7 @@ export function generateWhimsicalName(): string {
 interface LobbyOptions {
   playerName: string;
   onPlay: (vehicle: Vehicle) => void;
+  onNameChange?: (name: string) => void;
 }
 
 export class Lobby {
@@ -47,8 +48,8 @@ export class Lobby {
     this.el.innerHTML = `
       <div class="lobby-overlay">
         <div class="lobby-header">
-          <h1 class="lobby-title">GlobeFly</h1>
-          <p class="lobby-username">${this.options.playerName}</p>
+          <h1 class="lobby-title">Tiny Skies</h1>
+          <p class="lobby-username">Hello, <span class="lobby-name" contenteditable="true" spellcheck="false">${this.options.playerName}</span><button type="button" class="lobby-edit-btn" aria-label="Edit name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button></p>
         </div>
         <div class="lobby-bar">
           <div class="lobby-vehicles" role="radiogroup" aria-label="Vehicle">
@@ -82,6 +83,36 @@ export class Lobby {
           });
         }
       });
+    });
+
+    const nameEl = this.el.querySelector(".lobby-name") as HTMLElement;
+    const editBtn = this.el.querySelector(".lobby-edit-btn") as HTMLElement;
+
+    editBtn.addEventListener("click", () => {
+      nameEl.focus();
+      const range = document.createRange();
+      range.selectNodeContents(nameEl);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    });
+
+    nameEl.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        nameEl.blur();
+      }
+    });
+
+    nameEl.addEventListener("blur", () => {
+      const trimmed = nameEl.textContent?.trim() || "";
+      if (trimmed.length === 0) {
+        nameEl.textContent = this.options.playerName;
+      } else {
+        this.options.playerName = trimmed;
+        nameEl.textContent = trimmed;
+      }
+      this.options.onNameChange?.(this.options.playerName);
     });
 
     this.el.querySelector("#btn-fly")!.addEventListener("click", () => {
@@ -156,7 +187,7 @@ export class Lobby {
         transform: translateY(0);
       }
       .lobby-title {
-        font-size: 3rem;
+        font-size: 6rem;
         font-weight: 800;
         margin: 0;
         color: white;
@@ -164,9 +195,40 @@ export class Lobby {
       }
       .lobby-username {
         margin: 8px 0 0;
-        font-size: 0.9rem;
+        font-size: 1.2rem;
         font-weight: 400;
-        color: rgba(255, 255, 255, 0.55);
+        color: rgba(255, 255, 255, 1.0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+      }
+      .lobby-name {
+        font-weight: 600;
+        color: rgba(255, 255, 255, 1.0);
+        outline: none;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+        padding: 0 2px;
+        min-width: 40px;
+        cursor: text;
+        transition: border-color 0.2s;
+      }
+      .lobby-name:focus {
+        border-bottom-color: rgba(255, 255, 255, 0.7);
+      }
+      .lobby-edit-btn {
+        background: none;
+        border: none;
+        color: rgba(255, 255, 255, 0.4);
+        cursor: pointer;
+        padding: 0 6px;
+        transition: color 0.2s;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+      }
+      .lobby-edit-btn:hover {
+        color: rgba(255, 255, 255, 0.8);
       }
 
       /* ── Bottom Bar ─────────────────────────────────── */

@@ -157,6 +157,7 @@ export class Game {
 
     this.lobby = new Lobby(this.container, {
       playerName: this.playerName,
+      onNameChange: (name) => { this.playerName = name; },
       onPlay: (vehicle) => {
         this.playerVehicle = vehicle;
         this.lobby.fadeOut(() => {
