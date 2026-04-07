@@ -83,6 +83,7 @@ export class Globe {
   private foamColorValue: Color;
   private rimColorValue: Color;
   private cloudOpacityValue: number;
+  readonly villageCenters: { normal: Vector3; houseCount: number }[] = [];
 
   constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb, cloudOpacity: number = 0.2) {
     this.radius = radius;
@@ -1160,6 +1161,7 @@ transformed.z += sway2;`,
 
     for (const center of villageCenters) {
       const houseCount = HOUSES_PER_VILLAGE[Math.floor(rand() * HOUSES_PER_VILLAGE.length)];
+      this.villageCenters.push({ normal: center.clone(), houseCount });
 
       for (let h = 0; h < houseCount; h++) {
         const angle = rand() * Math.PI * 2;

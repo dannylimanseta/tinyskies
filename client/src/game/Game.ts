@@ -39,6 +39,8 @@ import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
+import { LandmarkHUD } from "../ui/LandmarkHUD";
+import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 
 export class Game {
   private container: HTMLElement;
@@ -70,6 +72,8 @@ export class Game {
   private stateSync: StateSync | null = null;
   private lobby!: Lobby;
   private hud!: HUD;
+  private landmarkHUD!: LandmarkHUD;
+  private landmarkDetector!: LandmarkDetector;
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -342,6 +346,13 @@ export class Game {
     });
     this.hud.hideUI();
 
+    const landmarkRegistry = new LandmarkRegistry();
+    landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
+    this.landmarkDetector = new LandmarkDetector(landmarkRegistry);
+    this.landmarkHUD = new LandmarkHUD(this.hud.root);
+    this.landmarkDetector.onEnter = (lm) => this.landmarkHUD.show(lm.name, lm.type);
+    this.landmarkDetector.onExit = () => this.landmarkHUD.hide();
+
     window.addEventListener("resize", this.onResize);
   }
 
@@ -531,6 +542,8 @@ export class Game {
     this.hud.setSpeed(this.localPlayer.speed);
     this.hud.setAltitude(this.localPlayer.altitude);
 
+    this.landmarkDetector.update(this.localPlayer.qPosition);
+
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
 
@@ -585,6 +598,7 @@ export class Game {
     this.localPlayer?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();
+    this.landmarkHUD?.dispose();
     this.stateSync?.stop();
     this.socketClient?.disconnect();
     window.removeEventListener("resize", this.onResize);

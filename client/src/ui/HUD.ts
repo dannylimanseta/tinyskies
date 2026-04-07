@@ -270,6 +270,10 @@ export class HUD {
     document.head.appendChild(style);
   }
 
+  get root(): HTMLDivElement {
+    return this.el;
+  }
+
   show() {
     this.hidden = false;
     this.el.style.display = "";
