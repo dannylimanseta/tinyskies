@@ -68,6 +68,12 @@ export class Plane {
       this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
     }
 
+    const turnStrength = Math.abs(turnRate);
+    if (turnStrength > 0.1) {
+      const turnDrag = turnStrength * 0.8 * dt;
+      this.speed = Math.max(MIN_SPEED, this.speed - turnDrag);
+    }
+
     this.heading += turnRate * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
