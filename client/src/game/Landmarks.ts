@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from "three";
 
-export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse";
+export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill";
 
 export interface Landmark {
   type: LandmarkType;
@@ -49,6 +49,15 @@ const LIGHTHOUSE_SUFFIXES = [
   " Light", " Point", " Watch", " Rock", " Bluff", " Head", " Reach", " Keep",
 ];
 
+const WINDMILL_PREFIXES = [
+  "Breeze", "Gale", "Harvest", "Golden", "Mill", "Grain", "Wheat", "Rustic",
+  "Old", "Meadow", "Spring", "Summer", "Copper", "Iron", "Dusty", "Hilltop",
+];
+
+const WINDMILL_SUFFIXES = [
+  " Mill", " Wind", " Farm", " Rise", " Knoll", " Hollow", " Wheel", " Grist",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
   village:    { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   peak:       { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
@@ -56,6 +65,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   coast:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   island:     { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   lighthouse: { prefixes: LIGHTHOUSE_PREFIXES, suffixes: LIGHTHOUSE_SUFFIXES },
+  windmill:   { prefixes: WINDMILL_PREFIXES, suffixes: WINDMILL_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -122,6 +132,22 @@ export class LandmarkRegistry {
         normal: lighthouses[i].normal.clone().normalize(),
         enterDot: 0.997,
         exitDot: 0.993,
+      });
+    }
+  }
+
+  registerWindmills(
+    windmills: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, windmills.length, "windmill");
+    for (let i = 0; i < windmills.length; i++) {
+      this.landmarks.push({
+        type: "windmill",
+        name: names[i],
+        normal: windmills[i].normal.clone().normalize(),
+        enterDot: 0.996,
+        exitDot: 0.992,
       });
     }
   }

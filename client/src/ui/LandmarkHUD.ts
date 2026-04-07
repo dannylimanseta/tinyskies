@@ -7,6 +7,7 @@ const TYPE_LABELS: Record<LandmarkType, string> = {
   coast: "Coast",
   island: "Island",
   lighthouse: "Lighthouse",
+  windmill: "Windmill",
 };
 
 export class LandmarkHUD {

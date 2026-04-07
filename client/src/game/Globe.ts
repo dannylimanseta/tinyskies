@@ -61,6 +61,7 @@ const CLOUD_ALTITUDE = 1.0;
 const CLOUD_DRIFT_SPEED = 0.03;
 const BALLOON_COUNT = 5;
 const BALLOON_ALTITUDE = 0.6;
+const WINDMILL_COUNT = 5;
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -94,6 +95,8 @@ export class Globe {
   private lighthouseBeamTime = 0;
   private balloons: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number }[] = [];
   private balloonTime = 0;
+  readonly windmillCenters: { normal: Vector3 }[] = [];
+  private windmillBlades: { pivot: Group; speed: number }[] = [];
 
   private segments: number;
 
@@ -114,6 +117,7 @@ export class Globe {
     this.createRocks();
     this.createVillages();
     this.createLighthouses();
+    this.createWindmills();
     this.createBalloons();
     this.createClouds();
     this.createAtmosphere();
@@ -1331,6 +1335,281 @@ transformed.z += sway2;`,
     }
   }
 
+  private buildWindmill(
+    rand: () => number,
+    parts: { geo: BufferGeometry; color: Color }[],
+    bladeParts: { geo: BufferGeometry; color: Color }[],
+    scale: number,
+  ) {
+    const COL_TOWER = new Color(0xf0ece0);
+    const COL_TOWER_BAND = new Color(0xd8d0c0);
+    const COL_CAP = new Color(0x4a3828);
+    const COL_DOOR = new Color(0x4a3018);
+    const COL_DOOR_FRAME = new Color(0x3a2818);
+    const COL_WINDOW = new Color(0x7ab8d0);
+    const COL_WINDOW_FRAME = new Color(0x5a4030);
+    const COL_BALCONY = new Color(0x6b5540);
+    const COL_BLADE_SAIL = new Color(0xe0d8c8);
+    const COL_BLADE_ARM = new Color(0x7a6a50);
+    const COL_TAIL = new Color(0x8a7a60);
+
+    const tH = 0.13 * scale;
+    const rBot = 0.032 * scale;
+    const rTop = 0.022 * scale;
+    const rMid = (rBot + rTop) / 2;
+
+    const towerLower = new CylinderGeometry(rMid, rBot, tH * 0.5, 10);
+    towerLower.translate(0, tH * 0.25, 0);
+    parts.push({ geo: towerLower, color: COL_TOWER });
+
+    const towerUpper = new CylinderGeometry(rTop, rMid, tH * 0.5, 10);
+    towerUpper.translate(0, tH * 0.75, 0);
+    parts.push({ geo: towerUpper, color: COL_TOWER });
+
+    const bandGeo = new CylinderGeometry(rMid + 0.002 * scale, rMid + 0.002 * scale, 0.005 * scale, 10);
+    bandGeo.translate(0, tH * 0.5, 0);
+    parts.push({ geo: bandGeo, color: COL_TOWER_BAND });
+
+    const baseRing = new CylinderGeometry(rBot + 0.003 * scale, rBot + 0.005 * scale, 0.006 * scale, 10);
+    baseRing.translate(0, 0.003 * scale, 0);
+    parts.push({ geo: baseRing, color: COL_TOWER_BAND });
+
+    const capH = 0.028 * scale;
+    const capBase = rTop + 0.004 * scale;
+    const capMid = new CylinderGeometry(capBase * 0.6, capBase, capH * 0.6, 8);
+    capMid.translate(0, tH + capH * 0.3, 0);
+    parts.push({ geo: capMid, color: COL_CAP });
+    const capTip = new CylinderGeometry(0.002 * scale, capBase * 0.6, capH * 0.4, 8);
+    capTip.translate(0, tH + capH * 0.8, 0);
+    parts.push({ geo: capTip, color: COL_CAP });
+
+    const doorW = rBot * 0.55;
+    const doorH = tH * 0.22;
+    const doorGeo = new BoxGeometry(doorW, doorH, 0.004 * scale);
+    doorGeo.translate(0, doorH / 2 + 0.003 * scale, rBot + 0.002 * scale);
+    parts.push({ geo: doorGeo, color: COL_DOOR });
+    const doorFrame = new BoxGeometry(doorW + 0.004 * scale, doorH + 0.003 * scale, 0.003 * scale);
+    doorFrame.translate(0, doorH / 2 + 0.004 * scale, rBot + 0.003 * scale);
+    parts.push({ geo: doorFrame, color: COL_DOOR_FRAME });
+
+    const winSize = 0.008 * scale;
+    const windowPositions = [
+      { y: tH * 0.45, angle: Math.PI * 0.3 },
+      { y: tH * 0.45, angle: -Math.PI * 0.3 },
+      { y: tH * 0.68, angle: 0 },
+    ];
+    for (const wp of windowPositions) {
+      const wr = MathUtils.lerp(rBot, rTop, wp.y / tH);
+      const wx = Math.sin(wp.angle) * (wr + 0.002 * scale);
+      const wz = Math.cos(wp.angle) * (wr + 0.002 * scale);
+      const winGeo = new BoxGeometry(winSize, winSize, 0.003 * scale);
+      winGeo.lookAt(new Vector3(Math.sin(wp.angle), 0, Math.cos(wp.angle)));
+      winGeo.translate(wx, wp.y, wz);
+      parts.push({ geo: winGeo, color: COL_WINDOW });
+      const frameGeo = new BoxGeometry(winSize + 0.004 * scale, winSize + 0.004 * scale, 0.002 * scale);
+      frameGeo.lookAt(new Vector3(Math.sin(wp.angle), 0, Math.cos(wp.angle)));
+      frameGeo.translate(wx, wp.y, wz);
+      parts.push({ geo: frameGeo, color: COL_WINDOW_FRAME });
+    }
+
+    const balcR = rTop + 0.008 * scale;
+    const balcFloor = new CylinderGeometry(balcR, balcR, 0.003 * scale, 12);
+    balcFloor.translate(0, tH - 0.002 * scale, 0);
+    parts.push({ geo: balcFloor, color: COL_BALCONY });
+    const balcRail = new CylinderGeometry(balcR + 0.001, balcR + 0.001, 0.008 * scale, 12, 1, true);
+    balcRail.translate(0, tH + 0.002 * scale, 0);
+    parts.push({ geo: balcRail, color: COL_BALCONY });
+
+    const tailLen = 0.03 * scale;
+    const tailW = 0.018 * scale;
+    const tailGeo = new BoxGeometry(tailW, 0.002 * scale, tailLen);
+    tailGeo.translate(0, tH + capH * 0.5, -(rTop + tailLen * 0.5 + 0.004 * scale));
+    parts.push({ geo: tailGeo, color: COL_TAIL });
+    const tailPost = new BoxGeometry(0.003 * scale, 0.012 * scale, 0.003 * scale);
+    tailPost.translate(0, tH + capH * 0.5 - 0.005 * scale, -(rTop + 0.004 * scale));
+    parts.push({ geo: tailPost, color: COL_TAIL });
+
+    const hubY = tH + capH * 0.35;
+    const hubZ = rTop + 0.006 * scale;
+    const bladeLen = 0.10 * scale;
+
+    const hubGeo = new CylinderGeometry(0.006 * scale, 0.006 * scale, 0.008 * scale, 8);
+    hubGeo.rotateX(Math.PI / 2);
+    bladeParts.push({ geo: hubGeo, color: COL_CAP });
+
+    for (let b = 0; b < 4; b++) {
+      const angle = (b / 4) * Math.PI * 2;
+
+      const armGeo = new BoxGeometry(0.003 * scale, bladeLen, 0.003 * scale);
+      armGeo.translate(0, bladeLen / 2 + 0.005 * scale, 0);
+      armGeo.rotateZ(angle);
+      bladeParts.push({ geo: armGeo, color: COL_BLADE_ARM });
+
+      for (let c = 0; c < 3; c++) {
+        const ct = (c + 1) / 4;
+        const cy = bladeLen * ct + 0.005 * scale;
+        const crossGeo = new BoxGeometry(0.002 * scale, 0.002 * scale, 0.016 * scale);
+        crossGeo.translate(0.002 * scale, cy, 0);
+        crossGeo.rotateZ(angle);
+        bladeParts.push({ geo: crossGeo, color: COL_BLADE_ARM });
+      }
+
+      const sailH = bladeLen * 0.75;
+      const sailW = 0.016 * scale;
+      const sailGeo = new BoxGeometry(0.001 * scale, sailH, sailW);
+      sailGeo.translate(sailW * 0.3, bladeLen * 0.5 + 0.005 * scale, 0);
+      sailGeo.rotateZ(angle);
+      bladeParts.push({ geo: sailGeo, color: COL_BLADE_SAIL });
+    }
+
+    return { hubY, hubZ };
+  }
+
+  private createWindmills() {
+    const rand = seededRandom(555 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const CLUSTER_COUNT = 4;
+    const WATER_CHECKS = 10;
+    const CHECK_DIST = 0.05;
+    const MIN_WATER_RATIO = 0.2;
+    const MAX_WATER_RATIO = 0.5;
+    const MIN_SEP_DOT = 0.94;
+
+    type Candidate = { normal: Vector3; score: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 2000 && candidates.length < 40) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < 0.05 || elevation > 0.2) continue;
+
+      const centerNormal = new Vector3(nx, ny, nz);
+
+      const tooCloseToVillage = this.villageCenters.some(
+        (v) => centerNormal.dot(v.normal) > 0.97,
+      );
+      if (tooCloseToVillage) continue;
+      const tooCloseToLighthouse = this.lighthouseCenters.some(
+        (v) => centerNormal.dot(v.normal) > 0.97,
+      );
+      if (tooCloseToLighthouse) continue;
+
+      const tangent = new Vector3(-ny, nx, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
+      let waterCount = 0;
+
+      for (let c = 0; c < WATER_CHECKS; c++) {
+        const angle = (c / WATER_CHECKS) * Math.PI * 2;
+        const cn = centerNormal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(angle) * CHECK_DIST)
+          .normalize();
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) waterCount++;
+      }
+
+      const waterRatio = waterCount / WATER_CHECKS;
+      if (waterRatio < MIN_WATER_RATIO || waterRatio > MAX_WATER_RATIO) continue;
+
+      candidates.push({ normal: centerNormal, score: 1 - elevation });
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+
+    const clusterCenters: Vector3[] = [];
+    for (const c of candidates) {
+      if (clusterCenters.length >= CLUSTER_COUNT) break;
+      const tooClose = clusterCenters.some((v) => c.normal.dot(v) > MIN_SEP_DOT);
+      if (tooClose) continue;
+      clusterCenters.push(c.normal);
+    }
+
+    if (clusterCenters.length === 0) return;
+
+    for (const center of clusterCenters) {
+      const count = 2 + Math.floor(rand() * 2);
+      const tangent = new Vector3(-center.y, center.x, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -center.z, center.y);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(center, tangent).normalize();
+
+      for (let m = 0; m < count; m++) {
+        let normal: Vector3;
+        if (m === 0) {
+          normal = center.clone();
+        } else {
+          const a = rand() * Math.PI * 2;
+          const d = 0.03 + rand() * 0.02;
+          normal = center.clone()
+            .addScaledVector(tangent, Math.cos(a) * d)
+            .addScaledVector(bitangent, Math.sin(a) * d)
+            .normalize();
+
+          const v = terrainNoise(
+            noise, normal.x, normal.y, normal.z,
+            params.octaves, params.lacunarity, params.persistence, params.scale,
+          );
+          if (v <= params.threshold) continue;
+        }
+
+        this.windmillCenters.push({ normal: normal.clone() });
+
+        const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+        const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+        const scale = MathUtils.lerp(0.85, 1.15, rand());
+        const bodyParts: { geo: BufferGeometry; color: Color }[] = [];
+        const bladeParts: { geo: BufferGeometry; color: Color }[] = [];
+        const { hubY, hubZ } = this.buildWindmill(rand, bodyParts, bladeParts, scale);
+
+        const windmill = new Group();
+
+        const mergedBody = this.mergeColoredParts(bodyParts);
+        const bodyMat = new MeshPhongMaterial({ vertexColors: true, shininess: 12 });
+        addRimLight(bodyMat, 0xffeedd, 0.3, 3.0);
+        const bodyMesh = new Mesh(mergedBody, bodyMat);
+        bodyMesh.castShadow = true;
+        windmill.add(bodyMesh);
+
+        const mergedBlades = this.mergeColoredParts(bladeParts);
+        const bladeMat = new MeshPhongMaterial({ vertexColors: true, shininess: 8 });
+        const bladeMesh = new Mesh(mergedBlades, bladeMat);
+        const bladePivot = new Group();
+        bladePivot.position.set(0, hubY, hubZ);
+        bladePivot.add(bladeMesh);
+        windmill.add(bladePivot);
+
+        this.windmillBlades.push({ pivot: bladePivot, speed: 0.4 + rand() * 0.4 });
+
+        windmill.position.copy(normal.clone().multiplyScalar(surfaceR));
+        windmill.quaternion.setFromUnitVectors(REF_UP, normal);
+        windmill.rotateY(rand() * Math.PI * 2);
+        windmill.castShadow = true;
+        this.group.add(windmill);
+      }
+    }
+  }
+
   private createBalloons() {
     const rand = seededRandom(999 + this.seed);
     const REF_UP = new Vector3(0, 1, 0);
@@ -1855,6 +2134,10 @@ transformed.z += sway2;`,
     const beamAngle = this.lighthouseBeamTime * 0.8;
     for (const beam of this.lighthouseBeams) {
       beam.rotation.y = beamAngle;
+    }
+
+    for (const w of this.windmillBlades) {
+      w.pivot.rotation.z += dt * w.speed;
     }
 
     this.balloonTime += dt;
