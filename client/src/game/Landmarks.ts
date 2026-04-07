@@ -10,8 +10,8 @@ export interface Landmark {
   exitDot: number;
 }
 
-const VILLAGE_ENTER_DOT = 0.997;
-const VILLAGE_EXIT_DOT = 0.994;
+const VILLAGE_ENTER_DOT = 0.995;
+const VILLAGE_EXIT_DOT = 0.990;
 
 const REF_UP = new Vector3(0, 1, 0);
 
