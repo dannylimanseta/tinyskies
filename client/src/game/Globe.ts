@@ -43,7 +43,9 @@ varying vec3 vPosition;
 void main() {
   vec3 viewDir = normalize(-vPosition);
   float rim = 1.0 - dot(vNormal, viewDir);
-  float intensity = smoothstep(0.0, 1.0, rim) * pow(rim, 1.5) * 0.2;
+  float inner = smoothstep(0.05, 0.5, rim);
+  float outer = 1.0 - smoothstep(0.7, 1.0, rim);
+  float intensity = inner * outer * pow(rim, 1.8) * 0.22;
   gl_FragColor = vec4(glowColor * intensity, intensity);
 }
 `;
@@ -105,7 +107,7 @@ export class Globe {
   }
 
   private createSurface() {
-    const geo = new SphereGeometry(this.radius, 512, 512);
+    const geo = new SphereGeometry(this.radius, 256, 256);
     const posAttr = geo.attributes.position;
     const vertexCount = posAttr.count;
     const colors = new Float32Array(vertexCount * 3);
@@ -1412,7 +1414,7 @@ transformed.z += sway2;`,
   }
 
   private createAtmosphere() {
-    const geo = new SphereGeometry(this.radius * 1.45, 48, 48);
+    const geo = new SphereGeometry(this.radius * 1.55, 48, 48);
     this.atmosphereGlowUniform = { value: new Color(this.atmosphereGlowColor) };
     const mat = new ShaderMaterial({
       vertexShader: ATMOSPHERE_VERTEX,

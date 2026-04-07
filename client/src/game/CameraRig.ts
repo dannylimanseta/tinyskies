@@ -117,11 +117,11 @@ export class CameraRig {
   }
 
   /** Drive camera directly (used for intro flythrough). */
-  setPositionAndLookAt(pos: Vector3, lookAt: Vector3, rollZ = 0) {
+  setPositionAndLookAt(pos: Vector3, lookAt: Vector3, rollZ = 0, up?: Vector3) {
     this.currentPos.copy(pos);
     this.currentLookAt.copy(lookAt);
     this.camera.position.copy(pos);
-    this.camera.up.copy(pos.clone().normalize());
+    this.camera.up.copy(up ?? pos.clone().normalize());
     this.camera.lookAt(lookAt);
     if (Math.abs(rollZ) > 0.0001) {
       this.camera.rotateZ(rollZ);

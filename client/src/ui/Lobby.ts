@@ -65,7 +65,7 @@ export class Lobby {
               <span class="lobby-vlabel">Carpet</span>
             </button>
           </div>
-          <button type="button" class="lobby-fly" id="btn-fly">FLY</button>
+          <button type="button" class="lobby-fly" id="btn-fly">GO</button>
         </div>
       </div>
     `;
@@ -159,17 +159,14 @@ export class Lobby {
         font-size: 3rem;
         font-weight: 800;
         margin: 0;
-        background: linear-gradient(135deg, #4488ff 0%, #44ddff 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        filter: drop-shadow(0 0 30px rgba(68, 136, 255, 0.35));
+        color: white;
+        text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
       }
       .lobby-username {
         margin: 8px 0 0;
         font-size: 0.9rem;
         font-weight: 400;
-        color: rgba(180, 200, 255, 0.45);
+        color: rgba(255, 255, 255, 0.55);
       }
 
       /* ── Bottom Bar ─────────────────────────────────── */
@@ -184,12 +181,12 @@ export class Lobby {
         display: flex;
         align-items: center;
         gap: 10px;
-        background: rgba(10, 10, 30, 0.45);
-        backdrop-filter: blur(24px) saturate(140%);
-        -webkit-backdrop-filter: blur(24px) saturate(140%);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.35);
+        backdrop-filter: blur(32px) saturate(120%);
+        -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
+        border: 1px solid rgba(255, 255, 255, 0.18);
         border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
         pointer-events: auto;
         opacity: 0;
         transition: opacity 0.6s ease-out, transform 0.6s ease-out;
@@ -209,41 +206,41 @@ export class Lobby {
       }
       .lobby-vbtn {
         flex: 1;
-        display: flex; flex-direction: column; align-items: center; gap: 2px;
-        padding: 10px 8px;
-        border: none;
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+        padding: 10px 12px;
+        border: 2px solid transparent;
         border-radius: 10px;
         background: transparent;
-        color: rgba(180, 200, 255, 0.5);
+        color: rgba(30, 40, 60, 0.6);
         cursor: pointer;
-        transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+        transition: background 0.2s, color 0.2s, box-shadow 0.2s, border-color 0.2s;
         font-family: inherit;
       }
       .lobby-vbtn:hover {
-        background: rgba(255, 255, 255, 0.06);
-        color: rgba(200, 220, 255, 0.8);
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(30, 40, 60, 0.85);
       }
       .lobby-vbtn.active {
-        background: rgba(60, 120, 255, 0.18);
-        color: #c8ddff;
-        box-shadow: 0 0 12px rgba(60, 120, 255, 0.15);
+        background: rgba(255, 255, 255, 1.0);
+        color: rgba(20, 30, 50, 0.9);
       }
       .lobby-vicon {
-        font-size: 1.2rem;
+        font-size: 1.5rem;
         line-height: 1;
       }
       .lobby-vlabel {
-        font-size: 0.78rem;
-        font-weight: 500;
-        letter-spacing: 0.02em;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
       }
 
       /* ── FLY Button ─────────────────────────────────── */
       .lobby-fly {
-        padding: 14px 32px;
+        align-self: stretch;
+        padding: 0 32px;
         border: none;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #3366dd 0%, #2288ee 100%);
+        border-radius: 10px;
+        background: #2288ee;
         color: white;
         font-family: inherit;
         font-size: 1rem;
@@ -254,7 +251,7 @@ export class Lobby {
         animation: fly-pulse 2s ease-in-out infinite;
       }
       .lobby-fly:hover {
-        background: linear-gradient(135deg, #4477ee 0%, #33aaff 100%);
+        background: #3399ff;
         transform: scale(1.04);
       }
       .lobby-fly:active {

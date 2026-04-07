@@ -395,10 +395,9 @@ export class Game {
       .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
     this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
 
-    const surfaceNormal = playerWorldPos.clone().normalize();
-    this.introStartPos.copy(surfaceNormal).multiplyScalar(14);
+    this.introStartPos.copy(this.previewCamera.position);
 
-    this.cameraRig.setPositionAndLookAt(this.introStartPos, new Vector3(0, 0, 0));
+    this.cameraRig.setPositionAndLookAt(this.introStartPos, new Vector3(0, 0, 0), 0, new Vector3(0, 1, 0));
     this.introActive = true;
     this.introTimer = 0;
 
@@ -599,10 +598,21 @@ export class Game {
         .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
       this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
 
-      const pos = new Vector3().lerpVectors(this.introStartPos, this.introEndPos, t);
+      const startDir = this.introStartPos.clone().normalize();
+      const endDir = this.introEndPos.clone().normalize();
+      const startDist = this.introStartPos.length();
+      const endDist = this.introEndPos.length();
+
+      const dir = startDir.clone().lerp(endDir, t).normalize();
+      const dist = startDist + (endDist - startDist) * t;
+      const pos = dir.multiplyScalar(dist);
+
       const lookAt = new Vector3().lerpVectors(new Vector3(0, 0, 0), this.introEndLookAt, t);
-      const rollZ = 0.5 * (1 - t);
-      this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ);
+      const worldUp = new Vector3(0, 1, 0);
+      const localUp = pos.clone().normalize();
+      const up = worldUp.clone().lerp(localUp, t).normalize();
+      const rollZ = Math.sin(t * Math.PI) * 0.3;
+      this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ, up);
 
       this.globe.update(dt);
       this.remotePlanes.update(dt, this.cameraRig.camera);

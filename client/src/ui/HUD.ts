@@ -158,7 +158,7 @@ export class HUD {
       }
       .hud-world-name {
         font-size: 1rem; font-weight: 600;
-        color: rgba(200, 220, 255, 0.7);
+        color: rgba(255, 255, 255, 0.8);
         text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
       }
       .hud-vehicle-hint {
