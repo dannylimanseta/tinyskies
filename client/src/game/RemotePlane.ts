@@ -1,6 +1,11 @@
 import {
   Scene,
   Group,
+  Mesh,
+  BoxGeometry,
+  CylinderGeometry,
+  MeshPhongMaterial,
+  MeshBasicMaterial,
   Quaternion,
   type Camera,
 } from "three";
@@ -32,6 +37,32 @@ interface BufferedSnapshot {
   receivedAt: number;
 }
 
+const STRING_LENGTH = 0.12;
+
+function createRemoteCarryPackage(): Group {
+  const g = new Group();
+  const stringGeo = new CylinderGeometry(0.001, 0.001, STRING_LENGTH, 4);
+  stringGeo.translate(0, -STRING_LENGTH / 2, 0);
+  g.add(new Mesh(stringGeo, new MeshBasicMaterial({ color: 0xf5deb3 })));
+
+  const pkg = new Group();
+  pkg.add(new Mesh(new BoxGeometry(0.05, 0.04, 0.05), new MeshPhongMaterial({ color: 0x8b6914 })));
+  const strapGeo = new BoxGeometry(0.056, 0.004, 0.008);
+  const strapMat = new MeshPhongMaterial({ color: 0xf5deb3 });
+  const s1 = new Mesh(strapGeo, strapMat);
+  s1.position.y = 0.022;
+  pkg.add(s1);
+  const s2 = new Mesh(strapGeo, strapMat);
+  s2.position.y = 0.022;
+  s2.rotation.y = Math.PI / 2;
+  pkg.add(s2);
+  pkg.position.y = -STRING_LENGTH;
+  g.add(pkg);
+
+  g.visible = false;
+  return g;
+}
+
 const REMOTE_COLORS = [0x44aaff, 0x44dd66, 0xffaa22, 0xdd44dd, 0x22dddd, 0xff6688];
 let colorIndex = 0;
 
@@ -48,6 +79,8 @@ class RemotePlane {
   readonly beacon: PlayerBeacon;
   readonly vehicleType: Vehicle;
   private readonly vehicle: Vehicle;
+  private readonly carryPackage: Group;
+  private carrying = false;
 
   private buffer: BufferedSnapshot[] = [];
   private globeRadius: number;
@@ -73,6 +106,8 @@ class RemotePlane {
           : createBiplane(color);
     this.group.matrixAutoUpdate = false;
     this.beacon = new PlayerBeacon(color);
+    this.carryPackage = createRemoteCarryPackage();
+    this.group.add(this.carryPackage);
   }
 
   pushState(state: PlayerState) {
@@ -80,8 +115,9 @@ class RemotePlane {
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer.shift();
     }
+    this.carrying = state.carrying ?? false;
+    this.carryPackage.visible = this.carrying;
 
-    // If we were dead reckoning, start a correction blend
     if (this.wasDeadReckoning && this.lastRendered) {
       this.correcting = true;
       this.correctionFrom = { ...this.lastRendered };

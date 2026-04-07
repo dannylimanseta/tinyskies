@@ -808,6 +808,7 @@ export class Game {
     this.landmarkDetector.update(this.localPlayer.qPosition);
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
+    (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
 
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);

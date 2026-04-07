@@ -19,6 +19,7 @@ export interface PlayerState {
   speed: number;
   bankAngle: number;
   rollAngle: number;
+  carrying?: boolean;
   timestamp: number;
 }
 

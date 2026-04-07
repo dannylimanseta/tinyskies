@@ -148,6 +148,10 @@ function createBeamGroup(color: number): Group {
 export class PackageQuestManager {
   readonly group = new Group();
 
+  get isCarrying(): boolean {
+    return this.state === QuestState.Carrying || this.state === QuestState.Delivering;
+  }
+
   private state = QuestState.Spawning;
   private spawnTimer = 0;
   private spawnDelay = 0;

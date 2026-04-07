@@ -13,6 +13,7 @@ export type SyncablePlayer = {
   bankAngle: number;
   rollAngle: number;
   vehicle: Vehicle;
+  carrying?: boolean;
 };
 
 export class StateSync {
@@ -52,6 +53,7 @@ export class StateSync {
       speed: this.player.speed,
       bankAngle: this.player.bankAngle + this.player.rollAngle,
       rollAngle: this.player.rollAngle,
+      carrying: this.player.carrying,
       timestamp: Date.now(),
     });
   }
