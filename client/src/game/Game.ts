@@ -4,6 +4,7 @@ import {
   AmbientLight,
   DirectionalLight,
   HemisphereLight,
+  PerspectiveCamera,
   Clock,
   Color,
   Fog,
@@ -37,7 +38,7 @@ import { Starfield } from "./Starfield";
 import { Aurora } from "./Aurora";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
-import { Lobby } from "../ui/Lobby";
+import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
@@ -81,6 +82,7 @@ export class Game {
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
+  private worldSlug = "";
   private playerName = "Pilot";
   private playerVehicle: Vehicle = "plane";
   private timeOfDay: TimeOfDay = "day";
@@ -103,68 +105,149 @@ export class Game {
   private skyCanvas!: HTMLCanvasElement;
   private skyTexture!: CanvasTexture;
 
+  private previewCamera!: PerspectiveCamera;
+  private previewActive = false;
+  private previewAngle = 0;
+  private loadingEl: HTMLDivElement | null = null;
+
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
-  start() {
+  /* ── Public entry point ──────────────────────────────────────────── */
+
+  async start() {
+    this.showLoadingOverlay();
+
+    const serverUrl = this.getServerUrl();
+
+    try {
+      const listRes = await fetch(`${serverUrl}/api/worlds`);
+      if (!listRes.ok) throw new Error("Failed to fetch world list");
+      let worlds = await listRes.json();
+
+      if (worlds.length === 0) {
+        const createRes = await fetch(`${serverUrl}/api/worlds`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "GlobeFly World", texture: "earth", createdBy: "System" }),
+        });
+        if (!createRes.ok) throw new Error("Failed to create default world");
+        worlds = [await createRes.json()];
+      }
+
+      this.worldSlug = worlds[0].slug;
+      const configRes = await fetch(`${serverUrl}/api/worlds/${this.worldSlug}`);
+      if (!configRes.ok) throw new Error("Failed to fetch world config");
+      this.worldConfig = await configRes.json();
+    } catch (err) {
+      console.error("Server error:", err);
+      this.showLoadingError();
+      return;
+    }
+
+    this.timeOfDay = (["day", "evening", "night"] as const)[Math.floor(Math.random() * 3)];
+    this.playerName = generateWhimsicalName();
+
+    this.initPreview();
+    this.previewActive = true;
+    requestAnimationFrame(this.previewTick);
+
+    this.removeLoadingOverlay();
+
     this.lobby = new Lobby(this.container, {
-      onCreateWorld: (name, texture) => this.handleCreateWorld(name, texture),
-      onJoinWorld: (slug, playerName, vehicle, timeOfDay) =>
-        this.handleJoinWorld(slug, playerName, vehicle, timeOfDay),
+      playerName: this.playerName,
+      onPlay: (vehicle) => {
+        this.playerVehicle = vehicle;
+        this.lobby.fadeOut(() => {
+          this.lobby.dispose();
+          this.startGame(vehicle);
+        });
+      },
     });
     this.lobby.show();
   }
 
-  private async handleCreateWorld(name: string, texture: string) {
-    const serverUrl = this.getServerUrl();
-    try {
-      const res = await fetch(`${serverUrl}/api/worlds`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, texture, createdBy: this.playerName }),
-      });
-      const world: WorldConfig = await res.json();
-      this.lobby.showShareUrl(world.slug);
-    } catch (err) {
-      console.error("Failed to create world:", err);
-      this.lobby.showError("Failed to create world. Is the server running?");
+  /* ── Loading overlay ─────────────────────────────────────────────── */
+
+  private showLoadingOverlay() {
+    this.loadingEl = document.createElement("div");
+    this.loadingEl.id = "loading-overlay";
+    this.loadingEl.innerHTML = `
+      <h1 class="loading-title">GlobeFly</h1>
+    `;
+    Object.assign(this.loadingEl.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "200",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "#000",
+      fontFamily: "'Inter', system-ui, sans-serif",
+    });
+    const title = this.loadingEl.querySelector(".loading-title") as HTMLElement;
+    Object.assign(title.style, {
+      fontSize: "3rem",
+      fontWeight: "800",
+      margin: "0",
+      background: "linear-gradient(135deg, #4488ff 0%, #44ddff 100%)",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      backgroundClip: "text",
+      animation: "loading-pulse 1.5s ease-in-out infinite",
+    });
+
+    if (!document.getElementById("loading-styles")) {
+      const s = document.createElement("style");
+      s.id = "loading-styles";
+      s.textContent = `
+        @keyframes loading-pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 1; }
+        }
+      `;
+      document.head.appendChild(s);
     }
+
+    this.container.appendChild(this.loadingEl);
   }
 
-  private async handleJoinWorld(
-    slug: string,
-    playerName: string,
-    vehicle: Vehicle = "plane",
-    timeOfDay: TimeOfDay = "day",
-  ) {
-    this.playerName = playerName || "Pilot";
-    this.playerVehicle = vehicle;
-    this.timeOfDay = timeOfDay;
-    const serverUrl = this.getServerUrl();
-
-    try {
-      const res = await fetch(`${serverUrl}/api/worlds/${slug}`);
-      if (!res.ok) throw new Error("World not found");
-      this.worldConfig = await res.json();
-    } catch (err) {
-      console.error("Failed to fetch world:", err);
-      this.lobby.showError("World not found. Check the URL and try again.");
-      return;
-    }
-
-    this.lobby.hide();
-    this.initScene();
-    this.initNetworking(slug);
-    this.running = true;
-    this.tick();
+  private showLoadingError() {
+    if (!this.loadingEl) return;
+    this.loadingEl.innerHTML = `
+      <div style="text-align:center">
+        <h1 class="loading-title" style="font-size:3rem;font-weight:800;margin:0;
+          background:linear-gradient(135deg,#4488ff,#44ddff);
+          -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+          background-clip:text;animation:none;">GlobeFly</h1>
+        <p style="color:rgba(180,200,255,0.5);margin:16px 0 20px;font-size:0.9rem;">
+          Could not connect to server
+        </p>
+        <button id="btn-retry" style="padding:10px 28px;border:none;border-radius:8px;
+          background:linear-gradient(135deg,#3366dd,#2288ee);color:white;
+          font-weight:600;font-size:0.9rem;cursor:pointer;font-family:inherit;">
+          Retry
+        </button>
+      </div>
+    `;
+    this.loadingEl.querySelector("#btn-retry")!.addEventListener("click", () => {
+      this.removeLoadingOverlay();
+      this.start();
+    });
   }
 
-  private initScene() {
+  private removeLoadingOverlay() {
+    this.loadingEl?.remove();
+    this.loadingEl = null;
+    document.getElementById("loading-styles")?.remove();
+  }
+
+  /* ── Phase 1: Preview (globe + orbiting camera) ──────────────────── */
+
+  private initPreview() {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
-    const globeRadius = this.worldConfig?.globeRadius ?? 5;
-    this.vehicleFeatures = getVehicleFeatures(this.playerVehicle);
 
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
@@ -216,18 +299,83 @@ export class Game {
     const terrainType = this.worldConfig?.terrainType ?? "default";
     this.gameSeed = seed;
     this.gameTerrainType = terrainType;
-    this.globe = new Globe(globeRadius, seed, terrainType, preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep, preset.oceanFoam, preset.rimColor, preset.cloudOpacity);
+    this.globe = new Globe(
+      this.worldConfig?.globeRadius ?? 5, seed, terrainType,
+      preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep,
+      preset.oceanFoam, preset.rimColor, preset.cloudOpacity,
+    );
     this.globe.addTo(this.scene);
 
-    if (this.playerVehicle === "boat") {
+    if (preset.stars) {
+      this.starfield = new Starfield();
+      this.scene.add(this.starfield.group);
+    }
+
+    if (preset.aurora) {
+      this.aurora = new Aurora();
+      this.scene.add(this.aurora.group);
+    }
+
+    this.previewCamera = new PerspectiveCamera(60, w / h, 0.1, 100);
+    this.previewAngle = 0;
+
+    window.addEventListener("resize", this.onPreviewResize);
+  }
+
+  private previewTick = () => {
+    if (!this.previewActive) return;
+    requestAnimationFrame(this.previewTick);
+
+    const dt = Math.min(this.clock.getDelta(), 0.05);
+    this.previewAngle += 0.05 * dt;
+
+    const radius = 12;
+    const tiltY = Math.sin(-0.26) * radius;
+    const tiltXZ = Math.cos(-0.26) * radius;
+    this.previewCamera.position.set(
+      Math.sin(this.previewAngle) * tiltXZ,
+      tiltY,
+      Math.cos(this.previewAngle) * tiltXZ,
+    );
+    this.previewCamera.lookAt(0, 0, 0);
+
+    this.globe.update(dt);
+    this.aurora?.update(dt, this.previewCamera);
+    this.renderer.render(this.scene, this.previewCamera);
+  };
+
+  private onPreviewResize = () => {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    this.renderer.setSize(w, h);
+    this.previewCamera.aspect = w / h;
+    this.previewCamera.updateProjectionMatrix();
+  };
+
+  /* ── Phase 2: Start game (player, camera, VFX, HUD, networking) ── */
+
+  private startGame(vehicle: Vehicle) {
+    this.previewActive = false;
+    window.removeEventListener("resize", this.onPreviewResize);
+
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    const seed = this.gameSeed;
+    const terrainType = this.gameTerrainType;
+    const preset = getSkyPreset(this.timeOfDay);
+    this.playerVehicle = vehicle;
+    this.vehicleFeatures = getVehicleFeatures(vehicle);
+
+    if (vehicle === "boat") {
       this.localPlayer = new Boat(globeRadius, seed, terrainType);
-    } else if (this.playerVehicle === "carpet") {
+    } else if (vehicle === "carpet") {
       this.localPlayer = new Carpet(globeRadius, seed, terrainType);
     } else {
       this.localPlayer = new Plane(globeRadius);
     }
     this.localPlayer.addTo(this.scene);
 
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
     this.cameraRig = new CameraRig(w / h);
 
     const playerWorldPos = cartesianFromSpherical(
@@ -286,28 +434,12 @@ export class Game {
     }
 
     if (preset.stars) {
-      this.starfield = new Starfield();
-      this.scene.add(this.starfield.group);
-
       this.playerLight = new PointLight(0xffaa55, 0.8, 4.0, 1.5);
       this.scene.add(this.playerLight);
     }
 
-    if (preset.aurora) {
-      this.aurora = new Aurora();
-      this.scene.add(this.aurora.group);
-    }
-
-    const ringMode = this.playerVehicle === "boat"
-      ? "boat"
-      : this.playerVehicle === "carpet"
-        ? "carpet"
-        : "plane";
-    this.ringManager = new RingManager(globeRadius, {
-      mode: ringMode,
-      seed,
-      terrainType,
-    });
+    const ringMode = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
+    this.ringManager = new RingManager(globeRadius, { mode: ringMode, seed, terrainType });
     this.ringManager.setConsumerActive(this.vehicleFeatures.collectibleDiamonds);
     this.scene.add(this.ringManager.group);
 
@@ -315,8 +447,7 @@ export class Game {
     this.scene.add(this.collectVFX.group);
 
     this.ringManager.onCollect = (xp, worldPos, tier) => {
-      const rolling =
-        this.vehicleFeatures.barrelRollBonus && this.localPlayer.isRolling;
+      const rolling = this.vehicleFeatures.barrelRollBonus && this.localPlayer.isRolling;
       const bonusXP = rolling ? xp : 0;
       if (bonusXP > 0) {
         this.ringManager.sessionXP += bonusXP;
@@ -345,7 +476,7 @@ export class Game {
 
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
-    this.hud.setVehicle(this.playerVehicle, {
+    this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
     });
     this.hud.hideUI();
@@ -393,7 +524,15 @@ export class Game {
     }
 
     window.addEventListener("resize", this.onResize);
+
+    this.initNetworking(this.worldSlug);
+
+    this.clock.getDelta();
+    this.running = true;
+    this.tick();
   }
+
+  /* ── Networking ──────────────────────────────────────────────────── */
 
   private initNetworking(slug: string) {
     const serverUrl = this.getServerUrl();
@@ -425,6 +564,8 @@ export class Game {
     this.stateSync = new StateSync(this.socketClient, this.localPlayer);
     this.stateSync.start();
   }
+
+  /* ── Main game loop ──────────────────────────────────────────────── */
 
   private static readonly INTRO_DURATION = 4.5;
 
@@ -509,10 +650,8 @@ export class Game {
       this.vehicleFeatures.cameraFovBoost,
     );
 
-    // Update globe (cloud drift)
     this.globe.update(dt);
 
-    // Update remote planes
     this.remotePlanes.update(dt, this.cameraRig.camera);
 
     this.localPlayer.group.updateMatrixWorld(true);
@@ -588,7 +727,6 @@ export class Game {
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
 
-    // Render
     this.renderer.render(this.scene, this.cameraRig.camera);
     if (this.vehicleFeatures.speedLines) {
       this.speedLines.render(this.renderer);
@@ -596,12 +734,16 @@ export class Game {
     this.lensFlare?.render(this.renderer);
   };
 
+  /* ── Resize ──────────────────────────────────────────────────────── */
+
   private onResize = () => {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
     this.cameraRig.resize(w / h);
   };
+
+  /* ── Helpers ─────────────────────────────────────────────────────── */
 
   private createSkyGradient(stops: { stop: number; color: string }[]): CanvasTexture {
     this.skyCanvas = document.createElement("canvas");
@@ -625,8 +767,11 @@ export class Game {
     );
   }
 
+  /* ── Cleanup ─────────────────────────────────────────────────────── */
+
   dispose() {
     this.running = false;
+    this.previewActive = false;
     this.controls?.dispose();
     this.speedLines?.dispose();
     this.contrails?.dispose();
@@ -645,5 +790,7 @@ export class Game {
     this.stateSync?.stop();
     this.socketClient?.disconnect();
     window.removeEventListener("resize", this.onResize);
+    window.removeEventListener("resize", this.onPreviewResize);
+    this.removeLoadingOverlay();
   }
 }
