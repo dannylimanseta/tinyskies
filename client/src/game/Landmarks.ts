@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from "three";
 
-export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island";
+export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse";
 
 export interface Landmark {
   type: LandmarkType;
@@ -40,12 +40,22 @@ const VILLAGE_SUFFIXES = [
   "well", "wood", "marsh", "glen", "stead", "worth", "bury", "ham",
 ];
 
+const LIGHTHOUSE_PREFIXES = [
+  "Storm", "Beacon", "Gull", "Tide", "Cape", "Drift", "Anchor", "Reef",
+  "Salt", "Fog", "Ember", "North", "South", "Lantern", "Harbour", "Crag",
+];
+
+const LIGHTHOUSE_SUFFIXES = [
+  " Light", " Point", " Watch", " Rock", " Bluff", " Head", " Reach", " Keep",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
-  village: { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  peak:    { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  forest:  { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  coast:   { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  island:  { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  village:    { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  peak:       { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  forest:     { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  coast:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  island:     { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  lighthouse: { prefixes: LIGHTHOUSE_PREFIXES, suffixes: LIGHTHOUSE_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -96,6 +106,22 @@ export class LandmarkRegistry {
         normal: villages[i].normal.clone().normalize(),
         enterDot: VILLAGE_ENTER_DOT,
         exitDot: VILLAGE_EXIT_DOT,
+      });
+    }
+  }
+
+  registerLighthouses(
+    lighthouses: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, lighthouses.length, "lighthouse");
+    for (let i = 0; i < lighthouses.length; i++) {
+      this.landmarks.push({
+        type: "lighthouse",
+        name: names[i],
+        normal: lighthouses[i].normal.clone().normalize(),
+        enterDot: 0.997,
+        exitDot: 0.993,
       });
     }
   }

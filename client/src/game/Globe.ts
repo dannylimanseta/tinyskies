@@ -7,6 +7,7 @@ import {
   MeshPhongMaterial,
   ShaderMaterial,
   BackSide,
+  DoubleSide,
   AdditiveBlending,
   Group,
   Color,
@@ -86,6 +87,9 @@ export class Globe {
   private rimColorValue: Color;
   private cloudOpacityValue: number;
   readonly villageCenters: { normal: Vector3; houseCount: number }[] = [];
+  readonly lighthouseCenters: { normal: Vector3 }[] = [];
+  private lighthouseBeams: Mesh[] = [];
+  private lighthouseBeamTime = 0;
 
   private segments: number;
 
@@ -105,6 +109,7 @@ export class Globe {
     this.createCoconutTrees();
     this.createRocks();
     this.createVillages();
+    this.createLighthouses();
     this.createClouds();
     this.createAtmosphere();
   }
@@ -1439,6 +1444,186 @@ transformed.z += sway2;`,
     this.atmosphereGlowUniform.value.set(color);
   }
 
+  private createLighthouses() {
+    const LIGHTHOUSE_COUNT = 3;
+    const WATER_CHECKS = 12;
+    const CHECK_DIST = 0.06;
+    const MIN_WATER_RATIO = 0.55;
+    const MIN_SEPARATION_DOT = 0.92;
+
+    const rand = seededRandom(777 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    type Candidate = { normal: Vector3; waterRatio: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 2000 && candidates.length < 60) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation > 0.15) continue;
+
+      const centerNormal = new Vector3(nx, ny, nz);
+      let waterCount = 0;
+      const tangent = new Vector3(-ny, nx, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
+
+      for (let c = 0; c < WATER_CHECKS; c++) {
+        const angle = (c / WATER_CHECKS) * Math.PI * 2;
+        const cn = centerNormal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(angle) * CHECK_DIST)
+          .normalize();
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) waterCount++;
+      }
+
+      const waterRatio = waterCount / WATER_CHECKS;
+      if (waterRatio < MIN_WATER_RATIO) continue;
+
+      const tooCloseToVillage = this.villageCenters.some(
+        (v) => centerNormal.dot(v.normal) > 0.98,
+      );
+      if (tooCloseToVillage) continue;
+
+      candidates.push({ normal: centerNormal, waterRatio });
+    }
+
+    candidates.sort((a, b) => b.waterRatio - a.waterRatio);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= LIGHTHOUSE_COUNT) break;
+      const tooClose = chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT);
+      if (tooClose) continue;
+      chosen.push(c.normal);
+    }
+
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+
+    for (const normal of chosen) {
+      this.lighthouseCenters.push({ normal: normal.clone() });
+
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+      const lighthouse = new Group();
+
+      const towerH = 0.18;
+      const towerRBot = 0.021;
+      const towerRTop = 0.015;
+      const towerGeo = new CylinderGeometry(towerRTop, towerRBot, towerH, 8);
+      towerGeo.translate(0, towerH / 2, 0);
+      const towerMat = new MeshPhongMaterial({ color: 0xf5f0e8 });
+      lighthouse.add(new Mesh(towerGeo, towerMat));
+
+      const stripeH = 0.025;
+      const stripeY = towerH * 0.55;
+      const stripeR = MathUtils.lerp(towerRBot, towerRTop, 0.55) + 0.001;
+      const stripeGeo = new CylinderGeometry(stripeR, stripeR + 0.001, stripeH, 8);
+      stripeGeo.translate(0, stripeY, 0);
+      lighthouse.add(new Mesh(stripeGeo, new MeshPhongMaterial({ color: 0xcc3333 })));
+
+      const stripe2Y = towerH * 0.3;
+      const stripe2R = MathUtils.lerp(towerRBot, towerRTop, 0.3) + 0.001;
+      const stripe2Geo = new CylinderGeometry(stripe2R, stripe2R + 0.001, stripeH, 8);
+      stripe2Geo.translate(0, stripe2Y, 0);
+      lighthouse.add(new Mesh(stripe2Geo, new MeshPhongMaterial({ color: 0xcc3333 })));
+
+      const lanternY = towerH;
+      const lanternR = towerRTop + 0.006;
+      const lanternH = 0.025;
+      const lanternGeo = new CylinderGeometry(lanternR, lanternR, lanternH, 8);
+      lanternGeo.translate(0, lanternY + lanternH / 2, 0);
+      const lanternMat = new MeshPhongMaterial({ color: 0xfff8dd, emissive: 0xffdd44, emissiveIntensity: 0.6 });
+      lighthouse.add(new Mesh(lanternGeo, lanternMat));
+
+      const roofGeo = new CylinderGeometry(0.002, lanternR + 0.003, 0.016, 8);
+      roofGeo.translate(0, lanternY + lanternH + 0.008, 0);
+      lighthouse.add(new Mesh(roofGeo, new MeshPhongMaterial({ color: 0x444444 })));
+
+      const railGeo = new CylinderGeometry(lanternR + 0.004, lanternR + 0.004, 0.004, 12);
+      railGeo.translate(0, lanternY, 0);
+      lighthouse.add(new Mesh(railGeo, new MeshPhongMaterial({ color: 0x333333 })));
+
+      const beamLen = 0.8;
+      const beamSpread = 0.1;
+      const beamGeo = new CylinderGeometry(beamSpread, 0.002, beamLen, 12, 1, true);
+      beamGeo.rotateZ(-Math.PI / 2);
+      beamGeo.translate(beamLen / 2, 0, 0);
+
+      const beamMat = new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+        uniforms: {
+          beamColorNear: { value: new Color(0xffee44) },
+          beamColorFar: { value: new Color(0xff6600) },
+        },
+        vertexShader: `
+          varying float vLen;
+          varying vec3 vNorm;
+          varying vec3 vViewDir;
+          void main() {
+            vLen = uv.y;
+            vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+            vViewDir = -mvPos.xyz;
+            vNorm = normalMatrix * normal;
+            gl_Position = projectionMatrix * mvPos;
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 beamColorNear;
+          uniform vec3 beamColorFar;
+          varying float vLen;
+          varying vec3 vNorm;
+          varying vec3 vViewDir;
+          void main() {
+            float lengthFade = 1.0 - vLen * vLen;
+            vec3 N = normalize(vNorm);
+            vec3 V = normalize(vViewDir);
+            float facing = abs(dot(N, V));
+            float edgeFade = smoothstep(0.0, 0.4, facing);
+            float alpha = edgeFade * lengthFade * 0.4;
+            vec3 col = mix(beamColorNear, beamColorFar, vLen);
+            gl_FragColor = vec4(col, alpha);
+          }
+        `,
+      });
+
+      const beam = new Mesh(beamGeo, beamMat);
+      beam.position.y = lanternY + lanternH / 2;
+      lighthouse.add(beam);
+      this.lighthouseBeams.push(beam);
+
+      lighthouse.position.copy(normal.clone().multiplyScalar(surfaceR));
+      lighthouse.quaternion.setFromUnitVectors(REF_UP, normal);
+      lighthouse.castShadow = true;
+
+      this.group.add(lighthouse);
+    }
+  }
+
   update(dt: number) {
     const q = new Quaternion().setFromAxisAngle(
       this.cloudDriftAxis,
@@ -1450,6 +1635,12 @@ transformed.z += sway2;`,
       u.value += dt;
     }
     this.oceanTime.value += dt;
+    this.lighthouseBeamTime += dt;
+
+    const beamAngle = this.lighthouseBeamTime * 0.8;
+    for (const beam of this.lighthouseBeams) {
+      beam.rotation.y = beamAngle;
+    }
   }
 
   addTo(scene: Scene) {
