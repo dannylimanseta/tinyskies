@@ -238,7 +238,7 @@ export class TouchControls {
       }
       .tc-joy-base {
         position: absolute;
-        bottom: max(24px, calc(12px + env(safe-area-inset-bottom)));
+        bottom: max(80px, calc(68px + env(safe-area-inset-bottom)));
         left: max(24px, env(safe-area-inset-left));
         width: 120px;
         height: 120px;
@@ -286,14 +286,21 @@ export class TouchControls {
         user-select: none;
       }
       .tc-elevate-btn {
-        bottom: max(108px, calc(96px + env(safe-area-inset-bottom)));
+        bottom: max(164px, calc(152px + env(safe-area-inset-bottom)));
       }
       .tc-action-btn {
-        bottom: max(40px, calc(28px + env(safe-area-inset-bottom)));
+        bottom: max(96px, calc(84px + env(safe-area-inset-bottom)));
       }
       .tc-elevate-btn.active,
       .tc-action-btn.active {
         background: rgba(255, 255, 255, 0.20);
+      }
+      @media (max-width: 480px) {
+        .tc-joy-base,
+        .tc-elevate-btn,
+        .tc-action-btn {
+          backdrop-filter: none;
+        }
       }
     `;
     document.head.appendChild(s);

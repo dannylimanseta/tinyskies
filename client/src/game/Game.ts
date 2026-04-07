@@ -249,8 +249,8 @@ export class Game {
 
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.mobile ? 1.5 : 2));
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.mobile ? 1 : 2));
+    this.renderer.shadowMap.enabled = !this.mobile;
     this.renderer.shadowMap.type = VSMShadowMap;
     this.container.appendChild(this.renderer.domElement);
 
@@ -263,7 +263,8 @@ export class Game {
     this.scene = new Scene();
     const preset = getSkyPreset(this.timeOfDay);
     this.scene.background = this.createSkyGradient(preset.skyGradient);
-    this.scene.fog = new Fog(preset.fogColor, preset.fogNear, preset.fogFar);
+    const fogScale = this.mobile ? 0.7 : 1;
+    this.scene.fog = new Fog(preset.fogColor, preset.fogNear * fogScale, preset.fogFar * fogScale);
     this.clock = new Clock();
 
     this.hemiLight = new HemisphereLight(preset.hemiSkyColor, preset.hemiGroundColor, preset.hemiIntensity);
@@ -335,7 +336,7 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.previewAngle += 0.05 * dt;
 
-    const radius = 12;
+    const radius = this.mobile ? 17 : 12;
     const tiltY = Math.sin(-0.26) * radius;
     const tiltXZ = Math.cos(-0.26) * radius;
     this.previewCamera.position.set(
@@ -609,10 +610,10 @@ export class Game {
       padding: "16px 28px",
       borderRadius: "12px",
       background: "rgba(0, 0, 0, 0.7)",
-      backdropFilter: "blur(12px)",
+      backdropFilter: this.mobile ? "none" : "blur(12px)",
       color: "white",
       fontFamily: "'Inter', system-ui, sans-serif",
-      fontSize: window.innerWidth <= 480 ? "0.85rem" : "0.95rem",
+      fontSize: this.mobile ? "0.85rem" : "0.95rem",
       zIndex: "300",
     });
     toast.textContent = "Finding a new world...";

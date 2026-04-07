@@ -196,7 +196,7 @@ export class PackageQuestHUD {
         }
         .pkg-bubble-icon { width: 28px; height: 28px; font-size: 0.7rem; }
         .pkg-bubble-npc { font-size: 0.6rem; }
-        .pkg-bubble-text { font-size: 0.85rem; padding: 8px 12px; }
+        .pkg-bubble-text { font-size: 0.85rem; padding: 8px 12px; backdrop-filter: none; }
         .pkg-banner {
           top: max(12px, env(safe-area-inset-top));
           right: max(12px, env(safe-area-inset-right));
