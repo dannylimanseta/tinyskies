@@ -27,6 +27,13 @@ const MAX_BUFFER_SIZE = 6;
 const MIN_ALTITUDE = 0.15;
 const MAX_ALTITUDE = 3.0;
 
+const BOAT_BOB_AMPLITUDE = 0.009;
+const BOAT_BOB_SPEED = 2.6;
+const BOAT_PITCH_BOB_AMP = 0.042;
+const BOAT_PITCH_BOB_SPEED = 2.1;
+const BOAT_ROLL_BOB_AMP = 0.05;
+const BOAT_ROLL_BOB_SPEED = 1.55;
+
 type PartialState = Pick<
   PlayerState,
   "qx" | "qy" | "qz" | "qw" | "heading" | "pitch" | "altitude" | "speed" | "bankAngle" | "rollAngle"
@@ -90,6 +97,7 @@ class RemotePlane {
   private correctionProgress = 0;
   private lastRendered: PartialState | null = null;
   private wasDeadReckoning = false;
+  private bobTime = Math.random() * Math.PI * 2;
 
   constructor(id: string, name: string, globeRadius: number, vehicle: Vehicle = "plane") {
     this.id = id;
@@ -167,7 +175,7 @@ class RemotePlane {
     }
 
     this.lastRendered = computed;
-    this.applyToMesh(computed);
+    this.applyToMesh(computed, dt);
   }
 
   private tryInterpolate(renderTime: number): PartialState | null {
@@ -215,19 +223,25 @@ class RemotePlane {
     );
   }
 
-  private applyToMesh(state: PartialState) {
+  private applyToMesh(state: PartialState, dt: number) {
     const qPos = new Quaternion(state.qx, state.qy, state.qz, state.qw);
-    const m =
-      this.vehicle === "boat"
-        ? buildBoatMatrix(qPos, state.heading, state.altitude, this.globeRadius)
-        : buildPlaneMatrix(
-            qPos,
-            state.heading,
-            state.pitch,
-            state.bankAngle,
-            state.altitude,
-            this.globeRadius,
-          );
+    let m;
+    if (this.vehicle === "boat") {
+      this.bobTime += dt;
+      const bobAlt = state.altitude + Math.sin(this.bobTime * BOAT_BOB_SPEED) * BOAT_BOB_AMPLITUDE;
+      const bobPitch = Math.sin(this.bobTime * BOAT_PITCH_BOB_SPEED + 1.3) * BOAT_PITCH_BOB_AMP;
+      const bobRoll = Math.sin(this.bobTime * BOAT_ROLL_BOB_SPEED + 2.7) * BOAT_ROLL_BOB_AMP;
+      m = buildBoatMatrix(qPos, state.heading, bobAlt, this.globeRadius, bobPitch, bobRoll);
+    } else {
+      m = buildPlaneMatrix(
+        qPos,
+        state.heading,
+        state.pitch,
+        state.bankAngle,
+        state.altitude,
+        this.globeRadius,
+      );
+    }
     this.group.matrix.copy(m);
     this.group.matrixWorldNeedsUpdate = true;
 

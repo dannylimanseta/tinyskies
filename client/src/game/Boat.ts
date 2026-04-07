@@ -72,6 +72,7 @@ export class Boat {
   heading = 0;
   pitch = 0;
   altitude = 0;
+  baseAltitude = 0;
   speed = 0;
   bankAngle = 0;
   rollAngle = 0;
@@ -138,6 +139,7 @@ export class Boat {
     this.bobPitch = Math.sin(this.bobTime * PITCH_BOB_SPEED + 1.3) * PITCH_BOB_AMP;
     this.bobRoll = Math.sin(this.bobTime * ROLL_BOB_SPEED + 2.7) * ROLL_BOB_AMP;
 
+    this.baseAltitude = baseAlt;
     this.altitude = baseAlt + this.bobOffset;
     this.pitch = this.bobPitch;
     this.bankAngle = this.bobRoll;

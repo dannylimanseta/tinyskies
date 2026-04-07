@@ -9,6 +9,7 @@ export type SyncablePlayer = {
   heading: number;
   pitch: number;
   altitude: number;
+  baseAltitude?: number;
   speed: number;
   bankAngle: number;
   rollAngle: number;
@@ -40,6 +41,7 @@ export class StateSync {
   private send() {
     if (!this.client.connected) return;
 
+    const isBoat = this.player.vehicle === "boat";
     this.client.sendMove({
       name: "",
       vehicle: this.player.vehicle,
@@ -48,10 +50,10 @@ export class StateSync {
       qz: this.player.qPosition.z,
       qw: this.player.qPosition.w,
       heading: this.player.heading,
-      pitch: this.player.pitch,
-      altitude: this.player.altitude,
+      pitch: isBoat ? 0 : this.player.pitch,
+      altitude: isBoat ? (this.player.baseAltitude ?? this.player.altitude) : this.player.altitude,
       speed: this.player.speed,
-      bankAngle: this.player.bankAngle + this.player.rollAngle,
+      bankAngle: isBoat ? 0 : this.player.bankAngle + this.player.rollAngle,
       rollAngle: this.player.rollAngle,
       carrying: this.player.carrying,
       timestamp: Date.now(),

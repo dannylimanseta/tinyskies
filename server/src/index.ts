@@ -54,15 +54,17 @@ io.on("connection", (socket) => {
 const SEED_WORLD_COUNT = 20;
 
 async function ensureWorldsSeeded() {
-  const count = await prisma.world.count();
-  if (count >= SEED_WORLD_COUNT) return;
+  const existing = await prisma.world.findMany({ select: { name: true, createdBy: true } });
+  const systemWorlds = existing.filter((w) => w.createdBy === "System");
 
-  console.log(`Only ${count} world(s) in DB, seeding to ${SEED_WORLD_COUNT}...`);
-  const existing = await prisma.world.findMany({ select: { name: true } });
-  const usedNames = new Set(existing.map((w) => w.name));
+  if (systemWorlds.length >= SEED_WORLD_COUNT) return;
 
+  console.log(`Reseeding worlds (found ${systemWorlds.length} system worlds, need ${SEED_WORLD_COUNT})...`);
+  await prisma.world.deleteMany({ where: { createdBy: "System" } });
+
+  const usedNames = new Set<string>();
   const toCreate = [];
-  for (let i = count; i < SEED_WORLD_COUNT; i++) {
+  for (let i = 0; i < SEED_WORLD_COUNT; i++) {
     const name = generateUniqueWorldName(usedNames);
     usedNames.add(name);
     toCreate.push({
@@ -77,7 +79,7 @@ async function ensureWorldsSeeded() {
   }
 
   await prisma.world.createMany({ data: toCreate });
-  console.log(`Seeded ${toCreate.length} new world(s)`);
+  console.log(`Seeded ${toCreate.length} fresh world(s)`);
 }
 
 async function bootstrap() {
