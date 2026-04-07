@@ -1,3 +1,5 @@
+import { getNpcPortraitUrl } from "../game/PackageDialogue";
+
 export class PackageQuestHUD {
   private progressEl: HTMLDivElement;
   private svgCircle: SVGCircleElement;
@@ -78,7 +80,16 @@ export class PackageQuestHUD {
     if (this.bubbleTimer) clearTimeout(this.bubbleTimer);
     this.bubbleNpcEl.textContent = npcName;
     this.bubbleTextEl.textContent = text;
-    this.bubbleIconEl.textContent = npcName.charAt(0).toUpperCase();
+    const portraitUrl = getNpcPortraitUrl(npcName);
+    if (portraitUrl) {
+      this.bubbleIconEl.textContent = "";
+      this.bubbleIconEl.style.backgroundImage = `url(${portraitUrl})`;
+      this.bubbleIconEl.style.backgroundSize = "cover";
+      this.bubbleIconEl.style.backgroundPosition = "center";
+    } else {
+      this.bubbleIconEl.style.backgroundImage = "";
+      this.bubbleIconEl.textContent = npcName.charAt(0).toUpperCase();
+    }
     this.bubbleEl.style.opacity = "1";
     this.bubbleEl.style.transform = "translate(-50%, 0)";
     this.onVisibilityChange?.(true);
@@ -133,8 +144,8 @@ export class PackageQuestHUD {
         z-index: 11;
       }
       .pkg-bubble-icon {
-        width: 34px;
-        height: 34px;
+        width: 68px;
+        height: 68px;
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.10);
         display: flex;
@@ -194,7 +205,7 @@ export class PackageQuestHUD {
           top: max(48px, calc(40px + env(safe-area-inset-top)));
           max-width: calc(100% - 48px);
         }
-        .pkg-bubble-icon { width: 28px; height: 28px; font-size: 0.7rem; }
+        .pkg-bubble-icon { width: 56px; height: 56px; font-size: 0.7rem; }
         .pkg-bubble-npc { font-size: 0.6rem; }
         .pkg-bubble-text { font-size: 0.85rem; padding: 8px 12px; backdrop-filter: none; }
         .pkg-banner {

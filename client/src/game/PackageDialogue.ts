@@ -12,12 +12,35 @@ const NPC_NAMES = [
   "Widow Hazel", "Farmer Oats", "Mayor Bramble", "Auntie Rue",
   "Cobbler Pip", "Shepherd Fable", "Librarian Sage", "Warden Flint",
   "Tailor Wynn", "Fisherman Cork", "Beekeeper Thyme", "Clockmaker Gale",
-  "Herbalist Fern", "Cartographer Dune", "Scribe Elm", "Weaver Plum",
-  "Chandler Peat", "Brewer Ash", "Glassblower Ridge", "Jeweler Opal",
-  "Alchemist Ember", "Dyer Indigo", "Cooper Birch", "Potter Clay",
-  "Midwife Primrose", "Constable Thorn", "Innkeeper Holly", "Minstrel Reed",
-  "Archer Slate", "Apothecary Lichen", "Tanner Hide", "Wheelwright Spoke",
 ];
+
+const NPC_PORTRAIT_FILES: Record<string, string> = {
+  "Granny Maple": "granny_maple.png",
+  "Old Barnaby": "old_barnaby.png",
+  "Professor Wren": "professor_wren.png",
+  "Captain Moss": "capatain_moss.png",
+  "Baker Finch": "baker_finch.png",
+  "Nana Clover": "nana_clover.png",
+  "Postmaster Quill": "postmaster_quill.png",
+  "Tinker Lark": "tinker_lark.png",
+  "Widow Hazel": "widow_hazel.png",
+  "Farmer Oats": "farmer_oats.png",
+  "Mayor Bramble": "mayor_bramble.png",
+  "Auntie Rue": "auntie_rue.png",
+  "Cobbler Pip": "cobbler_pip.png",
+  "Shepherd Fable": "shepherd_fable.png",
+  "Librarian Sage": "librarian_sage.png",
+  "Warden Flint": "warden_flint.png",
+  "Tailor Wynn": "tailor_wynn.png",
+  "Fisherman Cork": "fisherman_cork.png",
+  "Beekeeper Thyme": "beekeeper_thyme.png",
+  "Clockmaker Gale": "clockmaster_gale.png",
+};
+
+export function getNpcPortraitUrl(npcName: string): string {
+  const file = NPC_PORTRAIT_FILES[npcName];
+  return file ? `/npc/${file}` : "";
+}
 
 const PICKUP_TEMPLATES = [
   "Could you take this to {dest}? {receiver} has been waiting for days!",
