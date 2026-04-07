@@ -286,7 +286,7 @@ export class PackageQuestManager {
       this.onProgressChange?.(0, "pickup");
 
       const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name);
-      this.onPickup?.(this.origin!.name, this.destination!.name, dialogue.npcName, dialogue.pickupLine);
+      this.onPickup?.(this.origin!.name, this.destination!.name, dialogue.senderName, dialogue.pickupLine);
     } else if (this.progress <= 0) {
       this.state = QuestState.Available;
       this.onProgressChange?.(0, "pickup");
@@ -316,7 +316,7 @@ export class PackageQuestManager {
       this.onProgressChange?.(0, "deliver");
 
       const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name);
-      this.onDelivered?.(this.destination!.name, dialogue.npcName, dialogue.deliveryLine, DELIVERY_XP);
+      this.onDelivered?.(this.destination!.name, dialogue.receiverName, dialogue.deliveryLine, DELIVERY_XP);
 
       this.lastDestination = this.destination;
       this.questIndex++;

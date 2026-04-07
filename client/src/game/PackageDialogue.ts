@@ -12,24 +12,44 @@ const NPC_NAMES = [
   "Widow Hazel", "Farmer Oats", "Mayor Bramble", "Auntie Rue",
   "Cobbler Pip", "Shepherd Fable", "Librarian Sage", "Warden Flint",
   "Tailor Wynn", "Fisherman Cork", "Beekeeper Thyme", "Clockmaker Gale",
+  "Herbalist Fern", "Cartographer Dune", "Scribe Elm", "Weaver Plum",
+  "Chandler Peat", "Brewer Ash", "Glassblower Ridge", "Jeweler Opal",
+  "Alchemist Ember", "Dyer Indigo", "Cooper Birch", "Potter Clay",
+  "Midwife Primrose", "Constable Thorn", "Innkeeper Holly", "Minstrel Reed",
+  "Archer Slate", "Apothecary Lichen", "Tanner Hide", "Wheelwright Spoke",
 ];
 
 const PICKUP_TEMPLATES = [
-  "Could you take this to {dest}? {npc} has been waiting for days!",
+  "Could you take this to {dest}? {receiver} has been waiting for days!",
   "A parcel for {dest}! Handle with care, it's full of jam.",
   "Quick delivery to {dest}, please! It's a surprise birthday gift.",
   "This needs to reach {dest} before sundown. Well... before the clouds roll in.",
   "Help! My pen pal in {dest} needs this letter. And the cookies I baked.",
   "Oh, a pilot! Could you fly this to {dest}? The roads are far too winding.",
-  "Special order for {dest}. {npc} will know what it is. Very hush-hush.",
+  "Special order for {dest}. {receiver} will know what it is. Very hush-hush.",
   "Urgent: one jar of pickles to {dest}. Don't ask. Just deliver.",
-  "This telescope belongs to {npc} in {dest}. They lent it ages ago!",
+  "This telescope belongs to {receiver} in {dest}. They lent it ages ago!",
   "A care package for {dest}. Mostly socks. Everyone needs socks.",
   "Please bring this to {dest}! It's a music box — fragile!",
   "Delivery for {dest}: one scarf, hand-knitted. Took me all winter.",
-  "Would you mind? {npc} in {dest} ordered a book. Three months ago.",
+  "Would you mind? {receiver} in {dest} ordered a book. Three months ago.",
   "This pie needs to get to {dest} while it's still warm. Fly fast!",
   "A package of seeds for the garden in {dest}. Spring waits for no one!",
+  "Oh thank goodness, a pilot! {receiver} in {dest} is expecting medicine.",
+  "It's just a little box of chocolates for {receiver}. Don't eat any!",
+  "Take this map to {dest}. {receiver} drew the first half, I drew the rest.",
+  "Emergency! The choir in {dest} needs new sheet music by tonight!",
+  "This crate of honey goes to {dest}. The bees worked very hard.",
+  "Could you bring this compass to {receiver}? They keep getting lost.",
+  "A jar of fireflies for {dest}. They light up the whole square!",
+  "This quilt belongs in {dest}. Every stitch tells a story.",
+  "One crate of fresh lemons for {dest}. {receiver} makes the best lemonade!",
+  "{receiver} forgot their lucky hat here. Please fly it back to {dest}!",
+  "Careful with this — it's a snow globe of {dest}. Very sentimental.",
+  "A bundle of letters for {dest}. The village hasn't had mail in weeks!",
+  "This lantern was crafted for {receiver}. It glows in seven colors!",
+  "Fly this kite to {dest} — it's for the children's festival.",
+  "One barrel of apple cider for {dest}. Don't let it slosh!",
 ];
 
 const DELIVERY_TEMPLATES = [
@@ -45,13 +65,29 @@ const DELIVERY_TEMPLATES = [
   "It arrived in one piece! That's more than the last courier managed.",
   "You're a lifesaver! Or at least, a pickle-saver.",
   "Incredible! I didn't think anyone would brave the winds today.",
-  "Safe and sound! {npc} sends their thanks. And this hug. From afar.",
+  "Safe and sound! Tell {sender} I said thank you. And give them a hug.",
   "The package! Quick, nobody look — it's a surprise.",
   "Thank you, brave pilot! The skies are friendlier with you in them.",
+  "I knew {sender} wouldn't forget! You've made my whole week.",
+  "Ha! {sender} actually sent it. I owe them a pie now.",
+  "Oh, it's even better than I imagined. {sender} has wonderful taste!",
+  "At last! I was about to fly there myself. Well, walk. I can't fly.",
+  "You must be exhausted! Stay for some tea? No? More deliveries? Of course.",
+  "The whole village is cheering! Well, the three of us. Small village.",
+  "Splendid! I'll write {sender} a thank-you note. Could you deliver that too?",
+  "Not a scratch on it! You're the best pilot this side of the globe.",
+  "Oh, the colors! {sender} always picks the prettiest wrapping.",
+  "I can already smell the cookies inside. Thank you, pilot!",
+  "Perfect timing — I was just about to give up hope!",
+  "You flew through those clouds for this? You deserve a medal!",
+  "Wait, there's a note inside... oh, that's sweet. Thank {sender} for me!",
+  "The children are going to be so happy. You've no idea!",
+  "A true sky courier! {sender} was right to trust you.",
 ];
 
 export interface QuestDialogue {
-  npcName: string;
+  senderName: string;
+  receiverName: string;
   pickupLine: string;
   deliveryLine: string;
 }
@@ -63,13 +99,21 @@ export function generateQuestDialogue(
 ): QuestDialogue {
   const rand = seededRandom(seed * 3571 + questIndex * 113);
 
-  const npcName = NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)];
+  const senderIdx = Math.floor(rand() * NPC_NAMES.length);
+  let receiverIdx = Math.floor(rand() * NPC_NAMES.length);
+  if (receiverIdx === senderIdx) {
+    receiverIdx = (receiverIdx + 1) % NPC_NAMES.length;
+  }
+  const senderName = NPC_NAMES[senderIdx];
+  const receiverName = NPC_NAMES[receiverIdx];
 
   let pickupLine = PICKUP_TEMPLATES[Math.floor(rand() * PICKUP_TEMPLATES.length)];
-  pickupLine = pickupLine.replace(/\{dest\}/g, destName).replace(/\{npc\}/g, npcName);
+  pickupLine = pickupLine
+    .replace(/\{dest\}/g, destName)
+    .replace(/\{receiver\}/g, receiverName);
 
   let deliveryLine = DELIVERY_TEMPLATES[Math.floor(rand() * DELIVERY_TEMPLATES.length)];
-  deliveryLine = deliveryLine.replace(/\{npc\}/g, npcName);
+  deliveryLine = deliveryLine.replace(/\{sender\}/g, senderName);
 
-  return { npcName, pickupLine, deliveryLine };
+  return { senderName, receiverName, pickupLine, deliveryLine };
 }
