@@ -10,7 +10,7 @@ import { createBiplane } from "./BiplaneMesh";
 const CRUISE_SPEED = 1.5;
 const BRAKE_DECEL = 3.0;
 const ACCEL = 2.5;
-const MIN_SPEED = 0.5;
+const MIN_SPEED = 0.3;
 const MAX_SPEED = 1.2;
 const BOOST_SPEED = 1.65;
 const ALTITUDE = 0.55;

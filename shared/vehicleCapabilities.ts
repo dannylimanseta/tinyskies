@@ -28,6 +28,8 @@ export interface VehicleGameFeatures {
   cameraSpeedZoom: number;
   /** FOV increase in degrees at max speed */
   cameraFovBoost: number;
+  /** Village-to-village package delivery quests */
+  packageQuests: boolean;
 }
 
 const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
@@ -44,6 +46,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     cameraFollowHeight: 0.7,
     cameraSpeedZoom: 0,
     cameraFovBoost: 40,
+    packageQuests: true,
   },
   boat: {
     collectibleDiamonds: true,
@@ -58,6 +61,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     cameraFollowHeight: 0.7,
     cameraSpeedZoom: 0,
     cameraFovBoost: 10,
+    packageQuests: false,
   },
   carpet: {
     collectibleDiamonds: true,
@@ -72,6 +76,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     cameraFollowHeight: 0.3,
     cameraSpeedZoom: -0.4,
     cameraFovBoost: 50,
+    packageQuests: false,
   },
 };
 

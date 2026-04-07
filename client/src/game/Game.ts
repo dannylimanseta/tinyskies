@@ -40,7 +40,9 @@ import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
+import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
+import { PackageQuestManager } from "./PackageQuest";
 
 export class Game {
   private container: HTMLElement;
@@ -74,6 +76,8 @@ export class Game {
   private hud!: HUD;
   private landmarkHUD!: LandmarkHUD;
   private landmarkDetector!: LandmarkDetector;
+  private packageQuest: PackageQuestManager | null = null;
+  private packageQuestHUD: PackageQuestHUD | null = null;
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -353,6 +357,41 @@ export class Game {
     this.landmarkDetector.onEnter = (lm) => this.landmarkHUD.show(lm.name, lm.type);
     this.landmarkDetector.onExit = () => this.landmarkHUD.hide();
 
+    if (this.vehicleFeatures.packageQuests) {
+      this.packageQuest = new PackageQuestManager(
+        this.scene, globeRadius, landmarkRegistry, seed, terrainType,
+      );
+      this.packageQuestHUD = new PackageQuestHUD(this.hud.root);
+
+      this.packageQuest.onPickup = (_originName, destName, npcName, dialogue) => {
+        this.packageQuestHUD!.showBubble(npcName, dialogue);
+        this.packageQuestHUD!.showDeliveryTarget(destName);
+      };
+
+      this.packageQuest.onDelivered = (_destName, npcName, dialogue, xp) => {
+        this.packageQuestHUD!.showBubble(npcName, dialogue);
+        this.packageQuestHUD!.hideDeliveryTarget();
+
+        const prevLevel = this.ringManager.level;
+        this.ringManager.sessionXP += xp;
+        this.ringManager.level = this.ringManager.getLevel();
+        this.hud.showXPGain(xp);
+        this.hud.setXP(
+          this.ringManager.getXP(),
+          this.ringManager.getXPForNextLevel(),
+          this.ringManager.getXPForCurrentLevel(),
+          this.ringManager.getLevel(),
+        );
+        if (this.ringManager.level > prevLevel) {
+          this.hud.showLevelUp(this.ringManager.level);
+        }
+      };
+
+      this.packageQuest.onProgressChange = (progress) => {
+        this.packageQuestHUD!.setProgress(progress);
+      };
+    }
+
     window.addEventListener("resize", this.onResize);
   }
 
@@ -543,6 +582,8 @@ export class Game {
     this.hud.setAltitude(this.localPlayer.altitude);
 
     this.landmarkDetector.update(this.localPlayer.qPosition);
+    const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+    this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
 
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
@@ -599,6 +640,8 @@ export class Game {
     this.globe?.dispose();
     this.renderer?.dispose();
     this.landmarkHUD?.dispose();
+    this.packageQuest?.dispose();
+    this.packageQuestHUD?.dispose();
     this.stateSync?.stop();
     this.socketClient?.disconnect();
     window.removeEventListener("resize", this.onResize);

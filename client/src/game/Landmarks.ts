@@ -103,6 +103,10 @@ export class LandmarkRegistry {
   getAll(): readonly Landmark[] {
     return this.landmarks;
   }
+
+  getByType(type: LandmarkType): Landmark[] {
+    return this.landmarks.filter((lm) => lm.type === type);
+  }
 }
 
 /* ── Detector ───────────────────────────────────────────────────────── */
