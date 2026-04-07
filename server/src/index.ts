@@ -54,12 +54,12 @@ io.on("connection", (socket) => {
 const SEED_WORLD_COUNT = 20;
 
 async function ensureWorldsSeeded() {
-  const count = await prisma.world.count();
+  const total = await prisma.world.count();
   const systemCount = await prisma.world.count({ where: { createdBy: "System" } });
 
-  if (systemCount >= SEED_WORLD_COUNT) return;
+  if (systemCount >= SEED_WORLD_COUNT && total === systemCount) return;
 
-  console.log(`Reseeding worlds (${count} total, ${systemCount} system — need ${SEED_WORLD_COUNT} system)...`);
+  console.log(`Reseeding worlds (${total} total, ${systemCount} system — need exactly ${SEED_WORLD_COUNT})...`);
   await prisma.world.deleteMany();
 
   const usedNames = new Set<string>();
