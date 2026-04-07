@@ -188,6 +188,21 @@ export class PackageQuestHUD {
         color: rgba(255, 255, 255, 0.85);
         font-weight: 700;
       }
+
+      @media (max-width: 480px) {
+        .pkg-bubble {
+          top: max(48px, calc(40px + env(safe-area-inset-top)));
+          max-width: calc(100% - 48px);
+        }
+        .pkg-bubble-icon { width: 28px; height: 28px; font-size: 0.7rem; }
+        .pkg-bubble-npc { font-size: 0.6rem; }
+        .pkg-bubble-text { font-size: 0.85rem; padding: 8px 12px; }
+        .pkg-banner {
+          top: max(12px, env(safe-area-inset-top));
+          right: max(12px, env(safe-area-inset-right));
+          font-size: 0.8rem;
+        }
+      }
     `;
     document.head.appendChild(style);
   }

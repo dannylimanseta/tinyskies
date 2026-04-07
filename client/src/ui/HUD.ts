@@ -283,6 +283,29 @@ export class HUD {
         color: rgba(255, 255, 255, 0.95);
         transform: translate(-50%, -50%) scale(1);
       }
+
+      @media (max-width: 480px) {
+        .hud-top {
+          top: max(12px, env(safe-area-inset-top));
+          left: max(12px, env(safe-area-inset-left));
+        }
+        .hud-world-name { font-size: 0.8rem; }
+        .hud-player-count { font-size: 0.65rem; }
+
+        .hud-xp-panel {
+          bottom: 100px;
+          padding: 8px 16px;
+          min-width: 140px;
+        }
+        .hud-xp-level { font-size: 0.6rem; }
+        .hud-xp-value { font-size: 0.55rem; }
+
+        .hud-xp-popup { bottom: 160px; font-size: 0.9rem; }
+        .hud-xp-popup::before, .hud-xp-popup::after { width: 32px; }
+
+        .hud-levelup { font-size: 1.8rem; }
+        .hud-levelup::before, .hud-levelup::after { width: 40px; }
+      }
     `;
     document.head.appendChild(style);
   }

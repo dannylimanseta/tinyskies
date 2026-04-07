@@ -92,6 +92,12 @@ export class LandmarkHUD {
         font-weight: 600;
         color: rgba(255, 255, 255, 0.85);
       }
+
+      @media (max-width: 480px) {
+        .landmark-hud { top: max(48px, calc(40px + env(safe-area-inset-top))); }
+        .landmark-hud-type { font-size: 0.55rem; }
+        .landmark-hud-name { font-size: 1.1rem; }
+      }
     `;
     document.head.appendChild(style);
   }

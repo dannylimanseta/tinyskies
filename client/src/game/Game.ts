@@ -23,8 +23,10 @@ import { Plane } from "./Plane";
 import { Boat } from "./Boat";
 import { Carpet } from "./Carpet";
 import { FlightControls } from "./FlightControls";
+import { TouchControls } from "./TouchControls";
 import { CameraRig } from "./CameraRig";
 import { SocketClient } from "../network/SocketClient";
+import { isMobile } from "../utils/isMobile";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
 import { SpeedLines } from "./SpeedLines";
@@ -54,6 +56,8 @@ export class Game {
   private globe!: Globe;
   private localPlayer!: Plane | Boat | Carpet;
   private controls!: FlightControls;
+  private touchControls: TouchControls | null = null;
+  private mobile = false;
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
   private speedLines!: SpeedLines;
@@ -118,6 +122,7 @@ export class Game {
   /* ── Public entry point ──────────────────────────────────────────── */
 
   async start() {
+    this.mobile = isMobile();
     this.showLoadingOverlay();
 
     const serverUrl = this.getServerUrl();
@@ -148,6 +153,7 @@ export class Game {
 
     this.lobby = new Lobby(this.container, {
       playerName: this.playerName,
+      mobile: this.mobile,
       onNameChange: (name) => { this.playerName = name; },
       onPlay: (vehicle) => {
         this.playerVehicle = vehicle;
@@ -180,7 +186,7 @@ export class Game {
     });
     const title = this.loadingEl.querySelector(".loading-title") as HTMLElement;
     Object.assign(title.style, {
-      fontSize: "3rem",
+      fontSize: "clamp(2rem, 8vw, 3rem)",
       fontWeight: "800",
       margin: "0",
       background: "linear-gradient(135deg, #4488ff 0%, #44ddff 100%)",
@@ -208,15 +214,15 @@ export class Game {
   private showLoadingError() {
     if (!this.loadingEl) return;
     this.loadingEl.innerHTML = `
-      <div style="text-align:center">
-        <h1 class="loading-title" style="font-size:3rem;font-weight:800;margin:0;
+      <div style="text-align:center;padding:0 24px;">
+        <h1 class="loading-title" style="font-size:clamp(2rem,8vw,3rem);font-weight:800;margin:0;
           background:linear-gradient(135deg,#4488ff,#44ddff);
           -webkit-background-clip:text;-webkit-text-fill-color:transparent;
           background-clip:text;animation:none;">Tiny Skies</h1>
         <p style="color:rgba(180,200,255,0.5);margin:16px 0 20px;font-size:0.9rem;">
           Could not connect to server
         </p>
-        <button id="btn-retry" style="padding:10px 28px;border:none;border-radius:8px;
+        <button id="btn-retry" style="padding:14px 32px;min-height:48px;border:none;border-radius:8px;
           background:linear-gradient(135deg,#3366dd,#2288ee);color:white;
           font-weight:600;font-size:0.9rem;cursor:pointer;font-family:inherit;">
           Retry
@@ -243,10 +249,16 @@ export class Game {
 
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.mobile ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = VSMShadowMap;
     this.container.appendChild(this.renderer.domElement);
+
+    if (this.mobile) {
+      this.container.style.webkitUserSelect = "none";
+      this.container.style.userSelect = "none";
+      this.container.addEventListener("contextmenu", (e) => e.preventDefault());
+    }
 
     this.scene = new Scene();
     const preset = getSkyPreset(this.timeOfDay);
@@ -261,8 +273,9 @@ export class Game {
     this.sunLight = new DirectionalLight(preset.sunColor, preset.sunIntensity);
     this.sunLight.position.set(10, 12, 5);
     this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.width = 2048;
-    this.sunLight.shadow.mapSize.height = 2048;
+    const shadowRes = this.mobile ? 1024 : 2048;
+    this.sunLight.shadow.mapSize.width = shadowRes;
+    this.sunLight.shadow.mapSize.height = shadowRes;
     this.sunLight.shadow.camera.near = 1;
     this.sunLight.shadow.camera.far = 30;
     this.sunLight.shadow.camera.left = -10;
@@ -393,7 +406,14 @@ export class Game {
     this.introActive = true;
     this.introTimer = 0;
 
-    this.controls = new FlightControls(this.container);
+    if (this.mobile) {
+      this.touchControls = new TouchControls(this.container);
+      this.touchControls.setVehicle(vehicle);
+      this.controls = new FlightControls(this.container);
+      this.controls.enabled = false;
+    } else {
+      this.controls = new FlightControls(this.container);
+    }
 
     this.remotePlanes = new RemotePlaneManager(this.scene, globeRadius);
 
@@ -591,7 +611,7 @@ export class Game {
       backdropFilter: "blur(12px)",
       color: "white",
       fontFamily: "'Inter', system-ui, sans-serif",
-      fontSize: "0.95rem",
+      fontSize: window.innerWidth <= 480 ? "0.85rem" : "0.95rem",
       zIndex: "300",
     });
     toast.textContent = "Finding a new world...";
@@ -697,7 +717,8 @@ export class Game {
       return;
     }
 
-    const { turnRate, forward, brake, elevate, barrelRoll } = this.controls.getState();
+    const { turnRate, forward, brake, elevate, barrelRoll } =
+      this.touchControls ? this.touchControls.getState() : this.controls.getState();
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll);
 
     this.cameraRig.update(
@@ -835,6 +856,7 @@ export class Game {
     this.running = false;
     this.previewActive = false;
     this.controls?.dispose();
+    this.touchControls?.dispose();
     this.speedLines?.dispose();
     this.contrails?.dispose();
     this.wakeTrail?.dispose();

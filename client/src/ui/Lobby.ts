@@ -26,6 +26,7 @@ export function generateWhimsicalName(): string {
 
 interface LobbyOptions {
   playerName: string;
+  mobile?: boolean;
   onPlay: (vehicle: Vehicle) => void;
   onNameChange?: (name: string) => void;
 }
@@ -87,33 +88,50 @@ export class Lobby {
 
     const nameEl = this.el.querySelector(".lobby-name") as HTMLElement;
     const editBtn = this.el.querySelector(".lobby-edit-btn") as HTMLElement;
+    const mobile = this.options.mobile ?? false;
 
-    editBtn.addEventListener("click", () => {
-      nameEl.focus();
-      const range = document.createRange();
-      range.selectNodeContents(nameEl);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    });
+    if (mobile) {
+      nameEl.setAttribute("contenteditable", "false");
+      nameEl.style.cursor = "pointer";
 
-    nameEl.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        nameEl.blur();
-      }
-    });
+      const promptName = () => {
+        const result = window.prompt("Enter your name", this.options.playerName);
+        if (result !== null && result.trim().length > 0) {
+          this.options.playerName = result.trim();
+          nameEl.textContent = result.trim();
+          this.options.onNameChange?.(this.options.playerName);
+        }
+      };
+      editBtn.addEventListener("click", promptName);
+      nameEl.addEventListener("click", promptName);
+    } else {
+      editBtn.addEventListener("click", () => {
+        nameEl.focus();
+        const range = document.createRange();
+        range.selectNodeContents(nameEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      });
 
-    nameEl.addEventListener("blur", () => {
-      const trimmed = nameEl.textContent?.trim() || "";
-      if (trimmed.length === 0) {
-        nameEl.textContent = this.options.playerName;
-      } else {
-        this.options.playerName = trimmed;
-        nameEl.textContent = trimmed;
-      }
-      this.options.onNameChange?.(this.options.playerName);
-    });
+      nameEl.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          nameEl.blur();
+        }
+      });
+
+      nameEl.addEventListener("blur", () => {
+        const trimmed = nameEl.textContent?.trim() || "";
+        if (trimmed.length === 0) {
+          nameEl.textContent = this.options.playerName;
+        } else {
+          this.options.playerName = trimmed;
+          nameEl.textContent = trimmed;
+        }
+        this.options.onNameChange?.(this.options.playerName);
+      });
+    }
 
     this.el.querySelector("#btn-fly")!.addEventListener("click", () => {
       const btn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
@@ -187,7 +205,7 @@ export class Lobby {
         transform: translateY(0);
       }
       .lobby-title {
-        font-size: 6rem;
+        font-size: clamp(2.5rem, 10vw, 6rem);
         font-weight: 800;
         margin: 0;
         color: white;
@@ -234,7 +252,7 @@ export class Lobby {
       /* ── Bottom Bar ─────────────────────────────────── */
       .lobby-bar {
         position: fixed;
-        bottom: 32px;
+        bottom: max(32px, calc(16px + env(safe-area-inset-bottom)));
         left: 50%;
         transform: translateX(-50%) translateY(30px);
         max-width: 480px;
@@ -328,6 +346,21 @@ export class Lobby {
       @keyframes fly-pulse {
         0%, 100% { box-shadow: 0 0 8px rgba(34, 136, 238, 0.2); }
         50% { box-shadow: 0 0 20px rgba(34, 136, 238, 0.45); }
+      }
+
+      @media (max-width: 480px) {
+        .lobby-username { font-size: 1rem; }
+        .lobby-edit-btn { padding: 8px 12px; min-width: 44px; min-height: 44px; }
+        .lobby-bar {
+          bottom: max(16px, calc(8px + env(safe-area-inset-bottom)));
+          padding: 8px 10px;
+          width: calc(100% - 32px);
+          gap: 6px;
+        }
+        .lobby-vbtn { padding: 10px 6px; min-height: 44px; }
+        .lobby-vicon { font-size: 1.3rem; }
+        .lobby-vlabel { font-size: 0.75rem; }
+        .lobby-fly { padding: 0 20px; font-size: 0.9rem; min-height: 44px; }
       }
     `;
     document.head.appendChild(style);
