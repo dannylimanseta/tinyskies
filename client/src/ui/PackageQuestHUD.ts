@@ -2,12 +2,16 @@ export class PackageQuestHUD {
   private progressEl: HTMLDivElement;
   private svgCircle: SVGCircleElement;
   private bubbleEl: HTMLDivElement;
+  private bubbleIconEl: HTMLDivElement;
+  private bubbleContentEl: HTMLDivElement;
   private bubbleNpcEl: HTMLSpanElement;
   private bubbleTextEl: HTMLSpanElement;
   private bannerEl: HTMLDivElement;
   private bannerNameEl: HTMLSpanElement;
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   private circumference: number;
+
+  onVisibilityChange?: (visible: boolean) => void;
 
   constructor(parent: HTMLElement) {
     this.progressEl = document.createElement("div");
@@ -21,9 +25,9 @@ export class PackageQuestHUD {
     this.progressEl.innerHTML = `
       <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
         <circle cx="${size / 2}" cy="${size / 2}" r="${radius}"
-          fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="${stroke}" />
+          fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${stroke}" />
         <circle class="pkg-progress-ring" cx="${size / 2}" cy="${size / 2}" r="${radius}"
-          fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="${stroke}"
+          fill="none" stroke="rgba(255,255,255,0.70)" stroke-width="${stroke}"
           stroke-linecap="round"
           stroke-dasharray="${this.circumference}"
           stroke-dashoffset="${this.circumference}"
@@ -35,12 +39,22 @@ export class PackageQuestHUD {
 
     this.bubbleEl = document.createElement("div");
     this.bubbleEl.className = "pkg-bubble";
+
+    this.bubbleIconEl = document.createElement("div");
+    this.bubbleIconEl.className = "pkg-bubble-icon";
+
+    this.bubbleContentEl = document.createElement("div");
+    this.bubbleContentEl.className = "pkg-bubble-content";
+
     this.bubbleNpcEl = document.createElement("span");
     this.bubbleNpcEl.className = "pkg-bubble-npc";
     this.bubbleTextEl = document.createElement("span");
     this.bubbleTextEl.className = "pkg-bubble-text";
-    this.bubbleEl.appendChild(this.bubbleNpcEl);
-    this.bubbleEl.appendChild(this.bubbleTextEl);
+
+    this.bubbleContentEl.appendChild(this.bubbleNpcEl);
+    this.bubbleContentEl.appendChild(this.bubbleTextEl);
+    this.bubbleEl.appendChild(this.bubbleIconEl);
+    this.bubbleEl.appendChild(this.bubbleContentEl);
     parent.appendChild(this.bubbleEl);
 
     this.bannerEl = document.createElement("div");
@@ -64,11 +78,14 @@ export class PackageQuestHUD {
     if (this.bubbleTimer) clearTimeout(this.bubbleTimer);
     this.bubbleNpcEl.textContent = npcName;
     this.bubbleTextEl.textContent = text;
+    this.bubbleIconEl.textContent = npcName.charAt(0).toUpperCase();
     this.bubbleEl.style.opacity = "1";
     this.bubbleEl.style.transform = "translate(-50%, 0)";
+    this.onVisibilityChange?.(true);
     this.bubbleTimer = setTimeout(() => {
       this.bubbleEl.style.opacity = "0";
       this.bubbleEl.style.transform = "translate(-50%, -6px)";
+      this.onVisibilityChange?.(false);
     }, 4000);
   }
 
@@ -102,56 +119,73 @@ export class PackageQuestHUD {
 
       .pkg-bubble {
         position: absolute;
-        top: 130px;
+        top: 80px;
         left: 50%;
         transform: translate(-50%, -6px);
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2px;
-        max-width: 340px;
-        text-align: center;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 10px;
+        max-width: 400px;
         opacity: 0;
         transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
         pointer-events: none;
         z-index: 11;
       }
+      .pkg-bubble-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.10);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.6);
+        flex-shrink: 0;
+        margin-top: 16px;
+      }
+      .pkg-bubble-content {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
       .pkg-bubble-npc {
-        font-size: 0.6rem;
+        font-size: 0.7rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.1em;
-        color: rgba(255, 220, 120, 0.8);
+        color: rgba(255, 255, 255, 0.5);
       }
       .pkg-bubble-text {
-        font-size: 0.85rem;
+        font-size: 1.0rem;
         font-weight: 500;
-        color: rgba(230, 240, 255, 0.9);
-        padding: 6px 16px;
-        background: rgba(0, 0, 20, 0.5);
-        border: 1px solid rgba(100, 140, 255, 0.12);
-        border-radius: 14px;
-        backdrop-filter: blur(6px);
-        line-height: 1.35;
-        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 0.85);
+        padding: 10px 16px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px 14px 14px 14px;
+        backdrop-filter: blur(12px);
+        line-height: 1.4;
       }
 
       .pkg-banner {
         position: absolute;
-        top: 110px;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: 0.72rem;
+        top: 20px;
+        right: 24px;
+        font-size: 0.95rem;
         font-weight: 600;
-        color: rgba(180, 210, 255, 0.7);
+        color: rgba(255, 255, 255, 0.5);
         letter-spacing: 0.04em;
         opacity: 0;
         transition: opacity 0.3s ease-in-out;
         pointer-events: none;
         z-index: 11;
+        white-space: nowrap;
       }
       .pkg-banner-name {
-        color: rgba(130, 200, 255, 0.95);
+        color: rgba(255, 255, 255, 0.85);
         font-weight: 700;
       }
     `;

@@ -13,6 +13,7 @@ export class LandmarkHUD {
   private typeEl: HTMLSpanElement;
   private nameEl: HTMLSpanElement;
   private visible = false;
+  private forcedHidden = false;
 
   constructor(parent: HTMLElement) {
     this.el = document.createElement("div");
@@ -36,8 +37,10 @@ export class LandmarkHUD {
     this.typeEl.textContent = TYPE_LABELS[type];
     this.nameEl.textContent = name;
     this.visible = true;
-    this.el.style.opacity = "1";
-    this.el.style.transform = "translate(-50%, 0)";
+    if (!this.forcedHidden) {
+      this.el.style.opacity = "1";
+      this.el.style.transform = "translate(-50%, 0)";
+    }
   }
 
   hide() {
@@ -45,6 +48,17 @@ export class LandmarkHUD {
     this.visible = false;
     this.el.style.opacity = "0";
     this.el.style.transform = "translate(-50%, -8px)";
+  }
+
+  setHidden(hidden: boolean) {
+    this.forcedHidden = hidden;
+    if (hidden) {
+      this.el.style.opacity = "0";
+      this.el.style.transform = "translate(-50%, -8px)";
+    } else if (this.visible) {
+      this.el.style.opacity = "1";
+      this.el.style.transform = "translate(-50%, 0)";
+    }
   }
 
   private applyStyles() {
@@ -67,22 +81,16 @@ export class LandmarkHUD {
         z-index: 10;
       }
       .landmark-hud-type {
-        font-size: 0.55rem;
+        font-size: 0.65rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.15em;
-        color: rgba(180, 200, 255, 0.45);
+        color: rgba(255, 255, 255, 0.4);
       }
       .landmark-hud-name {
-        font-size: 1.05rem;
+        font-size: 1.4rem;
         font-weight: 600;
-        color: rgba(220, 235, 255, 0.85);
-        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
-        padding: 4px 16px;
-        background: rgba(0, 0, 20, 0.35);
-        border: 1px solid rgba(100, 140, 255, 0.1);
-        border-radius: 20px;
-        backdrop-filter: blur(6px);
+        color: rgba(255, 255, 255, 0.85);
       }
     `;
     document.head.appendChild(style);

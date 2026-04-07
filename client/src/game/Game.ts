@@ -476,6 +476,7 @@ export class Game {
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     this.landmarkDetector = new LandmarkDetector(landmarkRegistry);
     this.landmarkHUD = new LandmarkHUD(this.hud.root);
+    this.hud.registerLandmarkHUD(this.landmarkHUD);
     this.landmarkDetector.onEnter = (lm) => this.landmarkHUD.show(lm.name, lm.type);
     this.landmarkDetector.onExit = () => this.landmarkHUD.hide();
 
@@ -484,6 +485,9 @@ export class Game {
         this.scene, globeRadius, landmarkRegistry, seed, terrainType,
       );
       this.packageQuestHUD = new PackageQuestHUD(this.hud.root);
+      this.packageQuestHUD.onVisibilityChange = (visible) => {
+        this.hud.setBubbleVisible(visible);
+      };
 
       this.packageQuest.onPickup = (_originName, destName, npcName, dialogue) => {
         this.packageQuestHUD!.showBubble(npcName, dialogue);
@@ -777,9 +781,6 @@ export class Game {
         this.gameTerrainType,
       );
     }
-
-    this.hud.setSpeed(this.localPlayer.speed);
-    this.hud.setAltitude(this.localPlayer.altitude);
 
     this.landmarkDetector.update(this.localPlayer.qPosition);
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
