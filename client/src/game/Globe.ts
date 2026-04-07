@@ -59,6 +59,8 @@ const HOUSES_PER_VILLAGE = [8, 10, 12, 14, 16];
 const CLOUD_COUNT = 30;
 const CLOUD_ALTITUDE = 1.0;
 const CLOUD_DRIFT_SPEED = 0.03;
+const BALLOON_COUNT = 5;
+const BALLOON_ALTITUDE = 0.6;
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -90,6 +92,8 @@ export class Globe {
   readonly lighthouseCenters: { normal: Vector3 }[] = [];
   private lighthouseBeams: Mesh[] = [];
   private lighthouseBeamTime = 0;
+  private balloons: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number }[] = [];
+  private balloonTime = 0;
 
   private segments: number;
 
@@ -110,6 +114,7 @@ export class Globe {
     this.createRocks();
     this.createVillages();
     this.createLighthouses();
+    this.createBalloons();
     this.createClouds();
     this.createAtmosphere();
   }
@@ -1326,6 +1331,216 @@ transformed.z += sway2;`,
     }
   }
 
+  private createBalloons() {
+    const rand = seededRandom(999 + this.seed);
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const SCHEMES: [number, number][] = [
+      [0xcc2222, 0xf0d020],
+      [0x1e5cb0, 0x5eb8e8],
+      [0x228844, 0xd0e830],
+      [0xe85520, 0xf5c040],
+      [0x8822aa, 0xe868b0],
+      [0xcc2255, 0xff8844],
+      [0x1199aa, 0x88cc33],
+    ];
+
+    const S = 0.084;
+    const profile = [
+      new Vector2(S * 0.28, S * -1.15),
+      new Vector2(S * 0.22, S * -1.00),
+      new Vector2(S * 0.30, S * -0.80),
+      new Vector2(S * 0.50, S * -0.45),
+      new Vector2(S * 0.75, S * -0.05),
+      new Vector2(S * 0.95, S *  0.35),
+      new Vector2(S * 1.05, S *  0.65),
+      new Vector2(S * 1.08, S *  0.90),
+      new Vector2(S * 1.02, S *  1.10),
+      new Vector2(S * 0.88, S *  1.25),
+      new Vector2(S * 0.65, S *  1.38),
+      new Vector2(S * 0.38, S *  1.48),
+      new Vector2(S * 0.12, S *  1.54),
+      new Vector2(S * 0.00, S *  1.56),
+    ];
+
+    const GORE_COUNT = 12;
+    const LATHE_SEGS = 36;
+
+    const throatY = profile[0].y;
+    const throatR = profile[0].x;
+    const basketTopY = throatY - S * 0.35;
+    const basketBotY = throatY - S * 0.65;
+    const basketR = S * 0.18;
+    const basketColor = new Color(0x8b6914);
+    const rimColor = new Color(0x6b4e10);
+    const ropeColor = new Color(0x554422);
+
+    for (let i = 0; i < BALLOON_COUNT; i++) {
+      const balloon = new Group();
+      const [primary, secondary] = SCHEMES[i % SCHEMES.length];
+      const colA = new Color(primary);
+      const colB = new Color(secondary);
+      const skirtColor = new Color(primary);
+
+      const parts: { geo: BufferGeometry; color: Color }[] = [];
+
+      const envGeo = new LatheGeometry(profile, LATHE_SEGS);
+      const envPos = envGeo.attributes.position;
+      const envColArr = new Float32Array(envPos.count * 3);
+      for (let v = 0; v < envPos.count; v++) {
+        let a = Math.atan2(envPos.getZ(v), envPos.getX(v));
+        if (a < 0) a += Math.PI * 2;
+        const gore = Math.floor((a / (Math.PI * 2)) * GORE_COUNT);
+        const c = gore % 2 === 0 ? colA : colB;
+        envColArr[v * 3] = c.r;
+        envColArr[v * 3 + 1] = c.g;
+        envColArr[v * 3 + 2] = c.b;
+      }
+      envGeo.setAttribute("color", new Float32BufferAttribute(envColArr, 3));
+      envGeo.computeVertexNormals();
+
+      const skirtGeo = new CylinderGeometry(throatR * 0.85, throatR * 1.05, S * 0.12, 12, 1, true);
+      skirtGeo.translate(0, throatY - S * 0.06, 0);
+      parts.push({ geo: skirtGeo, color: skirtColor });
+
+      const bodyGeo = new CylinderGeometry(basketR, basketR * 0.9, basketBotY - basketTopY, 8);
+      bodyGeo.translate(0, (basketTopY + basketBotY) / 2, 0);
+      parts.push({ geo: bodyGeo, color: basketColor });
+
+      const rimGeo = new CylinderGeometry(basketR + S * 0.01, basketR + S * 0.01, S * 0.02, 12);
+      rimGeo.translate(0, basketTopY, 0);
+      parts.push({ geo: rimGeo, color: rimColor });
+
+      const baseGeo = new CylinderGeometry(basketR * 0.9, basketR * 0.9, S * 0.015, 12);
+      baseGeo.translate(0, basketBotY, 0);
+      parts.push({ geo: baseGeo, color: rimColor });
+
+      const dummy = new Object3D();
+      for (let r = 0; r < 8; r++) {
+        const a = (r / 8) * Math.PI * 2;
+        const topX = Math.cos(a) * throatR * 0.9;
+        const topZ = Math.sin(a) * throatR * 0.9;
+        const botX = Math.cos(a) * basketR * 0.85;
+        const botZ = Math.sin(a) * basketR * 0.85;
+        const dx = botX - topX;
+        const dy = basketTopY - throatY;
+        const dz = botZ - topZ;
+        const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const ropeGeo = new CylinderGeometry(0.001, 0.001, len, 3);
+        dummy.position.set(
+          (topX + botX) / 2,
+          (throatY + basketTopY) / 2,
+          (topZ + botZ) / 2,
+        );
+        dummy.quaternion.setFromUnitVectors(REF_UP, new Vector3(dx, dy, dz).normalize());
+        dummy.updateMatrix();
+        ropeGeo.applyMatrix4(dummy.matrix);
+        parts.push({ geo: ropeGeo, color: ropeColor });
+      }
+
+      const mergedGeo = this.mergeColoredParts(parts);
+
+      const totalVerts = envPos.count + mergedGeo.attributes.position.count;
+      const finalPos = new Float32Array(totalVerts * 3);
+      const finalNorm = new Float32Array(totalVerts * 3);
+      const finalCol = new Float32Array(totalVerts * 3);
+      const finalIdx: number[] = [];
+
+      const ep = envGeo.attributes.position;
+      const en = envGeo.attributes.normal;
+      const ec = envGeo.attributes.color;
+      for (let v = 0; v < ep.count; v++) {
+        const i3 = v * 3;
+        finalPos[i3] = ep.getX(v);
+        finalPos[i3 + 1] = ep.getY(v);
+        finalPos[i3 + 2] = ep.getZ(v);
+        finalNorm[i3] = en.getX(v);
+        finalNorm[i3 + 1] = en.getY(v);
+        finalNorm[i3 + 2] = en.getZ(v);
+        finalCol[i3] = ec.getX(v);
+        finalCol[i3 + 1] = ec.getY(v);
+        finalCol[i3 + 2] = ec.getZ(v);
+      }
+      if (envGeo.index) {
+        for (let j = 0; j < envGeo.index.count; j++) {
+          finalIdx.push(envGeo.index.getX(j));
+        }
+      }
+
+      const mp = mergedGeo.attributes.position;
+      const mn = mergedGeo.attributes.normal;
+      const mc = mergedGeo.attributes.color;
+      const off = ep.count;
+      for (let v = 0; v < mp.count; v++) {
+        const i3 = (off + v) * 3;
+        finalPos[i3] = mp.getX(v);
+        finalPos[i3 + 1] = mp.getY(v);
+        finalPos[i3 + 2] = mp.getZ(v);
+        finalNorm[i3] = mn.getX(v);
+        finalNorm[i3 + 1] = mn.getY(v);
+        finalNorm[i3 + 2] = mn.getZ(v);
+        finalCol[i3] = mc.getX(v);
+        finalCol[i3 + 1] = mc.getY(v);
+        finalCol[i3 + 2] = mc.getZ(v);
+      }
+      if (mergedGeo.index) {
+        for (let j = 0; j < mergedGeo.index.count; j++) {
+          finalIdx.push(mergedGeo.index.getX(j) + off);
+        }
+      }
+
+      const fullGeo = new BufferGeometry();
+      fullGeo.setAttribute("position", new Float32BufferAttribute(finalPos, 3));
+      fullGeo.setAttribute("normal", new Float32BufferAttribute(finalNorm, 3));
+      fullGeo.setAttribute("color", new Float32BufferAttribute(finalCol, 3));
+      fullGeo.setIndex(finalIdx);
+      envGeo.dispose();
+      mergedGeo.dispose();
+
+      const mat = new MeshPhongMaterial({ vertexColors: true, shininess: 15 });
+      addRimLight(mat, 0xffeedd, 0.3, 3.0);
+      const mesh = new Mesh(fullGeo, mat);
+      mesh.castShadow = true;
+      balloon.add(mesh);
+
+      const burnerGeo = new SphereGeometry(S * 0.05, 6, 4);
+      burnerGeo.translate(0, throatY + S * 0.02, 0);
+      balloon.add(new Mesh(burnerGeo, new MeshPhongMaterial({
+        color: 0xff8800,
+        emissive: 0xff5500,
+        emissiveIntensity: 0.5,
+        transparent: true,
+        opacity: 0.5,
+      })));
+
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const normal = new Vector3(
+        Math.sin(phi) * Math.cos(theta),
+        Math.cos(phi),
+        Math.sin(phi) * Math.sin(theta),
+      ).normalize();
+
+      const baseAlt = this.radius + BALLOON_ALTITUDE + (rand() - 0.5) * 0.3;
+      const scale = MathUtils.lerp(0.8, 1.2, rand());
+      balloon.scale.setScalar(scale);
+
+      const pivot = new Group();
+      pivot.position.copy(normal.clone().multiplyScalar(baseAlt));
+      pivot.quaternion.setFromUnitVectors(REF_UP, normal);
+      pivot.add(balloon);
+
+      this.group.add(pivot);
+      this.balloons.push({
+        pivot,
+        inner: balloon,
+        normal: normal.clone(),
+        baseAlt,
+        phase: rand() * Math.PI * 2,
+      });
+    }
+  }
+
   private createClouds() {
     const rand = seededRandom(77);
     const cloudMat = new ShaderMaterial({
@@ -1640,6 +1855,14 @@ transformed.z += sway2;`,
     const beamAngle = this.lighthouseBeamTime * 0.8;
     for (const beam of this.lighthouseBeams) {
       beam.rotation.y = beamAngle;
+    }
+
+    this.balloonTime += dt;
+    for (const b of this.balloons) {
+      const bob = Math.sin(this.balloonTime * 0.5 + b.phase) * 0.04;
+      const alt = b.baseAlt + bob;
+      b.pivot.position.copy(b.normal).multiplyScalar(alt);
+      b.inner.rotation.y += dt * 0.05;
     }
   }
 
