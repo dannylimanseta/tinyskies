@@ -308,6 +308,7 @@ export class Game {
       this.worldConfig?.globeRadius ?? 5, seed, terrainType,
       preset.atmosphereGlow, preset.oceanShallow, preset.oceanDeep,
       preset.oceanFoam, preset.rimColor, preset.cloudOpacity,
+      this.mobile ? 128 : 256,
     );
     this.globe.addTo(this.scene);
 

@@ -87,7 +87,9 @@ export class Globe {
   private cloudOpacityValue: number;
   readonly villageCenters: { normal: Vector3; houseCount: number }[] = [];
 
-  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb, cloudOpacity: number = 0.2) {
+  private segments: number;
+
+  constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb, cloudOpacity: number = 0.2, segments: number = 256) {
     this.radius = radius;
     this.seed = seed;
     this.terrainType = terrainType;
@@ -97,6 +99,7 @@ export class Globe {
     this.foamColorValue = new Color(foamColor);
     this.rimColorValue = new Color(rimColor);
     this.cloudOpacityValue = cloudOpacity;
+    this.segments = segments;
     this.createSurface();
     this.createTrees();
     this.createCoconutTrees();
@@ -107,7 +110,7 @@ export class Globe {
   }
 
   private createSurface() {
-    const geo = new SphereGeometry(this.radius, 256, 256);
+    const geo = new SphereGeometry(this.radius, this.segments, this.segments);
     const posAttr = geo.attributes.position;
     const vertexCount = posAttr.count;
     const colors = new Float32Array(vertexCount * 3);

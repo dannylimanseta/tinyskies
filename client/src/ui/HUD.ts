@@ -293,14 +293,14 @@ export class HUD {
         .hud-player-count { font-size: 0.65rem; }
 
         .hud-xp-panel {
-          bottom: 100px;
+          bottom: 160px;
           padding: 8px 16px;
           min-width: 140px;
         }
         .hud-xp-level { font-size: 0.6rem; }
         .hud-xp-value { font-size: 0.55rem; }
 
-        .hud-xp-popup { bottom: 160px; font-size: 0.9rem; }
+        .hud-xp-popup { bottom: 220px; font-size: 0.9rem; }
         .hud-xp-popup::before, .hud-xp-popup::after { width: 32px; }
 
         .hud-levelup { font-size: 1.8rem; }
