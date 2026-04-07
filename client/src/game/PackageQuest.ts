@@ -87,7 +87,7 @@ function seededRandom(seed: number): () => number {
 function createPackageMesh(ghost = false): Group {
   const pkg = new Group();
 
-  const boxGeo = new BoxGeometry(0.025, 0.02, 0.025);
+  const boxGeo = new BoxGeometry(0.05, 0.04, 0.05);
   const boxMat = new MeshPhongMaterial({
     color: 0x8b6914,
     transparent: ghost,
@@ -97,14 +97,14 @@ function createPackageMesh(ghost = false): Group {
   pkg.add(box);
 
   if (!ghost) {
-    const strapGeo = new BoxGeometry(0.028, 0.002, 0.004);
+    const strapGeo = new BoxGeometry(0.056, 0.004, 0.008);
     const strapMat = new MeshPhongMaterial({ color: 0xf5deb3 });
     const strap1 = new Mesh(strapGeo, strapMat);
-    strap1.position.y = 0.011;
+    strap1.position.y = 0.022;
     pkg.add(strap1);
 
     const strap2 = new Mesh(strapGeo, strapMat);
-    strap2.position.y = 0.011;
+    strap2.position.y = 0.022;
     strap2.rotation.y = Math.PI / 2;
     pkg.add(strap2);
   }
@@ -131,7 +131,7 @@ function createBeamGroup(color: number): Group {
     depthWrite: false,
   });
 
-  const planeGeo = new PlaneGeometry(0.03, 0.8);
+  const planeGeo = new PlaneGeometry(0.06, 0.8);
   planeGeo.translate(0, 0.4, 0);
 
   const p1 = new Mesh(planeGeo, beamMat);
@@ -397,6 +397,10 @@ export class PackageQuestManager {
     this.spinAngle += SPIN_SPEED * dt;
     this.packageMesh.quaternion.setFromUnitVectors(REF_UP, n);
     this.packageMesh.rotateY(this.spinAngle);
+
+    const beamBob = Math.sin(this.time * 0.8) * 0.015;
+    const br = this.globeRadius + disp + beamBob;
+    this.originBeam.position.set(n.x * br, n.y * br, n.z * br);
   }
 
   private animateGhost(dt: number) {
@@ -408,6 +412,10 @@ export class PackageQuestManager {
     this.ghostPackage.position.set(n.x * r, n.y * r, n.z * r);
     this.ghostPackage.quaternion.setFromUnitVectors(REF_UP, n);
     this.ghostPackage.rotateY(this.spinAngle);
+
+    const beamBob = Math.sin(this.time * 0.8 + 1.0) * 0.015;
+    const br = this.globeRadius + disp + beamBob;
+    this.destBeam.position.set(n.x * br, n.y * br, n.z * br);
   }
 
   private readonly _up = new Vector3();
