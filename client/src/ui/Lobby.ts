@@ -59,11 +59,11 @@ export class Lobby {
               <span class="lobby-vlabel">Plane</span>
             </button>
             <button type="button" class="lobby-vbtn" data-vehicle="boat" aria-checked="false">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2"/><path d="M6 18h12l-3.5-3.5C15 12 13 12 10 10c-3.5 5.5-6.5 5.5-6.5 5.5L6 18Z"/><path d="M10 2v4"/><path d="M9 5l2-2 2 2"/></svg></span>
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></svg></span>
               <span class="lobby-vlabel">Boat</span>
             </button>
             <button type="button" class="lobby-vbtn" data-vehicle="carpet" aria-checked="false">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg></span>
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="1.5"/><rect x="6.5" y="8.5" width="11" height="7" rx="0.5"/><path d="M12 10.5v4"/><path d="M5 19v2M9 19v2M12 19v2M15 19v2M19 19v2"/></svg></span>
               <span class="lobby-vlabel">Carpet</span>
             </button>
           </div>
@@ -261,7 +261,7 @@ export class Lobby {
         display: flex;
         align-items: center;
         gap: 10px;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
         backdrop-filter: blur(32px) saturate(120%);
         -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
         border: 1px solid rgba(255, 255, 255, 0.12);
