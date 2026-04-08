@@ -87,6 +87,8 @@ export class Globe {
   private oceanShallowColor: number;
   private oceanDeepColor: number;
   private foamColorValue: Color;
+  /** Per vertex: ocean mix 0–1, or -1 for land (for day/night ocean recolor without re-sampling noise). */
+  private vertexOceanDepth!: Float32Array;
   private rimColorValue: Color;
   private cloudOpacityValue: number;
   private cloudOpacityUniform!: { value: number };
@@ -129,6 +131,7 @@ export class Globe {
     const posAttr = geo.attributes.position;
     const vertexCount = posAttr.count;
     const colors = new Float32Array(vertexCount * 3);
+    const oceanDepth = new Float32Array(vertexCount);
 
     const noise = createNoise3D(this.seed);
     const patchNoise = createNoise3D(this.seed + 555);
@@ -194,9 +197,11 @@ export class Globe {
         displacement = surfaceDisplacementFromValue(
           this.seed, this.terrainType, nx, ny, nz, value,
         );
+        oceanDepth[i] = -1;
       } else {
         const depth = Math.min(1, (params.threshold - value) * 4);
         color = oceanShallow.clone().lerp(oceanDeep, depth);
+        oceanDepth[i] = depth;
         displacement = surfaceDisplacementFromValue(
           this.seed, this.terrainType, nx, ny, nz, value,
         );
@@ -209,6 +214,8 @@ export class Globe {
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
     }
+
+    this.vertexOceanDepth = oceanDepth;
 
     posAttr.needsUpdate = true;
     geo.computeVertexNormals();
@@ -1946,6 +1953,48 @@ transformed.z += sway2;`,
 
   setRimColor(color: number) {
     this.rimColorValue.set(color);
+  }
+
+  /** Updates ocean vertex colors and foam from the blended day/night preset (call each frame with preset). */
+  setOceanColors(shallow: number, deep: number, foam: number) {
+    if (
+      this.oceanShallowColor === shallow &&
+      this.oceanDeepColor === deep &&
+      this.foamColorValue.getHex() === foam
+    ) {
+      return;
+    }
+
+    this.oceanShallowColor = shallow;
+    this.oceanDeepColor = deep;
+    this.foamColorValue.set(foam);
+
+    const geo = this.surfaceMesh.geometry as BufferGeometry;
+    const colorAttr = geo.attributes.color as Float32BufferAttribute;
+    const colors = colorAttr.array as Float32Array;
+    const vertexCount = colors.length / 3;
+
+    const cShallow = new Color(shallow);
+    const cDeep = new Color(deep);
+    const sr = cShallow.r;
+    const sg = cShallow.g;
+    const sb = cShallow.b;
+    const dr = cDeep.r;
+    const dg = cDeep.g;
+    const db = cDeep.b;
+    const od = this.vertexOceanDepth;
+
+    for (let i = 0; i < vertexCount; i++) {
+      const t = od[i];
+      if (t < 0) continue;
+      const j = i * 3;
+      const u = 1 - t;
+      colors[j] = sr * u + dr * t;
+      colors[j + 1] = sg * u + dg * t;
+      colors[j + 2] = sb * u + db * t;
+    }
+
+    colorAttr.needsUpdate = true;
   }
 
   private createLighthouses() {

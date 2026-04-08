@@ -48,6 +48,9 @@ import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 
+/** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
+const CRICKETS_LOOP_MAX_VOL = 0.045;
+
 export class Game {
   private container: HTMLElement;
   private renderer!: WebGLRenderer;
@@ -147,6 +150,7 @@ export class Game {
     this.dayNightCycle = new DayNightCycle(this.worldConfig?.seed ?? 42);
     this.audioManager.init().then(() => {
       this.audioManager.loadSFX("engine_biplane", "/audio/sfx/engine_biplane.mp3");
+      this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3");
     });
     this.playerName = generateWhimsicalName();
 
@@ -163,6 +167,9 @@ export class Game {
       onPlay: (vehicle) => {
         this.playerVehicle = vehicle;
         this.audioManager.startMusic();
+        void this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3").then(() => {
+          this.audioManager.startLoop("crickets_loop", 0);
+        });
         this.lobby.fadeOut(() => {
           this.lobby.dispose();
           this.startGame(vehicle);
@@ -913,6 +920,7 @@ export class Game {
     this.globe.setAtmosphereGlow(p.atmosphereGlow);
     this.globe.setCloudOpacity(p.cloudOpacity);
     this.globe.setRimColor(p.rimColor);
+    this.globe.setOceanColors(p.oceanShallow, p.oceanDeep, p.oceanFoam);
 
     const nightW = this.dayNightCycle.getNightWeight();
     const dayW = this.dayNightCycle.getDayWeight();
@@ -934,6 +942,7 @@ export class Game {
 
     const mw = this.dayNightCycle.getMusicWeights();
     this.audioManager.setWeights(mw.day, mw.evening, mw.night);
+    this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL);
   }
 
   private getServerUrl(): string {
