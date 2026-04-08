@@ -150,12 +150,16 @@ export class AudioManager {
     }
   }
 
-  playSFX(name: string, volume = 1.0) {
+  /**
+   * One-shot SFX. `playbackRate` shifts pitch (and length); use >1 for slightly higher combo tones.
+   */
+  playSFX(name: string, volume = 1.0, playbackRate = 1.0) {
     if (!this.ctx || !this.masterGain || this._muted) return;
     const buffer = this.sfxBuffers.get(name);
     if (!buffer) return;
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = Math.max(0.5, Math.min(2, playbackRate));
     const gain = this.ctx.createGain();
     gain.gain.value = volume;
     source.connect(gain);

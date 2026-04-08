@@ -51,6 +51,18 @@ import { PackageQuestManager } from "./PackageQuest";
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
 
+/** Next diamond within this window raises pitch (combo). */
+const DIAMOND_COMBO_WINDOW_MS = 900;
+const DIAMOND_COMBO_MAX_STEPS = 5;
+const DIAMOND_COMBO_RATE_PER_STEP = 0.028;
+const DIAMOND_SFX_VOLUME = 0.55;
+
+const DIAMOND_SFX_IDS = [
+  "diamond_collect_1",
+  "diamond_collect_2",
+  "diamond_collect_3",
+] as const;
+
 export class Game {
   private container: HTMLElement;
   private renderer!: WebGLRenderer;
@@ -100,6 +112,8 @@ export class Game {
   private introActive = false;
   private introTimer = 0;
   private vehicleFlashTimer = 0;
+  private lastDiamondCollectAt = 0;
+  private diamondComboStep = 0;
   private introStartPos = new Vector3();
   private introEndPos = new Vector3();
   private introEndLookAt = new Vector3();
@@ -151,6 +165,9 @@ export class Game {
     this.audioManager.init().then(() => {
       this.audioManager.loadSFX("engine_biplane", "/audio/sfx/engine_biplane.mp3");
       this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3");
+      for (const id of DIAMOND_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
     });
     this.playerName = generateWhimsicalName();
 
@@ -476,6 +493,19 @@ export class Game {
         this.ringManager.level = this.ringManager.getLevel();
       }
       this.collectVFX.play(worldPos, tier);
+      if (this.vehicleFeatures.collectibleDiamonds) {
+        const now = performance.now();
+        if (now - this.lastDiamondCollectAt > DIAMOND_COMBO_WINDOW_MS) {
+          this.diamondComboStep = 0;
+        } else {
+          this.diamondComboStep = Math.min(this.diamondComboStep + 1, DIAMOND_COMBO_MAX_STEPS);
+        }
+        this.lastDiamondCollectAt = now;
+        const rate = 1 + this.diamondComboStep * DIAMOND_COMBO_RATE_PER_STEP;
+        const pick =
+          DIAMOND_SFX_IDS[Math.floor(Math.random() * DIAMOND_SFX_IDS.length)]!;
+        this.audioManager.playSFX(pick, DIAMOND_SFX_VOLUME, rate);
+      }
       this.vehicleFlashTimer = 0.35;
       this.cameraRig.shake();
       if (this.localPlayer instanceof Plane) {
