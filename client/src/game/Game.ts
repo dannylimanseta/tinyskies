@@ -39,6 +39,7 @@ import { CarpetLeaves } from "./CarpetLeaves";
 import { LensFlare } from "./LensFlare";
 import { Starfield } from "./Starfield";
 import { Aurora } from "./Aurora";
+import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
@@ -112,6 +113,7 @@ export class Game {
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
+  private rainOverlay: RainOverlay | null = null;
   private starfield: Starfield | null = null;
   private aurora: Aurora | null = null;
   private playerLight: PointLight | null = null;
@@ -513,6 +515,8 @@ export class Game {
 
     this.lensFlare = new LensFlare();
     this.lensFlare.setColorScale(preset.flareColorScale);
+
+    this.rainOverlay = new RainOverlay();
 
     this.playerLight = new PointLight(0xffaa55, 0, 4.0, 1.5);
     this.scene.add(this.playerLight);
@@ -932,12 +936,14 @@ export class Game {
     this.audioManager.update(dt);
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
+    this.rainOverlay?.update(dt, this.dayNightCycle.getRainWeight());
 
     this.renderer.render(this.scene, this.cameraRig.camera);
     if (this.vehicleFeatures.speedLines) {
       this.speedLines.render(this.renderer);
     }
     this.lensFlare?.render(this.renderer);
+    this.rainOverlay?.render(this.renderer);
   };
 
   /* ── Resize ──────────────────────────────────────────────────────── */
@@ -1063,6 +1069,7 @@ export class Game {
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
     this.lensFlare?.dispose();
+    this.rainOverlay?.dispose();
     this.starfield?.dispose();
     this.aurora?.dispose();
     this.ringManager?.dispose();

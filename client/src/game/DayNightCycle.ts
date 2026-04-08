@@ -157,6 +157,22 @@ export class DayNightCycle {
     return 1 - this.getNightWeight();
   }
 
+  /**
+   * Rain weight 0–1. Random episodes that can occur during any time of day.
+   * Uses two slow sine waves with irrational frequency ratios seeded by
+   * worldSeed so all clients see the same weather.
+   */
+  getRainWeight(): number {
+    const now = Date.now() / 1000;
+    const s = this.worldSeed;
+    const a = Math.sin(now * 0.029 + s * 1.7) * 0.5 + 0.5;
+    const b = Math.sin(now * 0.013 + s * 3.1) * 0.5 + 0.5;
+    const raw = a * 0.65 + b * 0.35;
+    const lo = 0.50, hi = 0.58;
+    const t = Math.max(0, Math.min(1, (raw - lo) / (hi - lo)));
+    return t * t * (3 - 2 * t);
+  }
+
   /** Returns per-phase music weights that always sum to 1. */
   getMusicWeights(): { day: number; evening: number; night: number } {
     const time = this.getCycleTime();
