@@ -17,6 +17,7 @@ export class HUD {
   private landmarkHiddenByBubble = false;
   private landmarkHUD: { setHidden(h: boolean): void } | null = null;
   private onMuteToggle: (() => boolean) | null = null;
+  private entranceDone = false;
 
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
@@ -340,6 +341,52 @@ export class HUD {
         transform: translate(-50%, -50%) scale(1);
       }
 
+      @keyframes hudEntranceInLeft {
+        from { opacity: 0; transform: translateX(-18px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes hudEntranceInRight {
+        from { opacity: 0; transform: translateX(20px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes hudEntranceInUp {
+        from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+      @keyframes hudEntranceInHints {
+        from { opacity: 0; transform: translateX(24px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes hudEntranceVignette {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      #hud.hud--entrance::before {
+        opacity: 0;
+        animation: hudEntranceVignette 0.48s ease-out forwards;
+      }
+      #hud.hud--entrance .hud-top {
+        opacity: 0;
+        animation: hudEntranceInLeft 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        animation-delay: 0ms;
+      }
+      #hud.hud--entrance .hud-mute-btn {
+        opacity: 0;
+        animation: hudEntranceInRight 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        animation-delay: 0.05s;
+      }
+      #hud.hud--entrance .hud-xp-panel {
+        opacity: 0;
+        animation: hudEntranceInUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        animation-delay: 0.1s;
+      }
+      #hud.hud--entrance .control-hints {
+        opacity: 0;
+        animation: hudEntranceInHints 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        animation-delay: 0.15s;
+      }
+
       @media (max-width: 480px) {
         .hud-top {
           top: max(12px, env(safe-area-inset-top));
@@ -380,6 +427,14 @@ export class HUD {
   show() {
     this.hidden = false;
     this.el.style.display = "";
+    if (!this.entranceDone) {
+      this.entranceDone = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.el.classList.add("hud--entrance");
+        });
+      });
+    }
   }
 
   hideUI() {
