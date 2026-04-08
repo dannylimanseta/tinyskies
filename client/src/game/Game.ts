@@ -145,7 +145,9 @@ export class Game {
     }
 
     this.dayNightCycle = new DayNightCycle(this.worldConfig?.seed ?? 42);
-    this.audioManager.init();
+    this.audioManager.init().then(() => {
+      this.audioManager.loadSFX("engine_biplane", "/audio/sfx/engine_biplane.mp3");
+    });
     this.playerName = generateWhimsicalName();
 
     this.initPreview();
@@ -590,6 +592,10 @@ export class Game {
 
     this.stateSync = new StateSync(this.socketClient, this.localPlayer);
     this.stateSync.start();
+
+    if (this.playerVehicle === "plane") {
+      this.audioManager.startLoop("engine_biplane", 0);
+    }
   }
 
   private async handleWorldFull() {
@@ -814,6 +820,11 @@ export class Game {
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
+
+    if (this.playerVehicle === "plane") {
+      const engineVol = 0.08 + this.localPlayer.speedRatio * 0.25;
+      this.audioManager.setLoopVolume("engine_biplane", engineVol);
+    }
 
     this.applyDayNightPreset();
     this.audioManager.update(dt);

@@ -23,6 +23,7 @@ export class AudioManager {
   private started = false;
   private _muted = false;
   private sfxBuffers = new Map<string, AudioBuffer>();
+  private loopingSources = new Map<string, { source: AudioBufferSourceNode; gain: GainNode; targetVolume: number }>();
 
   get muted() { return this._muted; }
 
@@ -115,6 +116,16 @@ export class AudioManager {
         layer.gain.gain.value = current + diff * Math.min(1, FADE_SPEED * dt);
       }
     }
+
+    for (const loop of this.loopingSources.values()) {
+      const cur = loop.gain.gain.value;
+      const diff = loop.targetVolume - cur;
+      if (Math.abs(diff) < 0.001) {
+        loop.gain.gain.value = loop.targetVolume;
+      } else {
+        loop.gain.gain.value = cur + diff * Math.min(1, FADE_SPEED * 3 * dt);
+      }
+    }
   }
 
   toggleMute(): boolean {
@@ -152,7 +163,43 @@ export class AudioManager {
     source.start(0);
   }
 
+  /** Start a looping SFX. Volume is ramped smoothly via setLoopVolume(). */
+  startLoop(name: string, initialVolume = 0) {
+    if (!this.ctx || !this.masterGain || this.loopingSources.has(name)) return;
+    const buffer = this.sfxBuffers.get(name);
+    if (!buffer) return;
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gain = this.ctx.createGain();
+    gain.gain.value = initialVolume;
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.start(0);
+    this.loopingSources.set(name, { source, gain, targetVolume: initialVolume });
+  }
+
+  setLoopVolume(name: string, volume: number) {
+    const loop = this.loopingSources.get(name);
+    if (loop) loop.targetVolume = volume;
+  }
+
+  stopLoop(name: string) {
+    const loop = this.loopingSources.get(name);
+    if (!loop) return;
+    loop.source.stop();
+    loop.source.disconnect();
+    loop.gain.disconnect();
+    this.loopingSources.delete(name);
+  }
+
   dispose() {
+    for (const loop of this.loopingSources.values()) {
+      loop.source.stop();
+      loop.source.disconnect();
+      loop.gain.disconnect();
+    }
+    this.loopingSources.clear();
     if (this.layers) {
       for (const phase of ["day", "evening", "night"] as TimePhase[]) {
         this.layers[phase].source?.stop();
