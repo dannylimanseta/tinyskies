@@ -851,15 +851,9 @@ export class Game {
 
   private createSkyGradient(stops: { stop: number; color: string }[]): CanvasTexture {
     this.skyCanvas = document.createElement("canvas");
-    this.skyCanvas.width = 2;
+    this.skyCanvas.width = 512;
     this.skyCanvas.height = 512;
-    const ctx = this.skyCanvas.getContext("2d")!;
-    const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-    for (const s of stops) {
-      gradient.addColorStop(s.stop, s.color);
-    }
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 2, 512);
+    this.paintRadialSky(stops);
     this.skyTexture = new CanvasTexture(this.skyCanvas);
     this.skyTexture.colorSpace = SRGBColorSpace;
     return this.skyTexture;
@@ -867,12 +861,22 @@ export class Game {
 
   private updateSkyGradient(stops: { stop: number; color: string }[]) {
     if (!this.skyCanvas) return;
-    const ctx = this.skyCanvas.getContext("2d")!;
-    const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-    for (const s of stops) gradient.addColorStop(s.stop, s.color);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 2, 512);
+    this.paintRadialSky(stops);
     this.skyTexture.needsUpdate = true;
+  }
+
+  private paintRadialSky(stops: { stop: number; color: string }[]) {
+    const S = 512;
+    const ctx = this.skyCanvas.getContext("2d")!;
+    const cx = S / 2;
+    const cy = S;
+    const outerR = Math.sqrt(cx * cx + cy * cy);
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerR);
+    for (const s of stops) {
+      gradient.addColorStop(1.0 - s.stop, s.color);
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, S, S);
   }
 
   private applyDayNightPreset() {
