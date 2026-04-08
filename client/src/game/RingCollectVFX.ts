@@ -13,7 +13,7 @@ import {
 
 const SHARD_COUNT = 12;
 const POOL_SIZE = 4;
-const LIFETIME = 0.65;
+const LIFETIME = 0.55;
 const DIAMOND_COLOR: [number, number, number] = [0.2, 1.0, 0.8];
 
 const shardVert = `
@@ -54,12 +54,10 @@ interface VFXInstance {
   active: boolean;
   center: Vector3;
   upDir: Vector3;
-  absorbed: boolean;
 }
 
 const _dummy = new Object3D();
 const _pos = new Vector3();
-const _ballistic = new Vector3();
 
 function createShardGeometry(): BufferGeometry {
   const geo = new BufferGeometry();
@@ -79,7 +77,6 @@ export class RingCollectVFX {
   readonly group = new Group();
   private pool: VFXInstance[] = [];
   private shardGeos: BufferGeometry[] = [];
-  onAbsorb: (() => void) | null = null;
 
   constructor() {
     for (let i = 0; i < POOL_SIZE; i++) {
@@ -133,7 +130,6 @@ export class RingCollectVFX {
       active: false,
       center: new Vector3(),
       upDir: new Vector3(0, 1, 0),
-      absorbed: false,
     };
   }
 
@@ -143,7 +139,6 @@ export class RingCollectVFX {
 
     inst.active = true;
     inst.life = 0;
-    inst.absorbed = false;
     inst.center.copy(worldPos);
     inst.upDir.copy(worldPos).normalize();
     inst.group.visible = true;
@@ -153,7 +148,7 @@ export class RingCollectVFX {
 
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * 0.8 + 0.2;
-      const speed = 0.6 + Math.random() * 0.8;
+      const speed = 1.0 + Math.random() * 1.2;
 
       const outward = inst.upDir.clone().multiplyScalar(phi * speed);
       const tangentX = Math.cos(theta) * (1 - phi) * speed;
@@ -198,7 +193,7 @@ export class RingCollectVFX {
     inst.shards.instanceMatrix.needsUpdate = true;
   }
 
-  update(dt: number, playerWorldPos?: Vector3) {
+  update(dt: number) {
     for (const inst of this.pool) {
       if (!inst.active) continue;
 
@@ -208,18 +203,12 @@ export class RingCollectVFX {
       if (progress >= 1) {
         inst.active = false;
         inst.group.visible = false;
-        if (!inst.absorbed && this.onAbsorb) {
-          inst.absorbed = true;
-          this.onAbsorb();
-        }
         continue;
       }
 
-      const attract = Math.max(0, (progress - 0.15) / 0.85);
-      const attractCurve = attract * attract;
-
-      const fade = progress < 0.6 ? 1.0 : 1.0 - ((progress - 0.6) / 0.4);
-      const brightness = 1.0 + attractCurve * 2.0;
+      // Fade out while shards drift (no pull toward player).
+      const fade = Math.pow(1 - progress, 1.35);
+      const brightness = 1.0 + (1 - progress) * 1.2;
       const avgAlpha = inst.states.reduce((sum, st) => sum + st.alpha, 0) / SHARD_COUNT;
 
       inst.shardMat.uniforms.globalAlpha.value = fade * avgAlpha;
@@ -229,25 +218,22 @@ export class RingCollectVFX {
         DIAMOND_COLOR[2] * brightness,
       ];
 
-      const target = playerWorldPos ?? inst.center;
-
       for (let i = 0; i < SHARD_COUNT; i++) {
         const s = inst.states[i];
         const t = inst.life;
+        const damp = 1 / (1 + t * 0.85);
 
-        _ballistic.set(
-          inst.center.x + s.velocity.x * t,
-          inst.center.y + s.velocity.y * t,
-          inst.center.z + s.velocity.z * t,
+        _pos.set(
+          inst.center.x + s.velocity.x * t * damp,
+          inst.center.y + s.velocity.y * t * damp,
+          inst.center.z + s.velocity.z * t * damp,
         );
-
-        _pos.lerpVectors(_ballistic, target, attractCurve);
 
         s.rotation.x += s.rotVelocity.x * dt;
         s.rotation.y += s.rotVelocity.y * dt;
         s.rotation.z += s.rotVelocity.z * dt;
 
-        const shrink = 1 - attractCurve * 0.6;
+        const shrink = 1 - progress * 0.55;
 
         _dummy.position.copy(_pos);
         _dummy.rotation.copy(s.rotation);
@@ -260,11 +246,6 @@ export class RingCollectVFX {
         inst.shards.setMatrixAt(i, _dummy.matrix);
       }
       inst.shards.instanceMatrix.needsUpdate = true;
-
-      if (!inst.absorbed && attractCurve > 0.95 && this.onAbsorb) {
-        inst.absorbed = true;
-        this.onAbsorb();
-      }
     }
   }
 

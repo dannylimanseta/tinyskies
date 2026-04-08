@@ -476,6 +476,7 @@ export class Game {
         this.ringManager.level = this.ringManager.getLevel();
       }
       this.collectVFX.play(worldPos, tier);
+      this.vehicleFlashTimer = 0.35;
       this.cameraRig.shake();
       if (this.localPlayer instanceof Plane) {
         this.localPlayer.speedBoost();
@@ -490,10 +491,6 @@ export class Game {
     };
     this.ringManager.onLevelUp = (level) => {
       this.hud.showLevelUp(level);
-    };
-
-    this.collectVFX.onAbsorb = () => {
-      this.vehicleFlashTimer = 0.35;
     };
 
     this.hud = new HUD(this.container);
@@ -767,8 +764,7 @@ export class Game {
 
     if (this.vehicleFeatures.collectibleDiamonds) {
       this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
-      const playerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
-      this.collectVFX.update(dt, playerPos);
+      this.collectVFX.update(dt);
     }
 
     if (this.vehicleFlashTimer > 0) {
