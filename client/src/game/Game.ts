@@ -63,6 +63,13 @@ const DIAMOND_SFX_IDS = [
   "diamond_collect_3",
 ] as const;
 
+const SPEED_BOOST_SFX_IDS = [
+  "speed_boost_1",
+  "speed_boost_2",
+  "speed_boost_3",
+] as const;
+const SPEED_BOOST_SFX_VOLUME = 0.5;
+
 export class Game {
   private container: HTMLElement;
   private renderer!: WebGLRenderer;
@@ -166,6 +173,9 @@ export class Game {
       this.audioManager.loadSFX("engine_biplane", "/audio/sfx/engine_biplane.mp3");
       this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3");
       for (const id of DIAMOND_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
+      for (const id of SPEED_BOOST_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
     });
@@ -510,6 +520,9 @@ export class Game {
       this.cameraRig.shake();
       if (this.localPlayer instanceof Plane) {
         this.localPlayer.speedBoost();
+        const boostPick =
+          SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
+        this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
       }
       this.hud.showXPGain(xp + bonusXP, rolling);
       this.hud.setXP(
