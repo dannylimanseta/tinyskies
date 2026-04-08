@@ -55,15 +55,15 @@ export class Lobby {
         <div class="lobby-bar">
           <div class="lobby-vehicles" role="radiogroup" aria-label="Vehicle">
             <button type="button" class="lobby-vbtn active" data-vehicle="plane" aria-checked="true">
-              <span class="lobby-vicon">✈</span>
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
               <span class="lobby-vlabel">Plane</span>
             </button>
             <button type="button" class="lobby-vbtn" data-vehicle="boat" aria-checked="false">
-              <span class="lobby-vicon">⛵</span>
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2"/><path d="M6 18h12l-3.5-3.5C15 12 13 12 10 10c-3.5 5.5-6.5 5.5-6.5 5.5L6 18Z"/><path d="M10 2v4"/><path d="M9 5l2-2 2 2"/></svg></span>
               <span class="lobby-vlabel">Boat</span>
             </button>
             <button type="button" class="lobby-vbtn" data-vehicle="carpet" aria-checked="false">
-              <span class="lobby-vicon">🪄</span>
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg></span>
               <span class="lobby-vlabel">Carpet</span>
             </button>
           </div>
@@ -261,10 +261,10 @@ export class Lobby {
         display: flex;
         align-items: center;
         gap: 10px;
-        background: rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(32px) saturate(120%);
         -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 16px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
         pointer-events: auto;
@@ -291,22 +291,29 @@ export class Lobby {
         border: 2px solid transparent;
         border-radius: 10px;
         background: transparent;
-        color: rgba(30, 40, 60, 0.6);
+        color: #ffffff;
         cursor: pointer;
         transition: background 0.2s, color 0.2s, box-shadow 0.2s, border-color 0.2s;
         font-family: inherit;
       }
-      .lobby-vbtn:hover {
-        background: rgba(255, 255, 255, 0.1);
-        color: rgba(30, 40, 60, 0.85);
+      .lobby-vbtn:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
       }
       .lobby-vbtn.active {
         background: rgba(255, 255, 255, 1.0);
         color: rgba(20, 30, 50, 0.9);
       }
       .lobby-vicon {
-        font-size: 1.5rem;
-        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+      .lobby-vicon svg {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
       }
       .lobby-vlabel {
         font-size: 0.85rem;
@@ -320,8 +327,8 @@ export class Lobby {
         padding: 0 32px;
         border: none;
         border-radius: 10px;
-        background: #2288ee;
-        color: white;
+        background: #000000;
+        color: #ffffff;
         font-family: inherit;
         font-size: 1rem;
         font-weight: 700;
@@ -331,7 +338,7 @@ export class Lobby {
         animation: fly-pulse 2s ease-in-out infinite;
       }
       .lobby-fly:hover {
-        background: #3399ff;
+        background: #1a1a1a;
         transform: scale(1.04);
       }
       .lobby-fly:active {
@@ -344,8 +351,8 @@ export class Lobby {
         transform: none;
       }
       @keyframes fly-pulse {
-        0%, 100% { box-shadow: 0 0 8px rgba(34, 136, 238, 0.2); }
-        50% { box-shadow: 0 0 20px rgba(34, 136, 238, 0.45); }
+        0%, 100% { box-shadow: 0 0 8px rgba(0, 0, 0, 0.35); }
+        50% { box-shadow: 0 0 18px rgba(0, 0, 0, 0.55); }
       }
 
       @media (max-width: 480px) {
@@ -358,7 +365,7 @@ export class Lobby {
           gap: 6px;
         }
         .lobby-vbtn { padding: 10px 6px; min-height: 44px; }
-        .lobby-vicon { font-size: 1.3rem; }
+        .lobby-vicon svg { width: 22px; height: 22px; }
         .lobby-vlabel { font-size: 0.75rem; }
         .lobby-fly { padding: 0 20px; font-size: 0.9rem; min-height: 44px; }
       }
