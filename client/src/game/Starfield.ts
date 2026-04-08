@@ -30,13 +30,14 @@ void main() {
 `;
 
 const starFrag = `
+uniform float uOpacity;
 varying float vBrightness;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c) * 2.0;
   float core = 1.0 - smoothstep(0.0, 0.4, d);
   float glow = 1.0 - smoothstep(0.2, 1.0, d);
-  float a = (core * 0.8 + glow * 0.3) * vBrightness;
+  float a = (core * 0.8 + glow * 0.3) * vBrightness * uOpacity;
   vec3 col = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 1.0, 1.0), core);
   gl_FragColor = vec4(col, a);
 }
@@ -58,13 +59,14 @@ void main() {
 `;
 
 const nebulaFrag = `
+uniform float uOpacity;
 varying vec3 vColor;
 varying float vAlpha;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c) * 2.0;
   float a = 1.0 - smoothstep(0.0, 1.0, d);
-  a = a * a * vAlpha;
+  a = a * a * vAlpha * uOpacity;
   gl_FragColor = vec4(vColor, a);
 }
 `;
@@ -106,6 +108,7 @@ function bandPoint(rand: () => number, tiltQuat: Quaternion): Vector3 {
 export class Starfield {
   readonly group: Group;
   private materials: ShaderMaterial[] = [];
+  private opacityUniform = { value: 1.0 };
 
   constructor() {
     this.group = new Group();
@@ -153,6 +156,7 @@ export class Starfield {
     const mat = new ShaderMaterial({
       vertexShader: starVert,
       fragmentShader: starFrag,
+      uniforms: { uOpacity: this.opacityUniform },
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -186,6 +190,7 @@ export class Starfield {
     const mat = new ShaderMaterial({
       vertexShader: starVert,
       fragmentShader: starFrag,
+      uniforms: { uOpacity: this.opacityUniform },
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -234,6 +239,7 @@ export class Starfield {
     const mat = new ShaderMaterial({
       vertexShader: nebulaVert,
       fragmentShader: nebulaFrag,
+      uniforms: { uOpacity: this.opacityUniform },
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -243,6 +249,10 @@ export class Starfield {
     const pts = new Points(geo, mat);
     pts.frustumCulled = false;
     return pts;
+  }
+
+  setOpacity(weight: number) {
+    this.opacityUniform.value = weight;
   }
 
   dispose() {

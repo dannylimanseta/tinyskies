@@ -913,7 +913,10 @@ export class Game {
     const nightW = this.dayNightCycle.getNightWeight();
     const dayW = this.dayNightCycle.getDayWeight();
 
-    if (this.starfield) this.starfield.group.visible = nightW > 0.01;
+    if (this.starfield) {
+      this.starfield.group.visible = nightW > 0.01;
+      this.starfield.setOpacity(nightW);
+    }
     if (this.aurora) {
       this.aurora.group.visible = nightW > 0.01;
       this.aurora.setOpacity(nightW);

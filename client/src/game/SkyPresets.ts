@@ -59,10 +59,10 @@ const DAY_PRESET: SkyPreset = {
 
   hemiSkyColor: 0x99ccff,
   hemiGroundColor: 0x66aa44,
-  hemiIntensity: 1.4,
+  hemiIntensity: 1.0,
 
   ambientColor: 0xffffff,
-  ambientIntensity: 1.0,
+  ambientIntensity: 0.6,
 
   sunColor: 0xfff0d0,
   sunIntensity: 3.0,
@@ -108,10 +108,10 @@ const EVENING_PRESET: SkyPreset = {
 
   hemiSkyColor: 0xff9944,
   hemiGroundColor: 0x554422,
-  hemiIntensity: 1.1,
+  hemiIntensity: 0.75,
 
   ambientColor: 0xffd8a0,
-  ambientIntensity: 0.6,
+  ambientIntensity: 0.35,
 
   sunColor: 0xffaa40,
   sunIntensity: 2.8,
@@ -155,25 +155,25 @@ const NIGHT_PRESET: SkyPreset = {
   fogNear: 10,
   fogFar: 30,
 
-  hemiSkyColor: 0x223366,
-  hemiGroundColor: 0x112020,
+  hemiSkyColor: 0x334477,
+  hemiGroundColor: 0x1a2a30,
   hemiIntensity: 0.5,
 
-  ambientColor: 0x8899cc,
+  ambientColor: 0x99aadd,
   ambientIntensity: 0.3,
 
-  sunColor: 0xccddff,
-  sunIntensity: 0.7,
-  sun2Color: 0x667799,
-  sun2Intensity: 0.3,
+  sunColor: 0x1a2a6e,
+  sunIntensity: 1.0,
+  sun2Color: 0x152255,
+  sun2Intensity: 0.5,
 
-  fillColor: 0x445588,
-  fillIntensity: 0.35,
-  fill2Color: 0x334466,
-  fill2Intensity: 0.2,
+  fillColor: 0x556699,
+  fillIntensity: 0.5,
+  fill2Color: 0x445577,
+  fill2Intensity: 0.35,
 
-  backColor: 0x445566,
-  backIntensity: 0.25,
+  backColor: 0x556677,
+  backIntensity: 0.4,
 
   oceanShallow: 0x0c1a30,
   oceanDeep: 0x060e1e,
