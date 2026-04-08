@@ -13,6 +13,8 @@ const ACCEL = 2.5;
 const MIN_SPEED = 0.3;
 const MAX_SPEED = 1.2;
 const BOOST_SPEED = 1.65;
+/** Ring / collect speed boost duration. */
+const BOOST_DURATION_SEC = 3;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 const ALTITUDE_SPEED = 0.75;
@@ -40,6 +42,8 @@ export class Plane {
   rollAngle = 0;
   private rollAltOffset = 0;
   private rollPitchOffset = 0;
+  /** Remaining time at `BOOST_SPEED` after `speedBoost()`; 0 when not boosting. */
+  private boostTimer = 0;
 
   private globeRadius: number;
 
@@ -58,7 +62,13 @@ export class Plane {
     elevate: boolean = false,
     barrelRoll: boolean = false,
   ) {
-    if (forward) {
+    if (this.boostTimer > 0) {
+      this.boostTimer = Math.max(0, this.boostTimer - dt);
+    }
+
+    if (this.boostTimer > 0) {
+      this.speed = BOOST_SPEED;
+    } else if (forward) {
       if (this.speed < MAX_SPEED) {
         this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
       } else {
@@ -70,10 +80,12 @@ export class Plane {
       this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
     }
 
-    const turnStrength = Math.abs(turnRate);
-    if (turnStrength > 0.1) {
-      const turnDrag = turnStrength * 0.8 * dt;
-      this.speed = Math.max(MIN_SPEED, this.speed - turnDrag);
+    if (this.boostTimer <= 0) {
+      const turnStrength = Math.abs(turnRate);
+      if (turnStrength > 0.1) {
+        const turnDrag = turnStrength * 0.8 * dt;
+        this.speed = Math.max(MIN_SPEED, this.speed - turnDrag);
+      }
     }
 
     this.heading += turnRate * dt;
@@ -121,6 +133,7 @@ export class Plane {
   }
 
   speedBoost() {
+    this.boostTimer = BOOST_DURATION_SEC;
     this.speed = BOOST_SPEED;
   }
 
