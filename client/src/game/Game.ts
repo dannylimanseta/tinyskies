@@ -907,12 +907,17 @@ export class Game {
     this.backLight.intensity = p.backIntensity;
 
     this.globe.setAtmosphereGlow(p.atmosphereGlow);
+    this.globe.setCloudOpacity(p.cloudOpacity);
+    this.globe.setRimColor(p.rimColor);
 
     const nightW = this.dayNightCycle.getNightWeight();
     const dayW = this.dayNightCycle.getDayWeight();
 
     if (this.starfield) this.starfield.group.visible = nightW > 0.01;
-    if (this.aurora) this.aurora.group.visible = nightW > 0.01;
+    if (this.aurora) {
+      this.aurora.group.visible = nightW > 0.01;
+      this.aurora.setOpacity(nightW);
+    }
     if (this.playerLight) this.playerLight.intensity = nightW * 0.8;
     if (this.lensFlare) this.lensFlare.setColorScale([
       p.flareColorScale[0] * dayW,

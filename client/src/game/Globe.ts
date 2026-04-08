@@ -89,6 +89,7 @@ export class Globe {
   private foamColorValue: Color;
   private rimColorValue: Color;
   private cloudOpacityValue: number;
+  private cloudOpacityUniform!: { value: number };
   readonly villageCenters: { normal: Vector3; houseCount: number }[] = [];
   readonly lighthouseCenters: { normal: Vector3 }[] = [];
   private lighthouseBeams: Mesh[] = [];
@@ -1822,10 +1823,11 @@ transformed.z += sway2;`,
 
   private createClouds() {
     const rand = seededRandom(77);
+    this.cloudOpacityUniform = { value: this.cloudOpacityValue };
     const cloudMat = new ShaderMaterial({
       uniforms: {
         cloudColor: { value: new Color(0xffe8cc) },
-        opacity: { value: this.cloudOpacityValue },
+        opacity: this.cloudOpacityUniform,
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -1936,6 +1938,14 @@ transformed.z += sway2;`,
 
   setAtmosphereGlow(color: number) {
     this.atmosphereGlowUniform.value.set(color);
+  }
+
+  setCloudOpacity(opacity: number) {
+    this.cloudOpacityUniform.value = opacity;
+  }
+
+  setRimColor(color: number) {
+    this.rimColorValue.set(color);
   }
 
   private createLighthouses() {

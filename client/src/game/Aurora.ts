@@ -109,6 +109,8 @@ export class Aurora {
   readonly group: Group;
   private materials: ShaderMaterial[] = [];
   private timeUniforms: { value: number }[] = [];
+  private alphaUniforms: { value: number }[] = [];
+  private baseAlphas: number[] = [];
   private meshes: Mesh[] = [];
   private _camPos = new Vector3();
   private _radialUp = new Vector3();
@@ -124,13 +126,16 @@ export class Aurora {
 
       const timeUniform = { value: i * 7.3 };
       this.timeUniforms.push(timeUniform);
+      const alphaUniform = { value: cfg.alpha };
+      this.alphaUniforms.push(alphaUniform);
+      this.baseAlphas.push(cfg.alpha);
 
       const mat = new ShaderMaterial({
         vertexShader: auroraVert,
         fragmentShader: auroraFrag,
         uniforms: {
           uTime: timeUniform,
-          uAlpha: { value: cfg.alpha },
+          uAlpha: alphaUniform,
           uColor1: { value: cfg.color1 },
           uColor2: { value: cfg.color2 },
           uColor3: { value: cfg.color3 },
@@ -169,6 +174,12 @@ export class Aurora {
       this._radialUp.copy(mesh.position).normalize();
       mesh.up.copy(this._radialUp);
       mesh.lookAt(this._camPos);
+    }
+  }
+
+  setOpacity(weight: number) {
+    for (let i = 0; i < this.alphaUniforms.length; i++) {
+      this.alphaUniforms[i].value = this.baseAlphas[i] * weight;
     }
   }
 
