@@ -57,6 +57,9 @@ const CRICKETS_LOOP_MAX_VOL = 0.045;
 const RAIN_LOOP_NAME = "rain_loop";
 const RAIN_LOOP_MAX_VOL = 0.18;
 
+const BIRDS_LOOP_NAME = "birds_loop";
+const BIRDS_LOOP_MAX_VOL = 0.04;
+
 /** Next diamond within this window raises pitch (combo). */
 const DIAMOND_COMBO_WINDOW_MS = 900;
 const DIAMOND_COMBO_MAX_STEPS = 5;
@@ -234,6 +237,9 @@ export class Game {
         });
         void this.audioManager.loadSFX(RAIN_LOOP_NAME, "/audio/sfx/rain_1.mp3").then(() => {
           this.audioManager.startLoop(RAIN_LOOP_NAME, 0);
+        });
+        void this.audioManager.loadSFX(BIRDS_LOOP_NAME, "/audio/sfx/birds_chirp_1.mp3").then(() => {
+          this.audioManager.startLoop(BIRDS_LOOP_NAME, 0);
         });
         this.lobby.fadeOut(() => {
           this.lobby.dispose();
@@ -1048,9 +1054,10 @@ export class Game {
     ]);
 
     const rainW = this.dayNightCycle.getRainWeight();
+    const rainDampen = 1 - rainW;
     this.audioManager.setLoopVolume(RAIN_LOOP_NAME, rainW * RAIN_LOOP_MAX_VOL);
-    const cricketDampen = 1 - rainW;
-    this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL * cricketDampen);
+    this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL * rainDampen);
+    this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, dayW * BIRDS_LOOP_MAX_VOL * rainDampen);
 
     const mw = this.dayNightCycle.getMusicWeights();
     this.audioManager.setWeights(mw.day, mw.evening, mw.night);
