@@ -54,6 +54,9 @@ import { isNpcMale } from "./PackageDialogue";
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
 
+const RAIN_LOOP_NAME = "rain_loop";
+const RAIN_LOOP_MAX_VOL = 0.18;
+
 /** Next diamond within this window raises pitch (combo). */
 const DIAMOND_COMBO_WINDOW_MS = 900;
 const DIAMOND_COMBO_MAX_STEPS = 5;
@@ -228,6 +231,9 @@ export class Game {
         this.audioManager.startMusic();
         void this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3").then(() => {
           this.audioManager.startLoop("crickets_loop", 0);
+        });
+        void this.audioManager.loadSFX(RAIN_LOOP_NAME, "/audio/sfx/rain_1.mp3").then(() => {
+          this.audioManager.startLoop(RAIN_LOOP_NAME, 0);
         });
         this.lobby.fadeOut(() => {
           this.lobby.dispose();
@@ -1041,9 +1047,13 @@ export class Game {
       p.flareColorScale[2] * dayW,
     ]);
 
+    const rainW = this.dayNightCycle.getRainWeight();
+    this.audioManager.setLoopVolume(RAIN_LOOP_NAME, rainW * RAIN_LOOP_MAX_VOL);
+    const cricketDampen = 1 - rainW;
+    this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL * cricketDampen);
+
     const mw = this.dayNightCycle.getMusicWeights();
     this.audioManager.setWeights(mw.day, mw.evening, mw.night);
-    this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL);
   }
 
   private playLevelUpSfx() {
