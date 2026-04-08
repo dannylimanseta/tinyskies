@@ -79,7 +79,7 @@ const BOX_COLLECT_SFX_IDS = [
 const BOX_COLLECT_SFX_VOLUME = 0.52;
 
 const CHEER_SFX_IDS = ["cheer_1", "cheer_2"] as const;
-const CHEER_SFX_VOLUME = 0.55;
+const CHEER_SFX_VOLUME = 0.35;
 
 const DIALOGUE_LOOP_NAME = "dialogue_1";
 const DIALOGUE_LOOP_VOLUME = 0.28;
