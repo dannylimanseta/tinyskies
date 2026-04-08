@@ -10,11 +10,11 @@ import { buildPlaneMatrix, moveOnSphere, tangentFrame } from "./SphericalMath";
 import { createCarpet, carpetWobbleY } from "./CarpetMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
-const CRUISE_SPEED = 0.9;
-const BRAKE_DECEL = 3.0;
-const ACCEL = 2.5;
-const MIN_SPEED = 0.4;
-const MAX_SPEED = 1.1;
+const CRUISE_SPEED = 0.6;
+const BRAKE_DECEL = 2.5;
+const ACCEL = 1.8;
+const MIN_SPEED = 0.28;
+const MAX_SPEED = 0.78;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
 
