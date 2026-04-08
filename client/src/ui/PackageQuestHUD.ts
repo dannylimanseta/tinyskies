@@ -10,6 +10,7 @@ export class PackageQuestHUD {
   private bubbleTextEl: HTMLSpanElement;
   private bannerEl: HTMLDivElement;
   private bannerNameEl: HTMLSpanElement;
+  private bannerDistEl: HTMLSpanElement;
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   private circumference: number;
 
@@ -65,6 +66,10 @@ export class PackageQuestHUD {
     this.bannerNameEl.className = "pkg-banner-name";
     this.bannerEl.appendChild(document.createTextNode("Deliver to "));
     this.bannerEl.appendChild(this.bannerNameEl);
+    this.bannerEl.appendChild(document.createTextNode(" "));
+    this.bannerDistEl = document.createElement("span");
+    this.bannerDistEl.className = "pkg-banner-dist";
+    this.bannerEl.appendChild(this.bannerDistEl);
     parent.appendChild(this.bannerEl);
 
     this.applyStyles();
@@ -102,7 +107,12 @@ export class PackageQuestHUD {
 
   showDeliveryTarget(villageName: string) {
     this.bannerNameEl.textContent = villageName;
+    this.bannerDistEl.textContent = "";
     this.bannerEl.style.opacity = "1";
+  }
+
+  setDeliveryDistanceMetres(m: number) {
+    this.bannerDistEl.textContent = `${m}m`;
   }
 
   hideDeliveryTarget() {
@@ -198,6 +208,11 @@ export class PackageQuestHUD {
       .pkg-banner-name {
         color: rgba(255, 255, 255, 0.85);
         font-weight: 700;
+      }
+      .pkg-banner-dist {
+        color: rgba(255, 255, 255, 0.65);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
       }
 
       @media (max-width: 480px) {

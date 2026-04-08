@@ -38,12 +38,15 @@ const SWING_INERTIA = 3.0;
 
 const SPAWN_ANIM_DUR = 0.6;
 const SPAWN_BOUNCE_LIFT = 0.15;
+/** Globe arc length (world units) × this ≈ HUD metres (tuned for readable range on radius ~5). */
+const WORLD_ARC_TO_METRES = 36;
 
 const REF_UP = new Vector3(0, 1, 0);
 const REF_Z = new Vector3(0, 0, 1);
 const REF_X = new Vector3(1, 0, 0);
 const _tmpV = new Vector3();
 const _tmpV2 = new Vector3();
+const _deliveryDir = new Vector3();
 
 const enum QuestState {
   Spawning,
@@ -195,6 +198,19 @@ export class PackageQuestManager {
   private destAnimT = -1;
 
   onPickup: ((originName: string, destName: string, npcName: string, dialogue: string) => void) | null = null;
+
+  /**
+   * Great-circle distance along the globe from the player's surface position to the
+   * delivery village (metres, rounded). Player direction uses radial from world origin.
+   */
+  getDeliverySurfaceDistanceMetres(playerWorldPos: Vector3): number | null {
+    if (!this.destination) return null;
+    if (this.state !== QuestState.Carrying && this.state !== QuestState.Delivering) return null;
+    _deliveryDir.copy(playerWorldPos).normalize();
+    const cos = Math.max(-1, Math.min(1, _deliveryDir.dot(this.destination.normal)));
+    const arcWorld = this.globeRadius * Math.acos(cos);
+    return Math.max(0, Math.round(arcWorld * WORLD_ARC_TO_METRES));
+  }
   onDelivered: ((destName: string, npcName: string, dialogue: string, xp: number) => void) | null = null;
   onProgressChange: ((progress: number, phase: "pickup" | "deliver") => void) | null = null;
 

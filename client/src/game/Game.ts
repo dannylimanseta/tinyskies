@@ -526,6 +526,9 @@ export class Game {
       this.packageQuest.onPickup = (_originName, destName, npcName, dialogue) => {
         this.packageQuestHUD!.showBubble(npcName, dialogue);
         this.packageQuestHUD!.showDeliveryTarget(destName);
+        const pos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+        const dm = this.packageQuest!.getDeliverySurfaceDistanceMetres(pos);
+        if (dm !== null) this.packageQuestHUD!.setDeliveryDistanceMetres(dm);
       };
 
       this.packageQuest.onDelivered = (_destName, npcName, dialogue, xp) => {
@@ -827,6 +830,10 @@ export class Game {
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
+    if (this.packageQuest?.isCarrying && this.packageQuestHUD) {
+      const dm = this.packageQuest.getDeliverySurfaceDistanceMetres(questPlayerPos);
+      if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
+    }
 
     if (this.playerVehicle === "plane") {
       const engineVol =
