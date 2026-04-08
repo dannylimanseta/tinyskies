@@ -16,8 +16,8 @@ import {
   SRGBColorSpace,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
-import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig, type TimeOfDay } from "@globefly/shared";
-import { getSkyPreset, type SkyPreset } from "./SkyPresets";
+import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig } from "@globefly/shared";
+import { DayNightCycle } from "./DayNightCycle";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
@@ -89,7 +89,7 @@ export class Game {
   private worldSlug = "";
   private playerName = "Pilot";
   private playerVehicle: Vehicle = "plane";
-  private timeOfDay: TimeOfDay = "day";
+  private dayNightCycle!: DayNightCycle;
   private vehicleFeatures!: VehicleGameFeatures;
 
   private introActive = false;
@@ -142,7 +142,7 @@ export class Game {
       return;
     }
 
-    this.timeOfDay = (["day", "evening", "night"] as const)[Math.floor(Math.random() * 3)];
+    this.dayNightCycle = new DayNightCycle(this.worldConfig?.seed ?? 42);
     this.playerName = generateWhimsicalName();
 
     this.initPreview();
@@ -261,7 +261,7 @@ export class Game {
     }
 
     this.scene = new Scene();
-    const preset = getSkyPreset(this.timeOfDay);
+    const preset = this.dayNightCycle.getPreset();
     this.scene.background = this.createSkyGradient(preset.skyGradient);
     const fogScale = this.mobile ? 0.7 : 1;
     this.scene.fog = new Fog(preset.fogColor, preset.fogNear * fogScale, preset.fogFar * fogScale);
@@ -313,15 +313,13 @@ export class Game {
     );
     this.globe.addTo(this.scene);
 
-    if (preset.stars) {
-      this.starfield = new Starfield();
-      this.scene.add(this.starfield.group);
-    }
+    this.starfield = new Starfield();
+    this.starfield.group.visible = preset.stars;
+    this.scene.add(this.starfield.group);
 
-    if (preset.aurora) {
-      this.aurora = new Aurora();
-      this.scene.add(this.aurora.group);
-    }
+    this.aurora = new Aurora();
+    this.aurora.group.visible = preset.aurora;
+    this.scene.add(this.aurora.group);
 
     this.previewCamera = new PerspectiveCamera(60, w / h, 0.1, 100);
     this.previewAngle = 0;
@@ -347,6 +345,7 @@ export class Game {
     this.previewCamera.lookAt(0, 0, 0);
 
     this.globe.update(dt);
+    this.applyDayNightPreset();
     this.aurora?.update(dt, this.previewCamera);
     this.renderer.render(this.scene, this.previewCamera);
   };
@@ -368,7 +367,7 @@ export class Game {
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     const seed = this.gameSeed;
     const terrainType = this.gameTerrainType;
-    const preset = getSkyPreset(this.timeOfDay);
+    const preset = this.dayNightCycle.getPreset();
     this.playerVehicle = vehicle;
     this.vehicleFeatures = getVehicleFeatures(vehicle);
 
@@ -441,15 +440,11 @@ export class Game {
     this.carpetLeaves.group.visible = this.vehicleFeatures.carpetTrail;
     this.scene.add(this.carpetLeaves.group);
 
-    if (this.timeOfDay === "day") {
-      this.lensFlare = new LensFlare();
-      this.lensFlare.setColorScale(preset.flareColorScale);
-    }
+    this.lensFlare = new LensFlare();
+    this.lensFlare.setColorScale(preset.flareColorScale);
 
-    if (preset.stars) {
-      this.playerLight = new PointLight(0xffaa55, 0.8, 4.0, 1.5);
-      this.scene.add(this.playerLight);
-    }
+    this.playerLight = new PointLight(0xffaa55, 0, 4.0, 1.5);
+    this.scene.add(this.playerLight);
 
     const ringMode = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
     this.ringManager = new RingManager(globeRadius, { mode: ringMode, seed, terrainType });
@@ -695,6 +690,7 @@ export class Game {
 
       this.globe.update(dt);
       this.remotePlanes.update(dt, this.cameraRig.camera);
+      this.applyDayNightPreset();
       this.aurora?.update(dt, this.cameraRig.camera);
 
       this.localPlayer.group.updateMatrixWorld(true);
@@ -812,6 +808,7 @@ export class Game {
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
 
+    this.applyDayNightPreset();
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
 
@@ -847,6 +844,62 @@ export class Game {
     this.skyTexture = new CanvasTexture(this.skyCanvas);
     this.skyTexture.colorSpace = SRGBColorSpace;
     return this.skyTexture;
+  }
+
+  private updateSkyGradient(stops: { stop: number; color: string }[]) {
+    if (!this.skyCanvas) return;
+    const ctx = this.skyCanvas.getContext("2d")!;
+    const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+    for (const s of stops) gradient.addColorStop(s.stop, s.color);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 2, 512);
+    this.skyTexture.needsUpdate = true;
+  }
+
+  private applyDayNightPreset() {
+    const p = this.dayNightCycle.getPreset();
+    const fogScale = this.mobile ? 0.7 : 1;
+
+    this.updateSkyGradient(p.skyGradient);
+
+    const fog = this.scene.fog as Fog;
+    fog.color.set(p.fogColor);
+    fog.near = p.fogNear * fogScale;
+    fog.far = p.fogFar * fogScale;
+
+    this.hemiLight.color.set(p.hemiSkyColor);
+    this.hemiLight.groundColor.set(p.hemiGroundColor);
+    this.hemiLight.intensity = p.hemiIntensity;
+
+    this.ambientLight.color.set(p.ambientColor);
+    this.ambientLight.intensity = p.ambientIntensity;
+
+    this.sunLight.color.set(p.sunColor);
+    this.sunLight.intensity = p.sunIntensity;
+    this.sun2Light.color.set(p.sun2Color);
+    this.sun2Light.intensity = p.sun2Intensity;
+
+    this.fillLight.color.set(p.fillColor);
+    this.fillLight.intensity = p.fillIntensity;
+    this.fill2Light.color.set(p.fill2Color);
+    this.fill2Light.intensity = p.fill2Intensity;
+
+    this.backLight.color.set(p.backColor);
+    this.backLight.intensity = p.backIntensity;
+
+    this.globe.setAtmosphereGlow(p.atmosphereGlow);
+
+    const nightW = this.dayNightCycle.getNightWeight();
+    const dayW = this.dayNightCycle.getDayWeight();
+
+    if (this.starfield) this.starfield.group.visible = nightW > 0.01;
+    if (this.aurora) this.aurora.group.visible = nightW > 0.01;
+    if (this.playerLight) this.playerLight.intensity = nightW * 0.8;
+    if (this.lensFlare) this.lensFlare.setColorScale([
+      p.flareColorScale[0] * dayW,
+      p.flareColorScale[1] * dayW,
+      p.flareColorScale[2] * dayW,
+    ]);
   }
 
   private getServerUrl(): string {
