@@ -11,10 +11,10 @@ const CRUISE_SPEED = 1.5;
 const BRAKE_DECEL = 3.0;
 const ACCEL = 2.5;
 const MIN_SPEED = 0.3;
-const MAX_SPEED = 1.2;
-const BOOST_SPEED = 1.65;
+const MAX_SPEED = 0.8;
+const BOOST_SPEED = 1.3;
 /** Ring / collect speed boost duration. */
-const BOOST_DURATION_SEC = 3;
+const BOOST_DURATION_SEC = 1.7;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 const ALTITUDE_SPEED = 0.75;
