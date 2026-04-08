@@ -23,7 +23,16 @@ export class AudioManager {
   private started = false;
   private _muted = false;
   private sfxBuffers = new Map<string, AudioBuffer>();
-  private loopingSources = new Map<string, { source: AudioBufferSourceNode; gain: GainNode; targetVolume: number }>();
+  private loopingSources = new Map<
+    string,
+    {
+      source: AudioBufferSourceNode;
+      gain: GainNode;
+      targetVolume: number;
+      /** When true, `stopLoop` runs once gain reaches 0 after fade-out. */
+      stopWhenSilent?: boolean;
+    }
+  >();
 
   get muted() { return this._muted; }
 
@@ -117,7 +126,8 @@ export class AudioManager {
       }
     }
 
-    for (const loop of this.loopingSources.values()) {
+    const toStop: string[] = [];
+    for (const [name, loop] of this.loopingSources) {
       const cur = loop.gain.gain.value;
       const diff = loop.targetVolume - cur;
       if (Math.abs(diff) < 0.001) {
@@ -125,6 +135,16 @@ export class AudioManager {
       } else {
         loop.gain.gain.value = cur + diff * Math.min(1, FADE_SPEED * 3 * dt);
       }
+      if (
+        loop.stopWhenSilent &&
+        loop.targetVolume === 0 &&
+        loop.gain.gain.value < 0.001
+      ) {
+        toStop.push(name);
+      }
+    }
+    for (const name of toStop) {
+      this.stopLoop(name);
     }
   }
 
@@ -167,25 +187,43 @@ export class AudioManager {
     source.start(0);
   }
 
-  /** Start a looping SFX. Volume is ramped smoothly via setLoopVolume(). */
-  startLoop(name: string, initialVolume = 0) {
-    if (!this.ctx || !this.masterGain || this.loopingSources.has(name)) return;
+  /**
+   * Start a looping SFX. If a loop with the same `name` exists, it is stopped first.
+   * Volume is ramped via setLoopVolume(). Playback rates below 1 lower pitch (e.g. male voice).
+   */
+  startLoop(name: string, initialVolume = 0, playbackRate = 1) {
+    if (!this.ctx || !this.masterGain) return;
+    if (this.loopingSources.has(name)) this.stopLoop(name);
     const buffer = this.sfxBuffers.get(name);
     if (!buffer) return;
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
+    source.playbackRate.value = Math.max(0.5, Math.min(2, playbackRate));
     const gain = this.ctx.createGain();
     gain.gain.value = initialVolume;
     source.connect(gain);
     gain.connect(this.masterGain);
     source.start(0);
-    this.loopingSources.set(name, { source, gain, targetVolume: initialVolume });
+    this.loopingSources.set(name, {
+      source,
+      gain,
+      targetVolume: initialVolume,
+      stopWhenSilent: false,
+    });
   }
 
   setLoopVolume(name: string, volume: number) {
     const loop = this.loopingSources.get(name);
     if (loop) loop.targetVolume = volume;
+  }
+
+  /** Fade loop to silence, then stop the source (used for dialogue bed). */
+  fadeOutLoop(name: string) {
+    const loop = this.loopingSources.get(name);
+    if (!loop) return;
+    loop.targetVolume = 0;
+    loop.stopWhenSilent = true;
   }
 
   stopLoop(name: string) {

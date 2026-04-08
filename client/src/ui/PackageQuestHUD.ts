@@ -14,7 +14,8 @@ export class PackageQuestHUD {
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   private circumference: number;
 
-  onVisibilityChange?: (visible: boolean) => void;
+  /** `npcName` is set when `visible` is true (dialogue bubble shown). */
+  onVisibilityChange?: (visible: boolean, npcName?: string) => void;
 
   constructor(parent: HTMLElement) {
     this.progressEl = document.createElement("div");
@@ -97,7 +98,7 @@ export class PackageQuestHUD {
     }
     this.bubbleEl.style.opacity = "1";
     this.bubbleEl.style.transform = "translate(-50%, 0)";
-    this.onVisibilityChange?.(true);
+    this.onVisibilityChange?.(true, npcName);
     this.bubbleTimer = setTimeout(() => {
       this.bubbleEl.style.opacity = "0";
       this.bubbleEl.style.transform = "translate(-50%, -6px)";

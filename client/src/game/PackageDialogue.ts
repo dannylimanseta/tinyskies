@@ -14,6 +14,26 @@ const NPC_NAMES = [
   "Tailor Wynn", "Fisherman Cork", "Beekeeper Thyme", "Clockmaker Gale",
 ];
 
+/** Used for dialogue SFX pitch (lower playback rate for male NPCs). */
+const MALE_NPC_NAMES = new Set<string>([
+  "Old Barnaby",
+  "Professor Wren",
+  "Captain Moss",
+  "Postmaster Quill",
+  "Tinker Lark",
+  "Farmer Oats",
+  "Mayor Bramble",
+  "Cobbler Pip",
+  "Warden Flint",
+  "Fisherman Cork",
+  "Beekeeper Thyme",
+  "Clockmaker Gale",
+]);
+
+export function isNpcMale(npcName: string): boolean {
+  return MALE_NPC_NAMES.has(npcName);
+}
+
 const NPC_PORTRAIT_FILES: Record<string, string> = {
   "Granny Maple": "granny_maple.png",
   "Old Barnaby": "old_barnaby.png",

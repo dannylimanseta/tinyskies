@@ -47,6 +47,7 @@ import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
+import { isNpcMale } from "./PackageDialogue";
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -79,6 +80,14 @@ const BOX_COLLECT_SFX_VOLUME = 0.52;
 
 const CHEER_SFX_IDS = ["cheer_1", "cheer_2"] as const;
 const CHEER_SFX_VOLUME = 0.55;
+
+const DIALOGUE_LOOP_NAME = "dialogue_1";
+const DIALOGUE_LOOP_VOLUME = 0.28;
+/** Lower playback rate reads as a slightly deeper “male” bed under the same asset. */
+const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
+
+const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
+const LEVELUP_SFX_VOLUME = 0.6;
 
 export class Game {
   private container: HTMLElement;
@@ -192,6 +201,10 @@ export class Game {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
       for (const id of CHEER_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
+      this.audioManager.loadSFX(DIALOGUE_LOOP_NAME, `/audio/sfx/${DIALOGUE_LOOP_NAME}.mp3`);
+      for (const id of LEVELUP_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
     });
@@ -549,6 +562,7 @@ export class Game {
       );
     };
     this.ringManager.onLevelUp = (level) => {
+      this.playLevelUpSfx();
       this.hud.showLevelUp(level);
     };
 
@@ -575,8 +589,17 @@ export class Game {
         this.scene, globeRadius, landmarkRegistry, seed, terrainType,
       );
       this.packageQuestHUD = new PackageQuestHUD(this.hud.root);
-      this.packageQuestHUD.onVisibilityChange = (visible) => {
+      this.packageQuestHUD.onVisibilityChange = (visible, npcName) => {
         this.hud.setBubbleVisible(visible);
+        if (visible && npcName) {
+          const rate = isNpcMale(npcName)
+            ? DIALOGUE_MALE_PLAYBACK_RATE
+            : 1;
+          this.audioManager.startLoop(DIALOGUE_LOOP_NAME, 0, rate);
+          this.audioManager.setLoopVolume(DIALOGUE_LOOP_NAME, DIALOGUE_LOOP_VOLUME);
+        } else if (!visible) {
+          this.audioManager.fadeOutLoop(DIALOGUE_LOOP_NAME);
+        }
       };
 
       this.packageQuest.onPickup = (_originName, destName, npcName, dialogue) => {
@@ -608,6 +631,7 @@ export class Game {
           this.ringManager.getLevel(),
         );
         if (this.ringManager.level > prevLevel) {
+          this.playLevelUpSfx();
           this.hud.showLevelUp(this.ringManager.level);
         }
       };
@@ -1012,6 +1036,12 @@ export class Game {
     const mw = this.dayNightCycle.getMusicWeights();
     this.audioManager.setWeights(mw.day, mw.evening, mw.night);
     this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL);
+  }
+
+  private playLevelUpSfx() {
+    const pick =
+      LEVELUP_SFX_IDS[Math.floor(Math.random() * LEVELUP_SFX_IDS.length)]!;
+    this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME);
   }
 
   private getServerUrl(): string {
