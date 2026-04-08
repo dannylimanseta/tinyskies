@@ -199,6 +199,7 @@ export class Game {
     this.dayNightCycle = new DayNightCycle(this.worldConfig?.seed ?? 42);
     this.audioManager.init().then(() => {
       this.audioManager.loadSFX("engine_biplane", "/audio/sfx/engine_biplane.mp3");
+      this.audioManager.loadSFX("engine_carpet", "/audio/sfx/carpet_1.mp3");
       this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3");
       for (const id of DIAMOND_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
@@ -709,6 +710,8 @@ export class Game {
 
     if (this.playerVehicle === "plane") {
       this.audioManager.startLoop("engine_biplane", 0);
+    } else if (this.playerVehicle === "carpet") {
+      this.audioManager.startLoop("engine_carpet", 0.06);
     }
   }
 
