@@ -43,6 +43,7 @@ import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { HUD } from "../ui/HUD";
+import { mountControlHints } from "../ui/ControlHints";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
@@ -572,6 +573,7 @@ export class Game {
     this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
     });
+    mountControlHints(this.hud.root, vehicle, !this.mobile);
     this.hud.hideUI();
 
     const landmarkRegistry = new LandmarkRegistry();
