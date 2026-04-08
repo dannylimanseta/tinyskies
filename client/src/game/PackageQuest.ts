@@ -36,6 +36,9 @@ const SWING_GRAVITY = 8.0;
 const SWING_DAMPING = 2.5;
 const SWING_INERTIA = 3.0;
 
+const SPAWN_ANIM_DUR = 0.6;
+const SPAWN_BOUNCE_LIFT = 0.15;
+
 const REF_UP = new Vector3(0, 1, 0);
 const REF_Z = new Vector3(0, 0, 1);
 const REF_X = new Vector3(1, 0, 0);
@@ -80,6 +83,12 @@ function seededRandom(seed: number): () => number {
     s = (s * 16807 + 0) % 2147483647;
     return (s - 1) / 2147483646;
   };
+}
+
+function easeOutBack(t: number): number {
+  const c = 1.70158;
+  const c3 = c + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
 }
 
 /* ── Package model builder ──────────────────────────────────────────── */
@@ -181,6 +190,9 @@ export class PackageQuestManager {
   private swingOffsetZ = 0;
   private swingVelX = 0;
   private swingVelZ = 0;
+
+  private originAnimT = -1;
+  private destAnimT = -1;
 
   onPickup: ((originName: string, destName: string, npcName: string, dialogue: string) => void) | null = null;
   onDelivered: ((destName: string, npcName: string, dialogue: string, xp: number) => void) | null = null;
@@ -394,32 +406,58 @@ export class PackageQuestManager {
     if (!this.origin) return;
     const n = this.origin.normal;
     const disp = surfaceDisplacementAt(this.seed, this.terrainType, n.x, n.y, n.z);
-    const bob = PACKAGE_LIFT + Math.sin(this.time * 1.5) * PACKAGE_BOB_AMP;
+
+    let spawnScale = 1;
+    let spawnLift = 0;
+    if (this.originAnimT >= 0) {
+      this.originAnimT = Math.min(this.originAnimT + dt, SPAWN_ANIM_DUR);
+      const t = this.originAnimT / SPAWN_ANIM_DUR;
+      spawnScale = easeOutBack(t);
+      spawnLift = SPAWN_BOUNCE_LIFT * (1 - t);
+      if (this.originAnimT >= SPAWN_ANIM_DUR) this.originAnimT = -1;
+    }
+
+    const bob = PACKAGE_LIFT + spawnLift + Math.sin(this.time * 1.5) * PACKAGE_BOB_AMP;
     const r = this.globeRadius + disp + bob;
     this.packageMesh.position.set(n.x * r, n.y * r, n.z * r);
 
     this.spinAngle += SPIN_SPEED * dt;
     this.packageMesh.quaternion.setFromUnitVectors(REF_UP, n);
     this.packageMesh.rotateY(this.spinAngle);
+    this.packageMesh.scale.setScalar(spawnScale);
 
-    const beamBob = Math.sin(this.time * 0.8) * 0.015;
+    const beamBob = Math.sin(this.time * 0.8) * 0.015 + spawnLift;
     const br = this.globeRadius + disp + beamBob;
     this.originBeam.position.set(n.x * br, n.y * br, n.z * br);
+    this.originBeam.scale.setScalar(spawnScale);
   }
 
   private animateGhost(dt: number) {
     if (!this.destination) return;
     const n = this.destination.normal;
     const disp = surfaceDisplacementAt(this.seed, this.terrainType, n.x, n.y, n.z);
-    const bob = PACKAGE_LIFT + Math.sin(this.time * 1.5 + 1.0) * PACKAGE_BOB_AMP;
+
+    let spawnScale = 1;
+    let spawnLift = 0;
+    if (this.destAnimT >= 0) {
+      this.destAnimT = Math.min(this.destAnimT + dt, SPAWN_ANIM_DUR);
+      const t = this.destAnimT / SPAWN_ANIM_DUR;
+      spawnScale = easeOutBack(t);
+      spawnLift = SPAWN_BOUNCE_LIFT * (1 - t);
+      if (this.destAnimT >= SPAWN_ANIM_DUR) this.destAnimT = -1;
+    }
+
+    const bob = PACKAGE_LIFT + spawnLift + Math.sin(this.time * 1.5 + 1.0) * PACKAGE_BOB_AMP;
     const r = this.globeRadius + disp + bob;
     this.ghostPackage.position.set(n.x * r, n.y * r, n.z * r);
     this.ghostPackage.quaternion.setFromUnitVectors(REF_UP, n);
     this.ghostPackage.rotateY(this.spinAngle);
+    this.ghostPackage.scale.setScalar(spawnScale);
 
-    const beamBob = Math.sin(this.time * 0.8 + 1.0) * 0.015;
+    const beamBob = Math.sin(this.time * 0.8 + 1.0) * 0.015 + spawnLift;
     const br = this.globeRadius + disp + beamBob;
     this.destBeam.position.set(n.x * br, n.y * br, n.z * br);
+    this.destBeam.scale.setScalar(spawnScale);
   }
 
   private readonly _up = new Vector3();
@@ -486,6 +524,7 @@ export class PackageQuestManager {
     this.destBeam.visible = false;
     this.ghostPackage.visible = false;
     this.carryGroup.visible = false;
+    this.originAnimT = 0;
   }
 
   private showDestination() {
@@ -496,6 +535,7 @@ export class PackageQuestManager {
     this.originBeam.visible = false;
     this.packageMesh.visible = false;
     this.carryGroup.visible = true;
+    this.destAnimT = 0;
     this.swingOffsetX = 0;
     this.swingOffsetZ = 0;
     this.swingVelX = 0;
