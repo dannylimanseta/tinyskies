@@ -22,6 +22,8 @@ const ROLL_SPEED = 5.0;
 const TWO_PI = Math.PI * 2;
 const ROLL_ALT_AMPLITUDE = 0.05;
 const ROLL_PITCH_AMPLITUDE = 0.02;
+/** Upper end of `speedRatio` while at or below MAX_SPEED (before boost segment). */
+const CRUISE_SPEED_RATIO_MAX = 0.167;
 
 export class Plane {
   readonly group: Group;
@@ -138,11 +140,16 @@ export class Plane {
   get speedRatio(): number {
     if (this.speed <= MIN_SPEED) return 0;
     if (this.speed <= MAX_SPEED) {
-      return 0.167 * ((this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
+      return CRUISE_SPEED_RATIO_MAX * ((this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
     }
     const t = Math.min(1, (this.speed - MAX_SPEED) / (BOOST_SPEED - MAX_SPEED));
     const eased = t * (2 - t);
-    return 0.167 + 0.833 * eased;
+    return CRUISE_SPEED_RATIO_MAX + (1.0 - CRUISE_SPEED_RATIO_MAX) * eased;
+  }
+
+  /** Engine SFX: same loudness as full cruise when boosting (no extra volume from boost). */
+  get engineSpeedRatio(): number {
+    return Math.min(this.speedRatio, CRUISE_SPEED_RATIO_MAX);
   }
 
   addTo(scene: Scene) {

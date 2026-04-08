@@ -829,7 +829,8 @@ export class Game {
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
 
     if (this.playerVehicle === "plane") {
-      const engineVol = 0.08 + this.localPlayer.speedRatio * 0.25;
+      const engineVol =
+        0.08 + (this.localPlayer as Plane).engineSpeedRatio * 0.25;
       this.audioManager.setLoopVolume("engine_biplane", engineVol);
     }
 
