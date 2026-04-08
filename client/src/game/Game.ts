@@ -70,6 +70,16 @@ const SPEED_BOOST_SFX_IDS = [
 ] as const;
 const SPEED_BOOST_SFX_VOLUME = 0.5;
 
+const BOX_COLLECT_SFX_IDS = [
+  "box_collect_1",
+  "box_collect_2",
+  "box_collect_3",
+] as const;
+const BOX_COLLECT_SFX_VOLUME = 0.52;
+
+const CHEER_SFX_IDS = ["cheer_1", "cheer_2"] as const;
+const CHEER_SFX_VOLUME = 0.55;
+
 export class Game {
   private container: HTMLElement;
   private renderer!: WebGLRenderer;
@@ -176,6 +186,12 @@ export class Game {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
       for (const id of SPEED_BOOST_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
+      for (const id of BOX_COLLECT_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
+      for (const id of CHEER_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
     });
@@ -564,6 +580,9 @@ export class Game {
       };
 
       this.packageQuest.onPickup = (_originName, destName, npcName, dialogue) => {
+        const boxPick =
+          BOX_COLLECT_SFX_IDS[Math.floor(Math.random() * BOX_COLLECT_SFX_IDS.length)]!;
+        this.audioManager.playSFX(boxPick, BOX_COLLECT_SFX_VOLUME);
         this.packageQuestHUD!.showBubble(npcName, dialogue);
         this.packageQuestHUD!.showDeliveryTarget(destName);
         const pos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
@@ -572,6 +591,9 @@ export class Game {
       };
 
       this.packageQuest.onDelivered = (_destName, npcName, dialogue, xp) => {
+        const cheerPick =
+          CHEER_SFX_IDS[Math.floor(Math.random() * CHEER_SFX_IDS.length)]!;
+        this.audioManager.playSFX(cheerPick, CHEER_SFX_VOLUME);
         this.packageQuestHUD!.showBubble(npcName, dialogue);
         this.packageQuestHUD!.hideDeliveryTarget();
 
