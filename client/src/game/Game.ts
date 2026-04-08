@@ -18,6 +18,7 @@ import {
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig } from "@globefly/shared";
 import { DayNightCycle } from "./DayNightCycle";
+import { AudioManager } from "../audio/AudioManager";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
@@ -90,6 +91,7 @@ export class Game {
   private playerName = "Pilot";
   private playerVehicle: Vehicle = "plane";
   private dayNightCycle!: DayNightCycle;
+  private audioManager = new AudioManager();
   private vehicleFeatures!: VehicleGameFeatures;
 
   private introActive = false;
@@ -143,6 +145,7 @@ export class Game {
     }
 
     this.dayNightCycle = new DayNightCycle(this.worldConfig?.seed ?? 42);
+    this.audioManager.init();
     this.playerName = generateWhimsicalName();
 
     this.initPreview();
@@ -157,6 +160,7 @@ export class Game {
       onNameChange: (name) => { this.playerName = name; },
       onPlay: (vehicle) => {
         this.playerVehicle = vehicle;
+        this.audioManager.startMusic();
         this.lobby.fadeOut(() => {
           this.lobby.dispose();
           this.startGame(vehicle);
@@ -346,6 +350,7 @@ export class Game {
 
     this.globe.update(dt);
     this.applyDayNightPreset();
+    this.audioManager.update(dt);
     this.aurora?.update(dt, this.previewCamera);
     this.renderer.render(this.scene, this.previewCamera);
   };
@@ -484,6 +489,7 @@ export class Game {
 
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
+    this.hud.setMuteToggle(() => this.audioManager.toggleMute());
     this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
     });
@@ -691,6 +697,7 @@ export class Game {
       this.globe.update(dt);
       this.remotePlanes.update(dt, this.cameraRig.camera);
       this.applyDayNightPreset();
+      this.audioManager.update(dt);
       this.aurora?.update(dt, this.cameraRig.camera);
 
       this.localPlayer.group.updateMatrixWorld(true);
@@ -809,6 +816,7 @@ export class Game {
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
 
     this.applyDayNightPreset();
+    this.audioManager.update(dt);
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
 
@@ -900,6 +908,9 @@ export class Game {
       p.flareColorScale[1] * dayW,
       p.flareColorScale[2] * dayW,
     ]);
+
+    const mw = this.dayNightCycle.getMusicWeights();
+    this.audioManager.setWeights(mw.day, mw.evening, mw.night);
   }
 
   private getServerUrl(): string {
@@ -931,6 +942,7 @@ export class Game {
     this.packageQuestHUD?.dispose();
     this.stateSync?.stop();
     this.socketClient?.disconnect();
+    this.audioManager.dispose();
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("resize", this.onPreviewResize);
     this.removeLoadingOverlay();

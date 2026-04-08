@@ -11,10 +11,12 @@ export class HUD {
   private xpLevelEl!: HTMLElement;
   private xpBarFill!: HTMLElement;
   private xpValueEl!: HTMLElement;
+  private muteBtn!: HTMLButtonElement;
 
   private _bubbleVisible = false;
   private landmarkHiddenByBubble = false;
   private landmarkHUD: { setHidden(h: boolean): void } | null = null;
+  private onMuteToggle: (() => boolean) | null = null;
 
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
@@ -27,6 +29,9 @@ export class HUD {
         this.hidden = !this.hidden;
         this.el.style.display = this.hidden ? "none" : "";
       }
+      if (e.key === "m" || e.key === "M") {
+        this.muteBtn?.click();
+      }
     };
     window.addEventListener("keydown", this.onKey);
   }
@@ -37,6 +42,18 @@ export class HUD {
         <div class="hud-world-name"></div>
         <div class="hud-player-count">1 player</div>
       </div>
+      <button class="hud-mute-btn" aria-label="Toggle music">
+        <svg class="hud-mute-icon-on" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+        <svg class="hud-mute-icon-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <line x1="23" y1="9" x2="17" y2="15"/>
+          <line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>
+      </button>
       <div class="hud-xp-panel">
         <span class="hud-xp-level">LVL 1</span>
         <div class="hud-xp-bar-row">
@@ -54,6 +71,14 @@ export class HUD {
     this.xpLevelEl = this.el.querySelector(".hud-xp-level")!;
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
+    this.muteBtn = this.el.querySelector(".hud-mute-btn")!;
+
+    this.muteBtn.addEventListener("click", () => {
+      if (!this.onMuteToggle) return;
+      const muted = this.onMuteToggle();
+      this.muteBtn.querySelector<SVGElement>(".hud-mute-icon-on")!.style.display = muted ? "none" : "";
+      this.muteBtn.querySelector<SVGElement>(".hud-mute-icon-off")!.style.display = muted ? "" : "none";
+    });
 
     this.applyStyles();
   }
@@ -97,6 +122,10 @@ export class HUD {
 
     requestAnimationFrame(() => banner.classList.add("hud-levelup-animate"));
     setTimeout(() => banner.remove(), 2000);
+  }
+
+  setMuteToggle(fn: () => boolean) {
+    this.onMuteToggle = fn;
   }
 
   registerLandmarkHUD(lhud: { setHidden(h: boolean): void }) {
@@ -157,6 +186,33 @@ export class HUD {
         font-size: 0.75rem;
         font-weight: 400;
         color: rgba(255, 255, 255, 0.45);
+      }
+
+      .hud-mute-btn {
+        position: absolute;
+        top: 20px;
+        right: 24px;
+        z-index: 1;
+        pointer-events: auto;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.7);
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+        padding: 0;
+      }
+      .hud-mute-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: rgba(255, 255, 255, 0.95);
+      }
+      .hud-mute-btn:active {
+        background: rgba(255, 255, 255, 0.2);
       }
 
       .hud-xp-panel {
@@ -288,6 +344,12 @@ export class HUD {
         .hud-top {
           top: max(12px, env(safe-area-inset-top));
           left: max(12px, env(safe-area-inset-left));
+        }
+        .hud-mute-btn {
+          top: max(12px, env(safe-area-inset-top));
+          right: max(12px, env(safe-area-inset-right));
+          width: 40px;
+          height: 40px;
         }
         .hud-world-name { font-size: 0.8rem; }
         .hud-player-count { font-size: 0.65rem; }

@@ -183,8 +183,8 @@ export class PackageQuestHUD {
 
       .pkg-banner {
         position: absolute;
-        top: 20px;
-        right: 24px;
+        top: 28px;
+        right: 72px;
         font-size: 0.95rem;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.5);
@@ -209,8 +209,8 @@ export class PackageQuestHUD {
         .pkg-bubble-npc { font-size: 0.6rem; }
         .pkg-bubble-text { font-size: 0.85rem; padding: 8px 12px; backdrop-filter: none; }
         .pkg-banner {
-          top: max(12px, env(safe-area-inset-top));
-          right: max(12px, env(safe-area-inset-right));
+          top: max(20px, calc(8px + env(safe-area-inset-top)));
+          right: max(60px, calc(60px + env(safe-area-inset-right)));
           font-size: 0.8rem;
         }
       }

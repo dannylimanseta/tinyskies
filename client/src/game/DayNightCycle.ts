@@ -156,4 +156,29 @@ export class DayNightCycle {
   getDayWeight(): number {
     return 1 - this.getNightWeight();
   }
+
+  /** Returns per-phase music weights that always sum to 1. */
+  getMusicWeights(): { day: number; evening: number; night: number } {
+    const time = this.getCycleTime();
+
+    if (time < 60) return { day: 1, evening: 0, night: 0 };
+    if (time < 75) {
+      const t = (time - 60) / 15;
+      const s = t * t * (3 - 2 * t);
+      return { day: 1 - s, evening: s, night: 0 };
+    }
+    if (time < 105) return { day: 0, evening: 1, night: 0 };
+    if (time < 120) {
+      const t = (time - 105) / 15;
+      const s = t * t * (3 - 2 * t);
+      return { day: 0, evening: 1 - s, night: s };
+    }
+    if (time < 180) return { day: 0, evening: 0, night: 1 };
+    if (time < 195) {
+      const t = (time - 180) / 15;
+      const s = t * t * (3 - 2 * t);
+      return { day: s, evening: 0, night: 1 - s };
+    }
+    return { day: 1, evening: 0, night: 0 };
+  }
 }
