@@ -63,7 +63,7 @@ export class Lobby {
               <span class="lobby-vlabel">Boat</span>
             </button>
             <button type="button" class="lobby-vbtn" data-vehicle="carpet" aria-checked="false">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="1.5"/><rect x="6.5" y="8.5" width="11" height="7" rx="0.5"/><path d="M12 10.5v4"/><path d="M5 19v2M9 19v2M12 19v2M15 19v2M19 19v2"/></svg></span>
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5Q12 15.5 21 17.5L20 11.5Q12 9 4 11.5Z"/><path d="M12 10v7"/><path d="M8 13.5h8"/><path d="M5 17.5v2M9 17.5v2M12 17.5v2M15 17.5v2M19 17.5v2"/><path d="M20 4.5v2M19 5.5h2"/><path d="M5 6v1.5M4.25 6.75h1.5"/><path d="M15.5 7v1M15 7.5h1"/></svg></span>
               <span class="lobby-vlabel">Carpet</span>
             </button>
           </div>
@@ -252,7 +252,7 @@ export class Lobby {
       /* ── Bottom Bar ─────────────────────────────────── */
       .lobby-bar {
         position: fixed;
-        bottom: max(32px, calc(16px + env(safe-area-inset-bottom)));
+        bottom: max(62px, calc(46px + env(safe-area-inset-bottom)));
         left: 50%;
         transform: translateX(-50%) translateY(30px);
         max-width: 480px;
@@ -359,7 +359,7 @@ export class Lobby {
         .lobby-username { font-size: 1rem; }
         .lobby-edit-btn { padding: 8px 12px; min-width: 44px; min-height: 44px; }
         .lobby-bar {
-          bottom: max(16px, calc(8px + env(safe-area-inset-bottom)));
+          bottom: max(46px, calc(38px + env(safe-area-inset-bottom)));
           padding: 8px 10px;
           width: calc(100% - 32px);
           gap: 6px;
