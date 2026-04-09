@@ -172,18 +172,31 @@ export class AudioManager {
 
   /**
    * One-shot SFX. `playbackRate` shifts pitch (and length); use >1 for slightly higher combo tones.
+   * `endFadeFraction` (0–1): linear fade to silence over the last fraction of playback (e.g. 0.05 = last 5%).
    */
-  playSFX(name: string, volume = 1.0, playbackRate = 1.0) {
+  playSFX(name: string, volume = 1.0, playbackRate = 1.0, endFadeFraction = 0) {
     if (!this.ctx || !this.masterGain || this._muted) return;
     const buffer = this.sfxBuffers.get(name);
     if (!buffer) return;
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = Math.max(0.5, Math.min(2, playbackRate));
+    const rate = Math.max(0.5, Math.min(2, playbackRate));
+    source.playbackRate.value = rate;
     const gain = this.ctx.createGain();
-    gain.gain.value = volume;
     source.connect(gain);
     gain.connect(this.masterGain);
+
+    const playDur = buffer.duration / rate;
+    const fade = Math.max(0, Math.min(1, endFadeFraction));
+    if (fade > 0 && playDur > 0.001) {
+      const t0 = this.ctx.currentTime;
+      const holdEnd = t0 + playDur * (1 - fade);
+      gain.gain.setValueAtTime(volume, t0);
+      gain.gain.linearRampToValueAtTime(volume, holdEnd);
+      gain.gain.linearRampToValueAtTime(0, t0 + playDur);
+    } else {
+      gain.gain.value = volume;
+    }
     source.start(0);
   }
 

@@ -11,7 +11,8 @@ import {
   Camera,
 } from "three";
 
-const TRAIL_LENGTH = 60;
+/** Max ribbon segments per wing (~40% shorter than original for a tighter trail). */
+const TRAIL_LENGTH = 36;
 const WIDTH = 0.005;
 
 const trailVert = `
@@ -26,7 +27,8 @@ void main() {
 const trailFrag = `
 varying float vAlpha;
 void main() {
-  gl_FragColor = vec4(1.0, 1.0, 1.0, vAlpha);
+  // Premultiplied white — with premultipliedAlpha + AdditiveBlending uses ONE+ONE (true additive)
+  gl_FragColor = vec4(vAlpha, vAlpha, vAlpha, 1.0);
 }
 `;
 
@@ -72,6 +74,8 @@ class Trail {
       depthWrite: false,
       side: DoubleSide,
       blending: AdditiveBlending,
+      premultipliedAlpha: true,
+      toneMapped: false,
     });
 
     this.mesh = new Mesh(this.geometry, mat);
@@ -129,7 +133,7 @@ class Trail {
       positions[i * 6 + 4] = p.y - _cross.y * w;
       positions[i * 6 + 5] = p.z - _cross.z * w;
 
-      const a = fade * fade * 0.6;
+      const a = fade * fade * 0.2;
       alphas[i * 2] = a;
       alphas[i * 2 + 1] = a;
     }

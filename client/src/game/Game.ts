@@ -64,7 +64,7 @@ const BIRDS_LOOP_MAX_VOL = 0.04;
 const DIAMOND_COMBO_WINDOW_MS = 900;
 const DIAMOND_COMBO_MAX_STEPS = 5;
 const DIAMOND_COMBO_RATE_PER_STEP = 0.028;
-const DIAMOND_SFX_VOLUME = 0.55;
+const DIAMOND_SFX_VOLUME = 0.3;
 
 const DIAMOND_SFX_IDS = [
   "diamond_collect_1",
@@ -77,7 +77,7 @@ const SPEED_BOOST_SFX_IDS = [
   "speed_boost_2",
   "speed_boost_3",
 ] as const;
-const SPEED_BOOST_SFX_VOLUME = 0.5;
+const SPEED_BOOST_SFX_VOLUME = 0.1;
 
 const BOX_COLLECT_SFX_IDS = [
   "box_collect_1",
@@ -95,7 +95,7 @@ const DIALOGUE_LOOP_VOLUME = 0.28;
 const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
 
 const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
-const LEVELUP_SFX_VOLUME = 0.6;
+const LEVELUP_SFX_VOLUME = 0.42;
 
 export class Game {
   private container: HTMLElement;
@@ -1069,7 +1069,7 @@ export class Game {
   private playLevelUpSfx() {
     const pick =
       LEVELUP_SFX_IDS[Math.floor(Math.random() * LEVELUP_SFX_IDS.length)]!;
-    this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME);
+    this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
   }
 
   private getServerUrl(): string {
