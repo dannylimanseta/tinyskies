@@ -5,6 +5,7 @@ export interface ControlState {
   forward: boolean;
   brake: boolean;
   elevate: boolean;
+  descend: boolean;
   barrelRoll: boolean;
 }
 
@@ -30,21 +31,22 @@ export class FlightControls {
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false, elevate: false, barrelRoll: false };
+      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false };
     }
 
     let turnRate = 0;
 
-    if (this.keys.has("a") || this.keys.has("arrowleft")) turnRate += TURN_SPEED;
-    if (this.keys.has("d") || this.keys.has("arrowright")) turnRate -= TURN_SPEED;
+    if (this.keys.has("arrowleft")) turnRate += TURN_SPEED;
+    if (this.keys.has("arrowright")) turnRate -= TURN_SPEED;
 
-    const forward = this.keys.has("w") || this.keys.has("arrowup");
-    const brake = this.keys.has("s") || this.keys.has("arrowdown");
-    const elevate = this.keys.has(" ");
+    const forward = this.keys.has("arrowup");
+    const brake = this.keys.has("arrowdown");
+    const elevate = this.keys.has("w");
+    const descend = this.keys.has("s");
     const barrelRoll = this.barrelRollQueued;
     this.barrelRollQueued = false;
 
-    return { turnRate, forward, brake, elevate, barrelRoll };
+    return { turnRate, forward, brake, elevate, descend, barrelRoll };
   }
 
   private onKeyDown = (e: KeyboardEvent) => {

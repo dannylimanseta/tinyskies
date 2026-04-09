@@ -4,8 +4,9 @@ import {
   type Scene,
 } from "three";
 import type { Vehicle } from "@globefly/shared";
-import { buildPlaneMatrix, moveOnSphere, randomSpawnQuaternionAndHeading } from "./SphericalMath";
+import { buildPlaneMatrix, moveOnSphere, randomSpawnQuaternionAndHeading, tangentFrame } from "./SphericalMath";
 import { createBiplane } from "./BiplaneMesh";
+import { surfaceAltitudeAt } from "./TerrainSurface";
 
 const CRUISE_SPEED = 1.5;
 const BRAKE_DECEL = 3.0;
@@ -17,6 +18,8 @@ const BOOST_SPEED = 1.3;
 const BOOST_DURATION_SEC = 1.7;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
+/** Minimum clearance above terrain when descending. */
+const LOW_HOVER_HEIGHT = 0.08;
 const ALTITUDE_SPEED = 0.75;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
@@ -52,14 +55,19 @@ export class Plane {
   private boostTimer = 0;
   /** Smoothed yaw command (matches keyboard / stick after lag). */
   private turnInputSmoothed = 0;
-  /** 0 = cruise altitude, 1 = climb — smoothed from Space so pitch/height ease in. */
+  /** -1 = descend, 0 = cruise, 1 = climb — smoothed so pitch/height ease in. */
   private elevateBlend = 0;
+  private prevAltitude = ALTITUDE;
 
   private globeRadius: number;
+  private seed: number;
+  private terrainType: string;
 
   /** @param spawnSalt Per-session randomness (combine with world seed at call site). */
-  constructor(globeRadius: number, spawnSalt: number, hullColor: number) {
+  constructor(globeRadius: number, spawnSalt: number, hullColor: number, seed = 42, terrainType = "default") {
     this.globeRadius = globeRadius;
+    this.seed = seed;
+    this.terrainType = terrainType;
     this.hullColor = hullColor;
     this.group = createBiplane(hullColor);
     this.group.matrixAutoUpdate = false;
@@ -76,6 +84,7 @@ export class Plane {
     brake: boolean,
     elevate: boolean = false,
     barrelRoll: boolean = false,
+    descend: boolean = false,
   ) {
     if (this.boostTimer > 0) {
       this.boostTimer = Math.max(0, this.boostTimer - dt);
@@ -108,11 +117,28 @@ export class Plane {
     this.heading += this.turnInputSmoothed * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
-    const elevateTarget = elevate ? 1 : 0;
+    const elevateTarget = elevate ? 1 : descend ? -1 : 0;
     this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
-    const targetAlt = ALTITUDE + (HIGH_ALTITUDE - ALTITUDE) * this.elevateBlend;
+
+    const up = tangentFrame(this.qPosition).up;
+    const surfaceAlt = surfaceAltitudeAt(this.seed, this.terrainType, up.x, up.y, up.z);
+    const lowAlt = surfaceAlt + LOW_HOVER_HEIGHT;
+
+    let targetAlt: number;
+    if (this.elevateBlend > 0) {
+      targetAlt = ALTITUDE + (HIGH_ALTITUDE - ALTITUDE) * this.elevateBlend;
+    } else {
+      targetAlt = ALTITUDE + (ALTITUDE - lowAlt) * this.elevateBlend;
+    }
     this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_SPEED * dt);
-    const targetPitch = -0.3 * this.elevateBlend;
+
+    const hardFloor = surfaceAlt + LOW_HOVER_HEIGHT;
+    if (this.altitude < hardFloor) this.altitude = hardFloor;
+
+    const altDelta = (this.altitude - this.prevAltitude) / Math.max(dt, 1e-4);
+    this.prevAltitude = this.altitude;
+    const climbRate = Math.max(-1, Math.min(1, altDelta * 2.5));
+    const targetPitch = -0.3 * climbRate;
     this.pitch += (targetPitch - this.pitch) * Math.min(1, 3.0 * dt);
 
     const arcAngle = (this.speed * dt) / this.globeRadius;

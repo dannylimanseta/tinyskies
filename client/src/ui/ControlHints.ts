@@ -3,6 +3,16 @@ import type { Vehicle } from "@globefly/shared";
 type Row = { keys: string[]; label: string };
 
 function rowsForVehicle(vehicle: Vehicle): Row[] {
+  if (vehicle === "plane") {
+    return [
+      { keys: ["↑"], label: "Throttle" },
+      { keys: ["↓"], label: "Slow" },
+      { keys: ["←", "→"], label: "Turn" },
+      { keys: ["W"], label: "Climb" },
+      { keys: ["S"], label: "Descend" },
+      { keys: ["E"], label: "Barrel roll" },
+    ];
+  }
   const base: Row[] = [
     { keys: ["W", "↑"], label: "Throttle" },
     { keys: ["S", "↓"], label: "Slow" },
@@ -10,9 +20,6 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
   ];
   if (vehicle === "boat") return base;
   base.push({ keys: ["Space"], label: "Climb" });
-  if (vehicle === "plane") {
-    base.push({ keys: ["E"], label: "Barrel roll" });
-  }
   return base;
 }
 

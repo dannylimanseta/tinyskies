@@ -495,7 +495,7 @@ export class Game {
     } else if (vehicle === "carpet") {
       this.localPlayer = new Carpet(globeRadius, seed, terrainType, spawnSessionSalt, hullColor);
     } else {
-      this.localPlayer = new Plane(globeRadius, seed + spawnSessionSalt, hullColor);
+      this.localPlayer = new Plane(globeRadius, seed + spawnSessionSalt, hullColor, seed, terrainType);
     }
     this.localPlayer.addTo(this.scene);
 
@@ -911,9 +911,9 @@ export class Game {
       return;
     }
 
-    const { turnRate, forward, brake, elevate, barrelRoll } =
+    const { turnRate, forward, brake, elevate, descend, barrelRoll } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
-    this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll);
+    this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll, descend);
 
     this.cameraRig.update(
       dt,

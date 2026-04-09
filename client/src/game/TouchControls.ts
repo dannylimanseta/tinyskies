@@ -12,6 +12,7 @@ export class TouchControls {
   private joyThumb: HTMLDivElement;
   private actionBtn: HTMLButtonElement;
   private elevateBtn: HTMLButtonElement;
+  private descendBtn: HTMLButtonElement;
 
   private joyTouchId: number | null = null;
   private joyCenterX = 0;
@@ -25,6 +26,9 @@ export class TouchControls {
 
   private elevateTouchId: number | null = null;
   private elevateHeld = false;
+
+  private descendTouchId: number | null = null;
+  private descendHeld = false;
 
   private vehicle: Vehicle = "plane";
   private _enabled = true;
@@ -45,6 +49,11 @@ export class TouchControls {
     this.elevateBtn.textContent = "↑";
     this.el.appendChild(this.elevateBtn);
 
+    this.descendBtn = document.createElement("button");
+    this.descendBtn.className = "tc-descend-btn";
+    this.descendBtn.textContent = "↓";
+    this.el.appendChild(this.descendBtn);
+
     this.actionBtn = document.createElement("button");
     this.actionBtn.className = "tc-action-btn";
     this.actionBtn.textContent = "E";
@@ -61,6 +70,10 @@ export class TouchControls {
     this.elevateBtn.addEventListener("touchstart", this.onElevateStart, { passive: false });
     window.addEventListener("touchend", this.onElevateEnd);
     window.addEventListener("touchcancel", this.onElevateEnd);
+
+    this.descendBtn.addEventListener("touchstart", this.onDescendStart, { passive: false });
+    window.addEventListener("touchend", this.onDescendEnd);
+    window.addEventListener("touchcancel", this.onDescendEnd);
 
     this.actionBtn.addEventListener("touchstart", this.onActionStart, { passive: false });
     window.addEventListener("touchend", this.onActionEnd);
@@ -79,17 +92,20 @@ export class TouchControls {
     if (vehicle === "plane") {
       this.actionBtn.textContent = "⟳";
       this.actionBtn.style.display = "";
+      this.descendBtn.style.display = "";
     } else if (vehicle === "carpet") {
       this.actionBtn.textContent = "⟳";
       this.actionBtn.style.display = "none";
+      this.descendBtn.style.display = "none";
     } else {
       this.actionBtn.style.display = "none";
+      this.descendBtn.style.display = "none";
     }
   }
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false, elevate: false, barrelRoll: false };
+      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false };
     }
 
     const nx = JOYSTICK_RADIUS > 0 ? this.joyDx / JOYSTICK_RADIUS : 0;
@@ -100,6 +116,7 @@ export class TouchControls {
     const brake = ny > DEADZONE;
 
     const elevate = this.elevateHeld;
+    const descend = this.descendHeld;
     let barrelRoll = false;
 
     if (this.vehicle === "plane") {
@@ -107,7 +124,7 @@ export class TouchControls {
       this.actionQueued = false;
     }
 
-    return { turnRate, forward, brake, elevate, barrelRoll };
+    return { turnRate, forward, brake, elevate, descend, barrelRoll };
   }
 
   /* ── Joystick touch handling ─────────────────────────────── */
@@ -208,6 +225,29 @@ export class TouchControls {
     }
   };
 
+  /* ── Descend button touch handling ─────────────────────── */
+
+  private onDescendStart = (e: TouchEvent) => {
+    e.preventDefault();
+    if (this.descendTouchId !== null) return;
+    const t = e.changedTouches[0];
+    this.descendTouchId = t.identifier;
+    this.descendHeld = true;
+    this.descendBtn.classList.add("active");
+  };
+
+  private onDescendEnd = (e: TouchEvent) => {
+    if (this.descendTouchId === null) return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === this.descendTouchId) {
+        this.descendTouchId = null;
+        this.descendHeld = false;
+        this.descendBtn.classList.remove("active");
+        return;
+      }
+    }
+  };
+
   /* ── Helpers ────────────────────────────────────────────── */
 
   private resetAll() {
@@ -222,6 +262,9 @@ export class TouchControls {
     this.elevateTouchId = null;
     this.elevateHeld = false;
     this.elevateBtn.classList.remove("active");
+    this.descendTouchId = null;
+    this.descendHeld = false;
+    this.descendBtn.classList.remove("active");
   }
 
   private applyStyles() {
@@ -262,6 +305,7 @@ export class TouchControls {
         transition: background 0.1s;
       }
       .tc-elevate-btn,
+      .tc-descend-btn,
       .tc-action-btn {
         position: absolute;
         right: max(24px, env(safe-area-inset-right));
@@ -286,18 +330,23 @@ export class TouchControls {
         user-select: none;
       }
       .tc-elevate-btn {
+        bottom: max(232px, calc(220px + env(safe-area-inset-bottom)));
+      }
+      .tc-descend-btn {
         bottom: max(164px, calc(152px + env(safe-area-inset-bottom)));
       }
       .tc-action-btn {
         bottom: max(96px, calc(84px + env(safe-area-inset-bottom)));
       }
       .tc-elevate-btn.active,
+      .tc-descend-btn.active,
       .tc-action-btn.active {
         background: rgba(255, 255, 255, 0.20);
       }
       @media (max-width: 480px) {
         .tc-joy-base,
         .tc-elevate-btn,
+        .tc-descend-btn,
         .tc-action-btn {
           backdrop-filter: none;
         }
@@ -314,6 +363,9 @@ export class TouchControls {
     this.elevateBtn.removeEventListener("touchstart", this.onElevateStart);
     window.removeEventListener("touchend", this.onElevateEnd);
     window.removeEventListener("touchcancel", this.onElevateEnd);
+    this.descendBtn.removeEventListener("touchstart", this.onDescendStart);
+    window.removeEventListener("touchend", this.onDescendEnd);
+    window.removeEventListener("touchcancel", this.onDescendEnd);
     this.actionBtn.removeEventListener("touchstart", this.onActionStart);
     window.removeEventListener("touchend", this.onActionEnd);
     window.removeEventListener("touchcancel", this.onActionEnd);
