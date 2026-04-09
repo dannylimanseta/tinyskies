@@ -66,6 +66,9 @@ const BALLOON_GREET_COOLDOWN = 32;
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
 
+/** Local vehicle fill light at night: `intensity = nightWeight * this` (was 1.0; lower = less harsh). */
+const PLAYER_LIGHT_NIGHT_INTENSITY = 0.38;
+
 const RAIN_LOOP_NAME = "rain_loop";
 const RAIN_LOOP_MAX_VOL = 0.18;
 
@@ -555,7 +558,8 @@ export class Game {
 
     this.rainOverlay = new RainOverlay();
 
-    this.playerLight = new PointLight(0xffaa55, 0, 4.0, 1.5);
+    /* Softer warm fill than 0xffaa55; wider range so falloff on the mesh is gentler. */
+    this.playerLight = new PointLight(0xeec4a8, 0, 6.5, 1.25);
     this.scene.add(this.playerLight);
 
     const ringMode = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
@@ -1101,7 +1105,9 @@ export class Game {
       this.aurora.group.visible = nightW > 0.01;
       this.aurora.setOpacity(nightW);
     }
-    if (this.playerLight) this.playerLight.intensity = nightW * 1.0;
+    if (this.playerLight) {
+      this.playerLight.intensity = nightW * PLAYER_LIGHT_NIGHT_INTENSITY;
+    }
     if (this.lensFlare) this.lensFlare.setColorScale([
       p.flareColorScale[0] * dayW,
       p.flareColorScale[1] * dayW,
