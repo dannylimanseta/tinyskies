@@ -1,0 +1,19 @@
+# Optional: only if nothing else uses host port 5432.
+# If you already have Postgres (e.g. another container), use that DB and server/.env instead.
+# Local Postgres — matches server/.env DATABASE_URL (give_dev_user / dev / globefly)
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: globefly-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: give_dev_user
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: globefly
+    ports:
+      - "5432:5432"
+    volumes:
+      - globefly_pgdata:/var/lib/postgresql/data
+
+volumes:
+  globefly_pgdata:

@@ -24,6 +24,8 @@ const COAST_DECAY = 0.07;
 const FREEBOARD = 0.015;
 /** Yaw rate multiplier — higher = snappier turns. */
 const TURN_SCALE = 0.92;
+/** Same idea as plane: yaw input eases toward keys/stick (1/s). */
+const TURN_INPUT_SMOOTH = 8;
 
 /**
  * Random orientation on the ocean (matches globe land/water via `worldSeed`).
@@ -107,6 +109,7 @@ export class Boat {
   private bobOffset = 0;
   private bobPitch = 0;
   private bobRoll = 0;
+  private turnInputSmoothed = 0;
 
   /**
    * @param spawnSalt Random per session so boats (and heading) differ each run while staying on ocean.
@@ -151,7 +154,8 @@ export class Boat {
       this.speed = Math.max(0, this.speed - COAST_DECAY * dt);
     }
 
-    this.heading += turnRate * dt * TURN_SCALE;
+    this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
+    this.heading += this.turnInputSmoothed * dt * TURN_SCALE;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     const arcAngle = (this.speed * dt) / this.globeRadius;

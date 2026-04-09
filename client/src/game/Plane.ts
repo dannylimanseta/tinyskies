@@ -20,6 +20,10 @@ const HIGH_ALTITUDE = 1.35;
 const ALTITUDE_SPEED = 0.75;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
+/** Yaw input catch-up (1/s); higher = closer to raw keys. ~8 feels smooth but still responsive. */
+const TURN_INPUT_SMOOTH = 8;
+/** Climb hold (Space) ramps 0→1 instead of snapping. */
+const ELEVATE_INPUT_SMOOTH = 6;
 const ROLL_SPEED = 5.0;
 const TWO_PI = Math.PI * 2;
 const ROLL_ALT_AMPLITUDE = 0.05;
@@ -46,6 +50,10 @@ export class Plane {
   private rollPitchOffset = 0;
   /** Remaining time at `BOOST_SPEED` after `speedBoost()`; 0 when not boosting. */
   private boostTimer = 0;
+  /** Smoothed yaw command (matches keyboard / stick after lag). */
+  private turnInputSmoothed = 0;
+  /** 0 = cruise altitude, 1 = climb — smoothed from Space so pitch/height ease in. */
+  private elevateBlend = 0;
 
   private globeRadius: number;
 
@@ -87,26 +95,30 @@ export class Plane {
       this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
     }
 
+    this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
+
     if (this.boostTimer <= 0) {
-      const turnStrength = Math.abs(turnRate);
+      const turnStrength = Math.abs(this.turnInputSmoothed);
       if (turnStrength > 0.1) {
         const turnDrag = turnStrength * 0.8 * dt;
         this.speed = Math.max(MIN_SPEED, this.speed - turnDrag);
       }
     }
 
-    this.heading += turnRate * dt;
+    this.heading += this.turnInputSmoothed * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
-    const targetAlt = elevate ? HIGH_ALTITUDE : ALTITUDE;
+    const elevateTarget = elevate ? 1 : 0;
+    this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
+    const targetAlt = ALTITUDE + (HIGH_ALTITUDE - ALTITUDE) * this.elevateBlend;
     this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_SPEED * dt);
-    const targetPitch = elevate ? -0.3 : 0;
+    const targetPitch = -0.3 * this.elevateBlend;
     this.pitch += (targetPitch - this.pitch) * Math.min(1, 3.0 * dt);
 
     const arcAngle = (this.speed * dt) / this.globeRadius;
     this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
 
-    const targetBank = -turnRate * MAX_BANK * 0.5;
+    const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * dt);
 
     if (barrelRoll && !this.isRolling) {

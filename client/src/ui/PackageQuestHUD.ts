@@ -143,7 +143,7 @@ export class PackageQuestHUD {
         position: absolute;
         top: 50%;
         left: 50%;
-        transform: translate(-50%, -50%);
+        transform: translate(-50%, calc(-50% - 80px));
         opacity: 0;
         transition: opacity 0.2s ease;
         pointer-events: none;

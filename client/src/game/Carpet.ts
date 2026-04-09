@@ -22,6 +22,10 @@ const MIN_SPEED = 0.28;
 const MAX_SPEED = 0.78;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
+/** Yaw input catch-up (1/s); matches plane. */
+const TURN_INPUT_SMOOTH = 8;
+/** Space (climb) ramps 0→1; matches plane. */
+const ELEVATE_INPUT_SMOOTH = 6;
 
 /** Default hover clearance above terrain surface. */
 const HOVER_HEIGHT = 0.08;
@@ -57,6 +61,9 @@ export class Carpet {
   private static readonly TASSEL_CURL_MAX = Math.PI / 2;
   private tasselCurl = 0;
   private timeUniform: IUniform<number> | null = null;
+  private turnInputSmoothed = 0;
+  /** 0 = low hover, 1 = boosted height — smoothed from Space. */
+  private elevateBlend = 0;
 
   /** @param spawnSalt Per-session random start position/heading on the globe. */
   constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0, hullColor?: number) {
@@ -103,7 +110,8 @@ export class Carpet {
       this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
     }
 
-    this.heading += turnRate * dt;
+    this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
+    this.heading += this.turnInputSmoothed * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     const arcAngle = (this.speed * dt) / this.globeRadius;
@@ -113,7 +121,9 @@ export class Carpet {
     const surfaceAlt = surfaceAltitudeAt(
       this.seed, this.terrainType, up.x, up.y, up.z,
     );
-    const clearance = elevate ? BOOST_HEIGHT : HOVER_HEIGHT;
+    const elevateTarget = elevate ? 1 : 0;
+    this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
+    const clearance = HOVER_HEIGHT + (BOOST_HEIGHT - HOVER_HEIGHT) * this.elevateBlend;
     const targetAlt = surfaceAlt + clearance;
     this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_LERP * dt);
 
@@ -127,7 +137,7 @@ export class Carpet {
     this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
     this.prevAltitude = this.altitude;
 
-    const targetBank = -turnRate * MAX_BANK * 0.5;
+    const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * dt);
 
     const targetCurl = this.speedRatio * Carpet.TASSEL_CURL_MAX;
