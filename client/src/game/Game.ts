@@ -42,6 +42,7 @@ import { Aurora } from "./Aurora";
 import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
+import { pickRandomVehicleColor } from "./vehicleColors";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -478,13 +479,14 @@ export class Game {
 
     const spawnSessionSalt =
       (Date.now() ^ ((Math.random() * 0xffffffff) | 0) ^ (seed * 7919)) >>> 0;
+    const hullColor = pickRandomVehicleColor(vehicle);
 
     if (vehicle === "boat") {
-      this.localPlayer = new Boat(globeRadius, seed, terrainType, undefined, spawnSessionSalt);
+      this.localPlayer = new Boat(globeRadius, seed, terrainType, hullColor, spawnSessionSalt);
     } else if (vehicle === "carpet") {
-      this.localPlayer = new Carpet(globeRadius, seed, terrainType, spawnSessionSalt);
+      this.localPlayer = new Carpet(globeRadius, seed, terrainType, spawnSessionSalt, hullColor);
     } else {
-      this.localPlayer = new Plane(globeRadius, seed + spawnSessionSalt);
+      this.localPlayer = new Plane(globeRadius, seed + spawnSessionSalt, hullColor);
     }
     this.localPlayer.addTo(this.scene);
 

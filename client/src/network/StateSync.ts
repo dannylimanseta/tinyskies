@@ -14,6 +14,7 @@ export type SyncablePlayer = {
   bankAngle: number;
   rollAngle: number;
   vehicle: Vehicle;
+  hullColor: number;
   carrying?: boolean;
 };
 
@@ -46,6 +47,7 @@ export class StateSync {
     this.client.sendMove({
       name: "",
       vehicle: this.player.vehicle,
+      vehicleColor: this.player.hullColor,
       qx: this.player.qPosition.x,
       qy: this.player.qPosition.y,
       qz: this.player.qPosition.z,

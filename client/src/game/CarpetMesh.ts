@@ -118,5 +118,6 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
   });
 
   carpet.traverse((child) => { child.castShadow = true; });
+  carpet.userData.hullMaterial = bodyMat;
   return carpet;
 }

@@ -73,6 +73,11 @@ export class PlayerBeacon {
     this.mesh.frustumCulled = false;
   }
 
+  setColor(hex: number) {
+    const col = new Color(hex);
+    this.material.uniforms.uColor.value = [col.r, col.g, col.b];
+  }
+
   /** Orient beam along surface normal, billboard around it to face camera. */
   update(camera: Camera) {
     camera.getWorldPosition(_camPos);

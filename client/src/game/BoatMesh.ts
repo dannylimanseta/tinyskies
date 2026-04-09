@@ -223,5 +223,6 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
   boat.add(rudder);
 
   boat.traverse((child) => { child.castShadow = true; });
+  boat.userData.hullMaterial = hullMat;
   return boat;
 }

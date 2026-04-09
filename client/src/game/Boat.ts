@@ -25,20 +25,24 @@ const FREEBOARD = 0.015;
 /** Yaw rate multiplier — higher = snappier turns. */
 const TURN_SCALE = 0.92;
 
-/** Random orientation on ocean; falls back toward equator if needed. */
+/**
+ * Random orientation on the ocean (matches globe land/water via `worldSeed`).
+ * `spawnSalt` only affects RNG — must NOT be passed to `isLand`, which keys off world terrain seed.
+ */
 export function randomOceanQuaternion(
-  seed: number,
+  worldSeed: number,
   terrainType: string,
+  spawnSalt: number,
   maxAttempts = 120,
 ): Quaternion {
-  const rnd = seededRandom(seed + 777);
+  const rnd = seededRandom(spawnSalt + 777);
   for (let i = 0; i < maxAttempts; i++) {
     const theta = rnd() * Math.PI * 2;
     const phi = Math.acos(2 * rnd() - 1);
     const nx = Math.sin(phi) * Math.cos(theta);
     const ny = Math.sin(phi) * Math.sin(theta);
     const nz = Math.cos(phi);
-    if (!isLand(seed, terrainType, nx, ny, nz)) {
+    if (!isLand(worldSeed, terrainType, nx, ny, nz)) {
       return quaternionFromSurfaceNormal(nx, ny, nz);
     }
   }
@@ -48,11 +52,29 @@ export function randomOceanQuaternion(
     const nx = Math.sin(phi) * Math.cos(theta);
     const ny = Math.sin(phi) * Math.sin(theta);
     const nz = Math.cos(phi);
-    if (!isLand(seed, terrainType, nx, ny, nz)) {
+    if (!isLand(worldSeed, terrainType, nx, ny, nz)) {
       return quaternionFromSurfaceNormal(nx, ny, nz);
     }
   }
-  return new Quaternion();
+  return findOceanQuaternionExhaustive(worldSeed, terrainType);
+}
+
+/** Dense Fibonacci sphere search — avoids returning identity (often land). */
+function findOceanQuaternionExhaustive(worldSeed: number, terrainType: string): Quaternion {
+  const n = 4096;
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) {
+    const y = 1 - (i / Math.max(1, n - 1)) * 2;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = golden * i;
+    const nx = Math.cos(theta) * r;
+    const ny = y;
+    const nz = Math.sin(theta) * r;
+    if (!isLand(worldSeed, terrainType, nx, ny, nz)) {
+      return quaternionFromSurfaceNormal(nx, ny, nz);
+    }
+  }
+  return quaternionFromSurfaceNormal(0, 0, 1);
 }
 
 const BOB_AMPLITUDE = 0.009;
@@ -65,6 +87,8 @@ const ROLL_BOB_SPEED = 1.55;
 export class Boat {
   readonly group: Group;
   readonly vehicle: Vehicle = "boat";
+  /** Primary hull color (0xRRGGBB), synced to other players. */
+  readonly hullColor: number;
 
   qPosition = new Quaternion();
   heading = 0;
@@ -91,16 +115,17 @@ export class Boat {
     globeRadius: number,
     seed: number,
     terrainType: string,
-    hullColor?: number,
+    hullColor: number,
     spawnSalt = 0,
   ) {
     this.globeRadius = globeRadius;
     this.seed = seed;
     this.terrainType = terrainType;
+    this.hullColor = hullColor;
     this.group = createBoat(hullColor);
     this.group.matrixAutoUpdate = false;
     const oceanSeed = seed + spawnSalt;
-    this.qPosition.copy(randomOceanQuaternion(oceanSeed, terrainType));
+    this.qPosition.copy(randomOceanQuaternion(seed, terrainType, oceanSeed));
     const headingRnd = seededRandom(oceanSeed + 4242);
     this.heading = headingRnd() * Math.PI * 2;
     const up = tangentFrame(this.qPosition).up;

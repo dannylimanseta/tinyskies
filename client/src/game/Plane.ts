@@ -30,6 +30,8 @@ const CRUISE_SPEED_RATIO_MAX = 0.167;
 export class Plane {
   readonly group: Group;
   readonly vehicle: Vehicle = "plane";
+  /** Primary hull color (0xRRGGBB), synced to other players. */
+  readonly hullColor: number;
 
   qPosition = new Quaternion();
   heading = 0;
@@ -48,9 +50,10 @@ export class Plane {
   private globeRadius: number;
 
   /** @param spawnSalt Per-session randomness (combine with world seed at call site). */
-  constructor(globeRadius: number, spawnSalt: number) {
+  constructor(globeRadius: number, spawnSalt: number, hullColor: number) {
     this.globeRadius = globeRadius;
-    this.group = createBiplane(0xff4444);
+    this.hullColor = hullColor;
+    this.group = createBiplane(hullColor);
     this.group.matrixAutoUpdate = false;
     const spawn = randomSpawnQuaternionAndHeading(spawnSalt);
     this.qPosition.copy(spawn.qPosition);

@@ -20,6 +20,8 @@ export interface PlayerState {
   bankAngle: number;
   rollAngle: number;
   carrying?: boolean;
+  /** Primary hull RGB as 0xRRGGBB (synced so remotes match local paint). */
+  vehicleColor?: number;
   timestamp: number;
 }
 

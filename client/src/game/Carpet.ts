@@ -37,6 +37,8 @@ const CLIMB_PITCH_GAIN = 40;
 export class Carpet {
   readonly group: Group;
   readonly vehicle: Vehicle = "carpet";
+  /** Primary body fabric color (0xRRGGBB), synced to other players. */
+  readonly hullColor: number;
 
   qPosition = new Quaternion();
   heading = 0;
@@ -57,11 +59,13 @@ export class Carpet {
   private timeUniform: IUniform<number> | null = null;
 
   /** @param spawnSalt Per-session random start position/heading on the globe. */
-  constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0) {
+  constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0, hullColor?: number) {
     this.globeRadius = globeRadius;
     this.seed = seed;
     this.terrainType = terrainType;
-    this.group = createCarpet();
+    const color = hullColor ?? 0x6b1d6e;
+    this.hullColor = color;
+    this.group = createCarpet(color);
     this.group.matrixAutoUpdate = false;
     for (let i = 0; i < 4; i++) {
       const t = this.group.getObjectByName(`tassel${i}`);

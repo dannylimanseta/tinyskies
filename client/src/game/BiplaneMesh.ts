@@ -177,5 +177,6 @@ export function createBiplane(color: number = 0xff4444): Group {
     child.castShadow = true;
   });
 
+  plane.userData.hullMaterial = bodyMat;
   return plane;
 }

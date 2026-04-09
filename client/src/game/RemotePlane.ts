@@ -101,14 +101,22 @@ class RemotePlane {
   private lastRendered: PartialState | null = null;
   private wasDeadReckoning = false;
   private bobTime = Math.random() * Math.PI * 2;
+  private hullColor: number;
 
-  constructor(id: string, name: string, globeRadius: number, vehicle: Vehicle = "plane") {
+  constructor(
+    id: string,
+    name: string,
+    globeRadius: number,
+    vehicle: Vehicle = "plane",
+    initialHullColor?: number,
+  ) {
     this.id = id;
     this._name = name;
     this.globeRadius = globeRadius;
     this.vehicle = vehicle;
     this.vehicleType = vehicle;
-    const color = nextRemoteColor();
+    const color = initialHullColor ?? nextRemoteColor();
+    this.hullColor = color;
     this.group =
       vehicle === "boat"
         ? createBoat(color)
@@ -121,8 +129,19 @@ class RemotePlane {
     this.group.add(this.carryPackage);
   }
 
+  private applyHullColor(hex: number) {
+    if (hex === this.hullColor) return;
+    this.hullColor = hex;
+    const mat = this.group.userData.hullMaterial as MeshPhongMaterial | undefined;
+    if (mat) mat.color.setHex(hex);
+    this.beacon.setColor(hex);
+  }
+
   pushState(state: PlayerState) {
     if (state.name) this._name = state.name;
+    if (state.vehicleColor !== undefined) {
+      this.applyHullColor(state.vehicleColor);
+    }
     this.buffer.push({ state, receivedAt: Date.now() });
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer.shift();
@@ -300,7 +319,7 @@ export class RemotePlaneManager {
     const v: Vehicle =
       state.vehicle === "boat" ? "boat" :
       state.vehicle === "carpet" ? "carpet" : "plane";
-    const rp = new RemotePlane(state.id, state.name, this.globeRadius, v);
+    const rp = new RemotePlane(state.id, state.name, this.globeRadius, v, state.vehicleColor);
     rp.pushState(state);
     this.planes.set(state.id, rp);
     this.scene.add(rp.group);
