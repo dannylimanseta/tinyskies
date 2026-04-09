@@ -25,6 +25,7 @@ const INTERPOLATION_DELAY_MS = 100;
 const CORRECTION_DURATION_MS = 150;
 const MAX_BUFFER_SIZE = 6;
 const MIN_ALTITUDE = 0.15;
+const MIN_ALTITUDE_BOAT = -0.02;
 const MAX_ALTITUDE = 3.0;
 
 const BOAT_BOB_AMPLITUDE = 0.009;
@@ -237,11 +238,12 @@ class RemotePlane {
     }
 
     const elapsed = Math.max(0, (renderTime - lastSnap.state.timestamp) / 1000);
+    const minAlt = this.vehicle === "boat" ? MIN_ALTITUDE_BOAT : MIN_ALTITUDE;
     return deadReckon(
       lastSnap.state,
       elapsed,
       this.globeRadius,
-      MIN_ALTITUDE,
+      minAlt,
       MAX_ALTITUDE,
     );
   }
