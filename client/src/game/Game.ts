@@ -476,12 +476,15 @@ export class Game {
     this.playerVehicle = vehicle;
     this.vehicleFeatures = getVehicleFeatures(vehicle);
 
+    const spawnSessionSalt =
+      (Date.now() ^ ((Math.random() * 0xffffffff) | 0) ^ (seed * 7919)) >>> 0;
+
     if (vehicle === "boat") {
-      this.localPlayer = new Boat(globeRadius, seed, terrainType);
+      this.localPlayer = new Boat(globeRadius, seed, terrainType, undefined, spawnSessionSalt);
     } else if (vehicle === "carpet") {
-      this.localPlayer = new Carpet(globeRadius, seed, terrainType);
+      this.localPlayer = new Carpet(globeRadius, seed, terrainType, spawnSessionSalt);
     } else {
-      this.localPlayer = new Plane(globeRadius);
+      this.localPlayer = new Plane(globeRadius, seed + spawnSessionSalt);
     }
     this.localPlayer.addTo(this.scene);
 

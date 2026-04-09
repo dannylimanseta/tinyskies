@@ -22,6 +22,36 @@ export function quaternionFromSurfaceNormal(nx: number, ny: number, nz: number):
   return new Quaternion().setFromUnitVectors(REF_UP, n);
 }
 
+/** Park–Miller LCG — deterministic stream from an integer seed. */
+export function seededRandom(seed: number): () => number {
+  let s = seed >>> 0;
+  if (s === 0) s = 1;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+/**
+ * Uniform random surface orientation + horizontal heading (radians).
+ * Used for plane/carpet spawn; combine world `seed` with a per-session salt.
+ */
+export function randomSpawnQuaternionAndHeading(seed: number): {
+  qPosition: Quaternion;
+  heading: number;
+} {
+  const rnd = seededRandom(seed + 1337);
+  const theta = rnd() * Math.PI * 2;
+  const phi = Math.acos(2 * rnd() - 1);
+  const nx = Math.sin(phi) * Math.cos(theta);
+  const ny = Math.sin(phi) * Math.sin(theta);
+  const nz = Math.cos(phi);
+  return {
+    qPosition: quaternionFromSurfaceNormal(nx, ny, nz),
+    heading: rnd() * Math.PI * 2,
+  };
+}
+
 export function tangentFrame(qPosition: Quaternion): TangentFrame {
   const up = REF_UP.clone().applyQuaternion(qPosition).normalize();
 

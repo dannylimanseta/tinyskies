@@ -4,7 +4,13 @@ import {
   type Scene,
 } from "three";
 import type { Vehicle } from "@globefly/shared";
-import { buildBoatMatrix, moveOnSphere, quaternionFromSurfaceNormal, tangentFrame } from "./SphericalMath";
+import {
+  buildBoatMatrix,
+  moveOnSphere,
+  quaternionFromSurfaceNormal,
+  seededRandom,
+  tangentFrame,
+} from "./SphericalMath";
 import { createBoat } from "./BoatMesh";
 import { isLand } from "./SimplexNoise";
 import { surfaceAltitudeAt } from "./TerrainSurface";
@@ -18,14 +24,6 @@ const COAST_DECAY = 0.07;
 const FREEBOARD = 0.015;
 /** Yaw rate multiplier — higher = snappier turns. */
 const TURN_SCALE = 0.92;
-
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807 + 0) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
 
 /** Random orientation on ocean; falls back toward equator if needed. */
 export function randomOceanQuaternion(
@@ -86,13 +84,25 @@ export class Boat {
   private bobPitch = 0;
   private bobRoll = 0;
 
-  constructor(globeRadius: number, seed: number, terrainType: string, hullColor?: number) {
+  /**
+   * @param spawnSalt Random per session so boats (and heading) differ each run while staying on ocean.
+   */
+  constructor(
+    globeRadius: number,
+    seed: number,
+    terrainType: string,
+    hullColor?: number,
+    spawnSalt = 0,
+  ) {
     this.globeRadius = globeRadius;
     this.seed = seed;
     this.terrainType = terrainType;
     this.group = createBoat(hullColor);
     this.group.matrixAutoUpdate = false;
-    this.qPosition.copy(randomOceanQuaternion(seed, terrainType));
+    const oceanSeed = seed + spawnSalt;
+    this.qPosition.copy(randomOceanQuaternion(oceanSeed, terrainType));
+    const headingRnd = seededRandom(oceanSeed + 4242);
+    this.heading = headingRnd() * Math.PI * 2;
     const up = tangentFrame(this.qPosition).up;
     this.altitude =
       surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z) + FREEBOARD;

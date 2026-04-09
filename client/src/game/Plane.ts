@@ -4,7 +4,7 @@ import {
   type Scene,
 } from "three";
 import type { Vehicle } from "@globefly/shared";
-import { buildPlaneMatrix, moveOnSphere } from "./SphericalMath";
+import { buildPlaneMatrix, moveOnSphere, randomSpawnQuaternionAndHeading } from "./SphericalMath";
 import { createBiplane } from "./BiplaneMesh";
 
 const CRUISE_SPEED = 1.5;
@@ -47,10 +47,14 @@ export class Plane {
 
   private globeRadius: number;
 
-  constructor(globeRadius: number) {
+  /** @param spawnSalt Per-session randomness (combine with world seed at call site). */
+  constructor(globeRadius: number, spawnSalt: number) {
     this.globeRadius = globeRadius;
     this.group = createBiplane(0xff4444);
     this.group.matrixAutoUpdate = false;
+    const spawn = randomSpawnQuaternionAndHeading(spawnSalt);
+    this.qPosition.copy(spawn.qPosition);
+    this.heading = spawn.heading;
     this.applyMatrix();
   }
 

@@ -6,7 +6,12 @@ import {
   type Scene,
 } from "three";
 import type { Vehicle } from "@globefly/shared";
-import { buildPlaneMatrix, moveOnSphere, tangentFrame } from "./SphericalMath";
+import {
+  buildPlaneMatrix,
+  moveOnSphere,
+  randomSpawnQuaternionAndHeading,
+  tangentFrame,
+} from "./SphericalMath";
 import { createCarpet, carpetWobbleY } from "./CarpetMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
@@ -51,7 +56,8 @@ export class Carpet {
   private tasselCurl = 0;
   private timeUniform: IUniform<number> | null = null;
 
-  constructor(globeRadius: number, seed: number, terrainType: string) {
+  /** @param spawnSalt Per-session random start position/heading on the globe. */
+  constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0) {
     this.globeRadius = globeRadius;
     this.seed = seed;
     this.terrainType = terrainType;
@@ -62,6 +68,10 @@ export class Carpet {
       if (t) this.tassels.push({ obj: t, baseY: t.position.y, cx: t.position.x, cz: t.position.z });
     }
     this.timeUniform = this.group.userData.timeUniform ?? null;
+
+    const spawn = randomSpawnQuaternionAndHeading(seed + spawnSalt);
+    this.qPosition.copy(spawn.qPosition);
+    this.heading = spawn.heading;
 
     const up = tangentFrame(this.qPosition).up;
     this.altitude =

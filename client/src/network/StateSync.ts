@@ -28,6 +28,7 @@ export class StateSync {
   }
 
   start() {
+    this.send();
     this.interval = setInterval(() => this.send(), SEND_RATE_MS);
   }
 
