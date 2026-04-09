@@ -97,6 +97,8 @@ export class Globe {
   private lighthouseBeams: Mesh[] = [];
   private lighthouseBeamTime = 0;
   private balloons: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number }[] = [];
+  /** Number of hot-air balloons (for proximity greeting logic). */
+  readonly balloonCount = BALLOON_COUNT;
   private balloonTime = 0;
   readonly windmillCenters: { normal: Vector3 }[] = [];
   private windmillBlades: { pivot: Group; speed: number }[] = [];
@@ -2206,6 +2208,15 @@ transformed.z += sway2;`,
       b.pivot.position.copy(b.normal).multiplyScalar(alt);
       b.inner.rotation.y += dt * 0.05;
     }
+  }
+
+  /** World-space point near the basket (for distance checks). */
+  getBalloonWorldPosition(index: number, target: Vector3): boolean {
+    const b = this.balloons[index];
+    if (!b) return false;
+    b.pivot.getWorldPosition(target);
+    target.addScaledVector(b.normal, -0.08);
+    return true;
   }
 
   addTo(scene: Scene) {

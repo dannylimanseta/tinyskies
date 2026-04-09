@@ -160,3 +160,41 @@ export function generateQuestDialogue(
 
   return { senderName, receiverName, pickupLine, deliveryLine };
 }
+
+/** Cosy hot-air-balloon NPC greetings (reuse same NPC names + portraits as package quest). */
+const BALLOON_GREETINGS = [
+  "Oh hello up there! Fancy meeting you in the tiny skies!",
+  "Lovely day for a wander, isn't it? The clouds are extra fluffy today.",
+  "Mind the breeze — and the tea in the basket is still warm!",
+  "Hullo! We waved from the basket but you were a bit too fast!",
+  "Tiny skies, big dreams — safe travels, friend!",
+  "A little wave from the balloon basket! Isn't the view darling?",
+  "Slow down if you can — we'd love a proper chat!",
+  "The wind is gentle and the mood is cosy. Come say hi again sometime!",
+  "You're flying like a happy bird! We approve.",
+  "If you see a cloud shaped like a muffin, that was ours.",
+  "Warm socks and a warm balloon — that's the life!",
+  "Hello, traveller! The world looks so small from up here.",
+  "Cheerio! Save some sky for the rest of us!",
+  "We're just drifting and dreaming. You look busy — in a good way!",
+  "Snug as a bug in a basket! Wave if you fly past again!",
+  "The stars will be out soon — save some wonder for tonight!",
+  "A cup of cocoa and a patch of blue — that's all we need.",
+  "You're making the sky look easy! Bravo!",
+  "Floaty greetings from the wicker seat!",
+  "May your tailwinds be kind and your landings soft!",
+];
+
+/**
+ * Random NPC + greeting line for balloon proximity (same portrait pool as package quests).
+ */
+export function pickBalloonGreeting(
+  seed: number,
+  balloonIndex: number,
+  salt: number,
+): { npcName: string; line: string } {
+  const rand = seededRandom(seed * 7919 + balloonIndex * 103 + salt * 17);
+  const npcName = NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)]!;
+  const line = BALLOON_GREETINGS[Math.floor(rand() * BALLOON_GREETINGS.length)]!;
+  return { npcName, line };
+}

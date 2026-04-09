@@ -49,7 +49,13 @@ import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
-import { isNpcMale } from "./PackageDialogue";
+import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
+
+/** Globe radius ~5: distance to balloon basket for greeting (world units). */
+const BALLOON_GREET_DIST = 0.42;
+const BALLOON_GREET_EXIT_DIST = 0.68;
+/** Seconds before the same balloon can greet again after you leave. */
+const BALLOON_GREET_COOLDOWN = 32;
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -133,7 +139,11 @@ export class Game {
   private landmarkHUD!: LandmarkHUD;
   private landmarkDetector!: LandmarkDetector;
   private packageQuest: PackageQuestManager | null = null;
-  private packageQuestHUD: PackageQuestHUD | null = null;
+  private packageQuestHUD!: PackageQuestHUD;
+  private balloonInRange: boolean[] = [];
+  private balloonGreetCooldown: number[] = [];
+  private balloonGreetSalt = 0;
+  private balloonPosScratch = new Vector3();
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -603,41 +613,46 @@ export class Game {
     this.landmarkDetector.onEnter = (lm) => this.landmarkHUD.show(lm.name, lm.type);
     this.landmarkDetector.onExit = () => this.landmarkHUD.hide();
 
+    this.packageQuestHUD = new PackageQuestHUD(this.hud.root);
+    this.packageQuestHUD.onVisibilityChange = (visible, npcName) => {
+      this.hud.setBubbleVisible(visible);
+      if (visible && npcName) {
+        const rate = isNpcMale(npcName)
+          ? DIALOGUE_MALE_PLAYBACK_RATE
+          : 1;
+        this.audioManager.startLoop(DIALOGUE_LOOP_NAME, 0, rate);
+        this.audioManager.setLoopVolume(DIALOGUE_LOOP_NAME, DIALOGUE_LOOP_VOLUME);
+      } else if (!visible) {
+        this.audioManager.fadeOutLoop(DIALOGUE_LOOP_NAME);
+      }
+    };
+
+    const balloonN = this.globe.balloonCount;
+    this.balloonInRange = new Array(balloonN).fill(false);
+    this.balloonGreetCooldown = new Array(balloonN).fill(0);
+
     if (this.vehicleFeatures.packageQuests) {
       this.packageQuest = new PackageQuestManager(
         this.scene, globeRadius, landmarkRegistry, seed, terrainType,
       );
-      this.packageQuestHUD = new PackageQuestHUD(this.hud.root);
-      this.packageQuestHUD.onVisibilityChange = (visible, npcName) => {
-        this.hud.setBubbleVisible(visible);
-        if (visible && npcName) {
-          const rate = isNpcMale(npcName)
-            ? DIALOGUE_MALE_PLAYBACK_RATE
-            : 1;
-          this.audioManager.startLoop(DIALOGUE_LOOP_NAME, 0, rate);
-          this.audioManager.setLoopVolume(DIALOGUE_LOOP_NAME, DIALOGUE_LOOP_VOLUME);
-        } else if (!visible) {
-          this.audioManager.fadeOutLoop(DIALOGUE_LOOP_NAME);
-        }
-      };
 
       this.packageQuest.onPickup = (_originName, destName, npcName, dialogue) => {
         const boxPick =
           BOX_COLLECT_SFX_IDS[Math.floor(Math.random() * BOX_COLLECT_SFX_IDS.length)]!;
         this.audioManager.playSFX(boxPick, BOX_COLLECT_SFX_VOLUME);
-        this.packageQuestHUD!.showBubble(npcName, dialogue);
-        this.packageQuestHUD!.showDeliveryTarget(destName);
+        this.packageQuestHUD.showBubble(npcName, dialogue);
+        this.packageQuestHUD.showDeliveryTarget(destName);
         const pos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
         const dm = this.packageQuest!.getDeliverySurfaceDistanceMetres(pos);
-        if (dm !== null) this.packageQuestHUD!.setDeliveryDistanceMetres(dm);
+        if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
       };
 
       this.packageQuest.onDelivered = (_destName, npcName, dialogue, xp) => {
         const cheerPick =
           CHEER_SFX_IDS[Math.floor(Math.random() * CHEER_SFX_IDS.length)]!;
         this.audioManager.playSFX(cheerPick, CHEER_SFX_VOLUME);
-        this.packageQuestHUD!.showBubble(npcName, dialogue);
-        this.packageQuestHUD!.hideDeliveryTarget();
+        this.packageQuestHUD.showBubble(npcName, dialogue);
+        this.packageQuestHUD.hideDeliveryTarget();
 
         const prevLevel = this.ringManager.level;
         this.ringManager.sessionXP += xp;
@@ -656,7 +671,7 @@ export class Game {
       };
 
       this.packageQuest.onProgressChange = (progress) => {
-        this.packageQuestHUD!.setProgress(progress);
+        this.packageQuestHUD.setProgress(progress);
       };
     }
 
@@ -936,10 +951,11 @@ export class Game {
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
-    if (this.packageQuest?.isCarrying && this.packageQuestHUD) {
+    if (this.packageQuest?.isCarrying) {
       const dm = this.packageQuest.getDeliverySurfaceDistanceMetres(questPlayerPos);
       if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
     }
+    this.updateBalloonGreetings(dt, questPlayerPos);
 
     if (this.playerVehicle === "plane") {
       const engineVol =
@@ -1072,6 +1088,33 @@ export class Game {
     this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
   }
 
+  private updateBalloonGreetings(dt: number, playerWorld: Vector3) {
+    for (let i = 0; i < this.balloonGreetCooldown.length; i++) {
+      this.balloonGreetCooldown[i] = Math.max(0, this.balloonGreetCooldown[i] - dt);
+    }
+    if (this.packageQuestHUD.isBubbleShowing) return;
+    for (let i = 0; i < this.globe.balloonCount; i++) {
+      if (!this.globe.getBalloonWorldPosition(i, this.balloonPosScratch)) continue;
+      const dist = playerWorld.distanceTo(this.balloonPosScratch);
+      if (dist < BALLOON_GREET_DIST) {
+        if (!this.balloonInRange[i]) {
+          if (this.balloonGreetCooldown[i] <= 0) {
+            const { npcName, line } = pickBalloonGreeting(
+              this.gameSeed,
+              i,
+              this.balloonGreetSalt++,
+            );
+            this.packageQuestHUD.showBubble(npcName, line);
+            this.balloonGreetCooldown[i] = BALLOON_GREET_COOLDOWN;
+          }
+          this.balloonInRange[i] = true;
+        }
+      } else if (dist > BALLOON_GREET_EXIT_DIST) {
+        this.balloonInRange[i] = false;
+      }
+    }
+  }
+
   private getServerUrl(): string {
     return (
       (import.meta as any).env?.VITE_SERVER_URL ?? "http://localhost:3001"
@@ -1099,7 +1142,7 @@ export class Game {
     this.renderer?.dispose();
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
-    this.packageQuestHUD?.dispose();
+    this.packageQuestHUD.dispose();
     this.stateSync?.stop();
     this.socketClient?.disconnect();
     this.audioManager.dispose();

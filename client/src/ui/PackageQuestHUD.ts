@@ -1,5 +1,11 @@
 import { getNpcPortraitUrl } from "../game/PackageDialogue";
 
+/** Match phones / small tablets; CSS alone isn’t enough because showBubble sets inline `transform`. */
+function isNarrowDialogueViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth <= 768;
+}
+
 export class PackageQuestHUD {
   private progressEl: HTMLDivElement;
   private svgCircle: SVGCircleElement;
@@ -76,6 +82,11 @@ export class PackageQuestHUD {
     this.applyStyles();
   }
 
+  /** True while the dialogue bubble is visible (4s timer active). */
+  get isBubbleShowing(): boolean {
+    return this.bubbleTimer !== null;
+  }
+
   setProgress(value: number) {
     const offset = this.circumference * (1 - value);
     this.svgCircle.style.strokeDashoffset = `${offset}`;
@@ -96,12 +107,14 @@ export class PackageQuestHUD {
       this.bubbleIconEl.style.backgroundImage = "";
       this.bubbleIconEl.textContent = npcName.charAt(0).toUpperCase();
     }
+    const narrow = isNarrowDialogueViewport();
     this.bubbleEl.style.opacity = "1";
-    this.bubbleEl.style.transform = "translate(-50%, 0)";
+    // Narrow: fixed layout uses left:10vw + width:80vw — no translateX (-50% would break width).
+    this.bubbleEl.style.transform = narrow ? "translate(0, 0)" : "translate(-50%, 0)";
     this.onVisibilityChange?.(true, npcName);
     this.bubbleTimer = setTimeout(() => {
       this.bubbleEl.style.opacity = "0";
-      this.bubbleEl.style.transform = "translate(-50%, -6px)";
+      this.bubbleEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
       this.onVisibilityChange?.(false);
     }, 4000);
   }
@@ -172,6 +185,8 @@ export class PackageQuestHUD {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        flex: 1;
+        min-width: 0;
       }
       .pkg-bubble-npc {
         font-size: 0.7rem;
@@ -190,6 +205,9 @@ export class PackageQuestHUD {
         border-radius: 4px 14px 14px 14px;
         backdrop-filter: blur(12px);
         line-height: 1.4;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
       }
 
       .pkg-banner {
@@ -216,14 +234,28 @@ export class PackageQuestHUD {
         font-variant-numeric: tabular-nums;
       }
 
-      @media (max-width: 480px) {
+      /*
+       * Phones / narrow tablets: fixed to viewport so width isn’t tied to containing block.
+       * showBubble() uses translate(0,*) here — not translate(-50%,*) — see isNarrowDialogueViewport.
+       */
+      @media (max-width: 768px) {
         .pkg-bubble {
-          top: max(48px, calc(40px + env(safe-area-inset-top)));
-          max-width: calc(100% - 48px);
+          position: fixed;
+          top: max(63px, calc(55px + env(safe-area-inset-top)));
+          left: 10vw;
+          right: auto;
+          width: 80vw;
+          max-width: 80vw;
+          box-sizing: border-box;
+          gap: 8px;
         }
-        .pkg-bubble-icon { width: 56px; height: 56px; font-size: 0.7rem; }
+        .pkg-bubble-icon { width: 52px; height: 52px; font-size: 0.7rem; margin-top: 12px; }
         .pkg-bubble-npc { font-size: 0.6rem; }
-        .pkg-bubble-text { font-size: 0.85rem; padding: 8px 12px; backdrop-filter: none; }
+        .pkg-bubble-text {
+          font-size: 0.9rem;
+          padding: 10px 12px;
+          backdrop-filter: none;
+        }
         .pkg-banner {
           top: max(20px, calc(8px + env(safe-area-inset-top)));
           right: max(60px, calc(60px + env(safe-area-inset-right)));
