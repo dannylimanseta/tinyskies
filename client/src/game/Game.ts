@@ -51,9 +51,13 @@ import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
 
-/** Globe radius ~5: distance to balloon basket for greeting (world units). */
-const BALLOON_GREET_DIST = 0.42;
-const BALLOON_GREET_EXIT_DIST = 0.68;
+/**
+ * Distance to balloon for greeting (world units, same space as globe radius ~5).
+ * Previously ~0.4 was too small — you could fly visually “past” a balloon and
+ * never enter the sphere in one frame. ~1.2 matches a comfortable fly-by.
+ */
+const BALLOON_GREET_DIST = 1.2;
+const BALLOON_GREET_EXIT_DIST = 1.75;
 /** Seconds before the same balloon can greet again after you leave. */
 const BALLOON_GREET_COOLDOWN = 32;
 

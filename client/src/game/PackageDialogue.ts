@@ -187,14 +187,15 @@ const BALLOON_GREETINGS = [
 
 /**
  * Random NPC + greeting line for balloon proximity (same portrait pool as package quests).
+ * Uses Math.random() — the old seeded LCG often produced the same first draw (e.g. Old Barnaby)
+ * for nearby seeds; balloon lines don’t need to match across clients.
  */
 export function pickBalloonGreeting(
-  seed: number,
-  balloonIndex: number,
-  salt: number,
+  _seed: number,
+  _balloonIndex: number,
+  _salt: number,
 ): { npcName: string; line: string } {
-  const rand = seededRandom(seed * 7919 + balloonIndex * 103 + salt * 17);
-  const npcName = NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)]!;
-  const line = BALLOON_GREETINGS[Math.floor(rand() * BALLOON_GREETINGS.length)]!;
+  const npcName = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)]!;
+  const line = BALLOON_GREETINGS[Math.floor(Math.random() * BALLOON_GREETINGS.length)]!;
   return { npcName, line };
 }

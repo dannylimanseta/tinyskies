@@ -82,7 +82,7 @@ export class PackageQuestHUD {
     this.applyStyles();
   }
 
-  /** True while the dialogue bubble is visible (4s timer active). */
+  /** True while the dialogue bubble is on-screen (timer running until fade-out completes). */
   get isBubbleShowing(): boolean {
     return this.bubbleTimer !== null;
   }
@@ -116,6 +116,7 @@ export class PackageQuestHUD {
       this.bubbleEl.style.opacity = "0";
       this.bubbleEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
       this.onVisibilityChange?.(false);
+      this.bubbleTimer = null;
     }, 4000);
   }
 
@@ -267,7 +268,10 @@ export class PackageQuestHUD {
   }
 
   dispose() {
-    if (this.bubbleTimer) clearTimeout(this.bubbleTimer);
+    if (this.bubbleTimer) {
+      clearTimeout(this.bubbleTimer);
+      this.bubbleTimer = null;
+    }
     this.progressEl.remove();
     this.bubbleEl.remove();
     this.bannerEl.remove();
