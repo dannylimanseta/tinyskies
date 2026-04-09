@@ -184,9 +184,12 @@ void main() {
 /* ── Smoke shaders (billboard) ─────────────────────────────────── */
 
 const smokeVert = /* glsl */ `
+attribute float aLife;
 varying vec2 vUv;
+varying float vLife;
 void main() {
   vUv = uv;
+  vLife = aLife;
   vec4 instancePos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
   vec4 mvPos = modelViewMatrix * instancePos;
   float scaleX = length(vec3(instanceMatrix[0][0], instanceMatrix[0][1], instanceMatrix[0][2]));
@@ -199,14 +202,18 @@ void main() {
 const smokeFrag = /* glsl */ `
 uniform float uOpacity;
 varying vec2 vUv;
+varying float vLife;
 void main() {
   float d = length(vUv - 0.5) * 2.0;
-  vec3 inner = vec3(1.0, 0.45, 0.05);
-  vec3 outer = vec3(0.55, 0.12, 0.02);
+  vec3 inner = vec3(0.6, 0.12, 0.03);
+  vec3 outer = vec3(0.35, 0.05, 0.01);
   float t = smoothstep(0.0, 0.8, d);
   vec3 col = mix(inner, outer, t);
-  float alpha = (1.0 - smoothstep(0.3, 1.0, d)) * uOpacity;
-  gl_FragColor = vec4(col * 1.6, alpha * 0.5);
+  float fadeIn = smoothstep(0.0, 0.15, vLife);
+  float fadeOut = 1.0 - smoothstep(0.5, 1.0, vLife);
+  float lifeFade = fadeIn * fadeOut;
+  float alpha = (1.0 - smoothstep(0.3, 1.0, d)) * uOpacity * lifeFade;
+  gl_FragColor = vec4(col * 1.2, alpha * 0.45);
 }
 `;
 
@@ -277,6 +284,7 @@ export class Volcano {
   private lavaBlobs: LavaBlob[] = [];
   private smokeWisps: SmokeWisp[] = [];
   private lavaLifeAttr: InstancedBufferAttribute;
+  private smokeLifeAttr: InstancedBufferAttribute;
 
   private rewarded = false;
   private cooldown = 0;
@@ -361,6 +369,7 @@ export class Volcano {
     });
     this.lavaInstanced = new InstancedMesh(this.lavaSphereGeo, this.lavaMat, LAVA_BLOB_COUNT);
     this.lavaInstanced.frustumCulled = false;
+    this.lavaInstanced.renderOrder = 10;
     this.group.add(this.lavaInstanced);
 
     for (let i = 0; i < LAVA_BLOB_COUNT; i++) {
@@ -369,16 +378,22 @@ export class Volcano {
 
     /* ── Smoke wisps (instanced billboard) ─────────────────────── */
     this.smokePlaneGeo = new PlaneGeometry(0.07, 0.07);
+    const smokeLifeArray = new Float32Array(SMOKE_COUNT);
+    this.smokeLifeAttr = new InstancedBufferAttribute(smokeLifeArray, 1);
+    this.smokePlaneGeo.setAttribute("aLife", this.smokeLifeAttr);
+
     this.smokeMat = new ShaderMaterial({
       vertexShader: smokeVert,
       fragmentShader: smokeFrag,
       uniforms: { uOpacity: { value: 1.0 } },
       transparent: true,
       depthWrite: false,
+      blending: AdditiveBlending,
       side: DoubleSide,
     });
     this.smokeInstanced = new InstancedMesh(this.smokePlaneGeo, this.smokeMat, SMOKE_COUNT);
     this.smokeInstanced.frustumCulled = false;
+    this.smokeInstanced.renderOrder = 11;
     this.group.add(this.smokeInstanced);
 
     for (let i = 0; i < SMOKE_COUNT; i++) {
@@ -601,12 +616,15 @@ export class Volcano {
       const lifeRatio = w.life / w.maxLife;
       w.scale = w.baseScale * (1 + lifeRatio * 1.5);
 
+      this.smokeLifeAttr.setX(i, lifeRatio);
+
       this.tmpScale.setScalar(w.scale);
       this.tmpQuat.identity();
       this.tmpMat.compose(w.pos, this.tmpQuat, this.tmpScale);
       this.smokeInstanced.setMatrixAt(i, this.tmpMat);
     }
     this.smokeInstanced.instanceMatrix.needsUpdate = true;
+    this.smokeLifeAttr.needsUpdate = true;
 
     /* ── Cooldown ──────────────────────────────────────────────── */
     if (this.cooldown > 0) {
