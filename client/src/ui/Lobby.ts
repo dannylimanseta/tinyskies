@@ -45,6 +45,17 @@ export class Lobby {
     this.buildUI();
   }
 
+  /** Enter fullscreen on the GO click (user gesture). Browser Esc exits fullscreen. */
+  private static requestFullscreen(): void {
+    const el = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+    };
+    const req =
+      el.requestFullscreen?.bind(el) ??
+      el.webkitRequestFullscreen?.bind(el);
+    if (req) void Promise.resolve(req()).catch(() => {});
+  }
+
   private buildUI() {
     this.el.innerHTML = `
       <div class="lobby-overlay">
@@ -136,6 +147,7 @@ export class Lobby {
     this.el.querySelector("#btn-fly")!.addEventListener("click", () => {
       const btn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
       btn.disabled = true;
+      Lobby.requestFullscreen();
       this.options.onPlay(this.selectedVehicle);
     });
 
