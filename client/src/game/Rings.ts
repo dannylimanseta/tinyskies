@@ -469,6 +469,17 @@ export class RingManager {
     return 0;
   }
 
+  /** Add XP without diamond collect side effects (SFX combo, barrel-roll bonus, speed boost). */
+  applyBonusXP(amount: number) {
+    if (amount <= 0) return;
+    const prevLevel = this.level;
+    this.sessionXP += amount;
+    this.level = this.computeLevel();
+    if (this.level > prevLevel && this.onLevelUp) {
+      this.onLevelUp(this.level);
+    }
+  }
+
   dispose() {
     for (const d of this.diamonds) {
       (d.mesh.material as ShaderMaterial).dispose();

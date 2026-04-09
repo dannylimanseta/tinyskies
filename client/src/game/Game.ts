@@ -49,6 +49,8 @@ import { HUD } from "../ui/HUD";
 import { mountControlHints } from "../ui/ControlHints";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
+import { FlockFormationHUD } from "../ui/FlockFormationHUD";
+import { BirdFlock, BIRD_FLOCK_COUNT, FLOCK_FORMATION_XP } from "./BirdFlock";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
@@ -149,6 +151,8 @@ export class Game {
   private landmarkDetector!: LandmarkDetector;
   private packageQuest: PackageQuestManager | null = null;
   private packageQuestHUD!: PackageQuestHUD;
+  private birdFlocks: BirdFlock[] = [];
+  private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
   private balloonGreetCooldown: number[] = [];
@@ -622,6 +626,13 @@ export class Game {
     this.hud.hideUI();
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
 
+    if (vehicle === "plane") {
+      this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
+      for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
+        this.birdFlocks.push(new BirdFlock(this.scene, globeRadius, seed, fi));
+      }
+    }
+
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     landmarkRegistry.registerLighthouses(this.globe.lighthouseCenters, seed);
@@ -925,6 +936,35 @@ export class Game {
       this.collectVFX.update(dt);
     }
 
+    if (this.birdFlocks.length > 0 && this.flockFormationHUD) {
+      const plane = this.localPlayer as Plane;
+      let bestProgress = 0;
+      let anyCompleted = false;
+      for (const flock of this.birdFlocks) {
+        const { progress, justCompleted } = flock.update(
+          dt,
+          plane.qPosition,
+          plane.altitude,
+          plane.heading,
+        );
+        bestProgress = Math.max(bestProgress, progress);
+        if (justCompleted) anyCompleted = true;
+      }
+      this.flockFormationHUD.setProgress(bestProgress);
+      if (anyCompleted) {
+        this.ringManager.applyBonusXP(FLOCK_FORMATION_XP);
+        this.hud.showXPGain(FLOCK_FORMATION_XP);
+        this.hud.setXP(
+          this.ringManager.getXP(),
+          this.ringManager.getXPForNextLevel(),
+          this.ringManager.getXPForCurrentLevel(),
+          this.ringManager.getLevel(),
+        );
+        this.vehicleFlashTimer = 0.35;
+        this.cameraRig.shake();
+      }
+    }
+
     if (this.vehicleFlashTimer > 0) {
       this.vehicleFlashTimer -= dt;
       const intensity = Math.max(0, this.vehicleFlashTimer / 0.35);
@@ -1185,6 +1225,9 @@ export class Game {
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
     this.packageQuestHUD.dispose();
+    for (const f of this.birdFlocks) f.dispose();
+    this.birdFlocks = [];
+    this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();
     this.socketClient?.disconnect();
