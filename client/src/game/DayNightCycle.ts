@@ -161,12 +161,14 @@ export class DayNightCycle {
    * Rain weight 0–1. Random episodes that can occur during any time of day.
    * Uses two slow sine waves with irrational frequency ratios seeded by
    * worldSeed so all clients see the same weather.
+   * Frequencies are scaled so typical rain-on windows are ~50% shorter than
+   * the base sine period would give.
    */
   getRainWeight(): number {
     const now = Date.now() / 1000;
     const s = this.worldSeed;
-    const a = Math.sin(now * 0.029 + s * 1.7) * 0.5 + 0.5;
-    const b = Math.sin(now * 0.013 + s * 3.1) * 0.5 + 0.5;
+    const a = Math.sin(now * 0.058 + s * 1.7) * 0.5 + 0.5;
+    const b = Math.sin(now * 0.026 + s * 3.1) * 0.5 + 0.5;
     const raw = a * 0.65 + b * 0.35;
     const lo = 0.50, hi = 0.58;
     const t = Math.max(0, Math.min(1, (raw - lo) / (hi - lo)));
