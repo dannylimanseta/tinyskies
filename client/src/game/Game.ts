@@ -43,6 +43,7 @@ import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
+import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
 import { mountControlHints } from "../ui/ControlHints";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
@@ -144,10 +145,12 @@ export class Game {
   private landmarkDetector!: LandmarkDetector;
   private packageQuest: PackageQuestManager | null = null;
   private packageQuestHUD!: PackageQuestHUD;
+  private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
   private balloonGreetCooldown: number[] = [];
   private balloonGreetSalt = 0;
   private balloonPosScratch = new Vector3();
+  private localPlayerWorldScratch = new Vector3();
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -608,6 +611,7 @@ export class Game {
     });
     mountControlHints(this.hud.root, vehicle, !this.mobile);
     this.hud.hideUI();
+    this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
 
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
@@ -858,6 +862,13 @@ export class Game {
         this.playerLight.position.addScaledVector(up, 0.15);
       }
 
+      this.remotePlayerNameLabels.update(
+        this.remotePlanes,
+        this.cameraRig.camera,
+        this.renderer.domElement,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      );
+
       this.renderer.render(this.scene, this.cameraRig.camera);
 
       if (raw >= 1) {
@@ -981,6 +992,13 @@ export class Game {
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
     this.rainOverlay?.update(dt, this.dayNightCycle.getRainWeight());
+
+    this.remotePlayerNameLabels.update(
+      this.remotePlanes,
+      this.cameraRig.camera,
+      this.renderer.domElement,
+      this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+    );
 
     this.renderer.render(this.scene, this.cameraRig.camera);
     if (this.vehicleFeatures.speedLines) {
@@ -1156,6 +1174,7 @@ export class Game {
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
     this.packageQuestHUD.dispose();
+    this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();
     this.socketClient?.disconnect();
     this.audioManager.dispose();

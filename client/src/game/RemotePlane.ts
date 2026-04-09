@@ -81,7 +81,10 @@ function nextRemoteColor(): number {
 
 class RemotePlane {
   readonly id: string;
-  readonly name: string;
+  private _name: string;
+  get name(): string {
+    return this._name;
+  }
   readonly group: Group;
   readonly beacon: PlayerBeacon;
   readonly vehicleType: Vehicle;
@@ -101,7 +104,7 @@ class RemotePlane {
 
   constructor(id: string, name: string, globeRadius: number, vehicle: Vehicle = "plane") {
     this.id = id;
-    this.name = name;
+    this._name = name;
     this.globeRadius = globeRadius;
     this.vehicle = vehicle;
     this.vehicleType = vehicle;
@@ -119,6 +122,7 @@ class RemotePlane {
   }
 
   pushState(state: PlayerState) {
+    if (state.name) this._name = state.name;
     this.buffer.push({ state, receivedAt: Date.now() });
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer.shift();
@@ -160,13 +164,13 @@ class RemotePlane {
       } else {
         const from: PlayerState = {
           id: this.id,
-          name: this.name,
+          name: this._name,
           ...this.correctionFrom,
           timestamp: 0,
         };
         const to: PlayerState = {
           id: this.id,
-          name: this.name,
+          name: this._name,
           ...computed,
           timestamp: 0,
         };
@@ -258,6 +262,14 @@ class RemotePlane {
   }
 }
 
+/** World-space label anchor for each remote player (used by HUD name pills). */
+export interface RemotePlayerForLabel {
+  id: string;
+  name: string;
+  group: Group;
+  vehicleType: Vehicle;
+}
+
 export class RemotePlaneManager {
   private scene: Scene;
   private globeRadius: number;
@@ -270,6 +282,17 @@ export class RemotePlaneManager {
 
   get count() {
     return this.planes.size;
+  }
+
+  forEachRemote(fn: (player: RemotePlayerForLabel) => void) {
+    for (const [, rp] of this.planes) {
+      fn({
+        id: rp.id,
+        name: rp.name,
+        group: rp.group,
+        vehicleType: rp.vehicleType,
+      });
+    }
   }
 
   addPlayer(state: PlayerState) {
