@@ -633,9 +633,10 @@ export class Game {
       for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
         this.birdFlocks.push(new BirdFlock(this.scene, globeRadius, seed, fi));
       }
-      for (let ri = 0; ri < RAINBOW_COUNT; ri++) {
-        this.rainbowArches.push(new RainbowArch(this.scene, globeRadius, seed, ri));
-      }
+    }
+
+    for (let ri = 0; ri < RAINBOW_COUNT; ri++) {
+      this.rainbowArches.push(new RainbowArch(this.scene, globeRadius, seed, ri));
     }
 
     const landmarkRegistry = new LandmarkRegistry();
@@ -972,10 +973,9 @@ export class Game {
     }
 
     if (this.rainbowArches.length > 0) {
-      const plane = this.localPlayer as Plane;
       const dayW = this.dayNightCycle.getDayWeight();
       for (const arch of this.rainbowArches) {
-        const { justCollected } = arch.update(dt, plane.qPosition, plane.altitude, dayW);
+        const { justCollected } = arch.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude, dayW);
         if (justCollected) {
           this.hud.showRainbowCelebrate();
           this.ringManager.applyBonusXP(RAINBOW_XP);

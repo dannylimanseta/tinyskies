@@ -207,14 +207,27 @@ export class RainbowArch {
     const compUp = toPlayer.dot(this.archUp);
 
     let angle = Math.atan2(compUp, compRight);
-    angle = Math.max(0, Math.min(Math.PI, angle));
 
-    const closestOnArc = new Vector3()
-      .copy(this.archCenter)
-      .addScaledVector(this.archRight, midR * Math.cos(angle))
-      .addScaledVector(this.archUp, midR * Math.sin(angle));
-
-    const dist = playerPos.distanceTo(closestOnArc);
+    let dist: number;
+    if (angle >= 0 && angle <= Math.PI) {
+      angle = Math.max(0, Math.min(Math.PI, angle));
+      const closestOnArc = new Vector3()
+        .copy(this.archCenter)
+        .addScaledVector(this.archRight, midR * Math.cos(angle))
+        .addScaledVector(this.archUp, midR * Math.sin(angle));
+      dist = playerPos.distanceTo(closestOnArc);
+    } else {
+      const clampedUp = Math.max(0, compUp);
+      const leftFoot = new Vector3()
+        .copy(this.archCenter)
+        .addScaledVector(this.archRight, -midR)
+        .addScaledVector(this.archUp, clampedUp);
+      const rightFoot = new Vector3()
+        .copy(this.archCenter)
+        .addScaledVector(this.archRight, midR)
+        .addScaledVector(this.archUp, clampedUp);
+      dist = Math.min(playerPos.distanceTo(leftFoot), playerPos.distanceTo(rightFoot));
+    }
 
     let justCollected = false;
     if (dist < FLY_THROUGH_DIST) {
