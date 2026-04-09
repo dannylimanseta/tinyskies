@@ -630,11 +630,9 @@ export class Game {
     this.hud.hideUI();
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
 
-    if (vehicle === "plane") {
-      this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
-      for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
-        this.birdFlocks.push(new BirdFlock(this.scene, globeRadius, seed, fi));
-      }
+    this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
+    for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
+      this.birdFlocks.push(new BirdFlock(this.scene, globeRadius, seed, fi));
     }
 
     for (let ri = 0; ri < RAINBOW_COUNT; ri++) {
@@ -949,15 +947,14 @@ export class Game {
     }
 
     if (this.birdFlocks.length > 0 && this.flockFormationHUD) {
-      const plane = this.localPlayer as Plane;
       let bestProgress = 0;
       let anyCompleted = false;
       for (const flock of this.birdFlocks) {
         const { progress, justCompleted } = flock.update(
           dt,
-          plane.qPosition,
-          plane.altitude,
-          plane.heading,
+          this.localPlayer.qPosition,
+          this.localPlayer.altitude,
+          this.localPlayer.heading,
         );
         bestProgress = Math.max(bestProgress, progress);
         if (justCompleted) anyCompleted = true;
