@@ -51,6 +51,7 @@ import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { FlockFormationHUD } from "../ui/FlockFormationHUD";
 import { BirdFlock, BIRD_FLOCK_COUNT, FLOCK_FORMATION_XP } from "./BirdFlock";
+import { RainbowArch, RAINBOW_COUNT, RAINBOW_XP } from "./RainbowArch";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
@@ -152,6 +153,7 @@ export class Game {
   private packageQuest: PackageQuestManager | null = null;
   private packageQuestHUD!: PackageQuestHUD;
   private birdFlocks: BirdFlock[] = [];
+  private rainbowArches: RainbowArch[] = [];
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -631,6 +633,9 @@ export class Game {
       for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
         this.birdFlocks.push(new BirdFlock(this.scene, globeRadius, seed, fi));
       }
+      for (let ri = 0; ri < RAINBOW_COUNT; ri++) {
+        this.rainbowArches.push(new RainbowArch(this.scene, globeRadius, seed, ri));
+      }
     }
 
     const landmarkRegistry = new LandmarkRegistry();
@@ -952,6 +957,7 @@ export class Game {
       }
       this.flockFormationHUD.setProgress(bestProgress);
       if (anyCompleted) {
+        this.hud.showFlockFormationCelebrate();
         this.ringManager.applyBonusXP(FLOCK_FORMATION_XP);
         this.hud.showXPGain(FLOCK_FORMATION_XP);
         this.hud.setXP(
@@ -962,6 +968,27 @@ export class Game {
         );
         this.vehicleFlashTimer = 0.35;
         this.cameraRig.shake();
+      }
+    }
+
+    if (this.rainbowArches.length > 0) {
+      const plane = this.localPlayer as Plane;
+      const dayW = this.dayNightCycle.getDayWeight();
+      for (const arch of this.rainbowArches) {
+        const { justCollected } = arch.update(dt, plane.qPosition, plane.altitude, dayW);
+        if (justCollected) {
+          this.hud.showRainbowCelebrate();
+          this.ringManager.applyBonusXP(RAINBOW_XP);
+          this.hud.showXPGain(RAINBOW_XP);
+          this.hud.setXP(
+            this.ringManager.getXP(),
+            this.ringManager.getXPForNextLevel(),
+            this.ringManager.getXPForCurrentLevel(),
+            this.ringManager.getLevel(),
+          );
+          this.vehicleFlashTimer = 0.35;
+          this.cameraRig.shake();
+        }
       }
     }
 
@@ -1227,6 +1254,8 @@ export class Game {
     this.packageQuestHUD.dispose();
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
+    for (const r of this.rainbowArches) r.dispose();
+    this.rainbowArches = [];
     this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();

@@ -125,6 +125,27 @@ export class HUD {
     setTimeout(() => banner.remove(), 2000);
   }
 
+  /** Shown when bird flock formation completes; matches XP popup line + float styling, below the flock ring. */
+  showFlockFormationCelebrate() {
+    const el = document.createElement("div");
+    el.className = "hud-flock-celebration";
+    el.textContent = "You flew with the birds";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-flock-celebration-animate"));
+    setTimeout(() => el.remove(), 1600);
+  }
+
+  showRainbowCelebrate() {
+    const el = document.createElement("div");
+    el.className = "hud-rainbow-celebration";
+    el.textContent = "You flew through a rainbow";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-rainbow-celebration-animate"));
+    setTimeout(() => el.remove(), 1600);
+  }
+
   setMuteToggle(fn: () => boolean) {
     this.onMuteToggle = fn;
   }
@@ -308,6 +329,100 @@ export class HUD {
         text-shadow: 0 0 16px rgba(255, 255, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
       }
 
+      .hud-flock-celebration {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(180, 220, 255, 0.45), 0 2px 8px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        z-index: 14;
+      }
+      .hud-flock-celebration::before,
+      .hud-flock-celebration::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 1px;
+        flex-shrink: 0;
+      }
+      .hud-flock-celebration::before {
+        background: linear-gradient(90deg, transparent, rgba(180, 220, 255, 0.55));
+      }
+      .hud-flock-celebration::after {
+        background: linear-gradient(90deg, rgba(180, 220, 255, 0.55), transparent);
+      }
+      .hud-flock-celebration-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-flock-celebration {
+          transform: translate(-50%, calc(-50% - 58px));
+        }
+        .hud-flock-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
+      .hud-rainbow-celebration {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(255, 180, 80, 0.5), 0 0 28px rgba(255, 100, 200, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        z-index: 14;
+      }
+      .hud-rainbow-celebration::before,
+      .hud-rainbow-celebration::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 1px;
+        flex-shrink: 0;
+      }
+      .hud-rainbow-celebration::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 160, 60, 0.55));
+      }
+      .hud-rainbow-celebration::after {
+        background: linear-gradient(90deg, rgba(200, 80, 255, 0.55), transparent);
+      }
+      .hud-rainbow-celebration-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-rainbow-celebration {
+          transform: translate(-50%, calc(-50% - 58px));
+        }
+        .hud-rainbow-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
       .hud-levelup {
         position: absolute; top: 35%; left: 50%;
         transform: translate(-50%, -50%) scale(0.5);
@@ -412,6 +527,26 @@ export class HUD {
 
         .hud-xp-popup { bottom: 120px; font-size: 0.9rem; }
         .hud-xp-popup::before, .hud-xp-popup::after { width: 32px; }
+
+        .hud-flock-celebration {
+          font-size: 0.82rem;
+          gap: 8px;
+        }
+        .hud-flock-celebration::before,
+        .hud-flock-celebration::after { width: 24px; }
+        .hud-flock-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+
+        .hud-rainbow-celebration {
+          font-size: 0.82rem;
+          gap: 8px;
+        }
+        .hud-rainbow-celebration::before,
+        .hud-rainbow-celebration::after { width: 24px; }
+        .hud-rainbow-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
 
         .hud-levelup { font-size: 1.8rem; }
         .hud-levelup::before, .hud-levelup::after { width: 40px; }
