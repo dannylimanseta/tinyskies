@@ -176,6 +176,8 @@ export class RainbowArch {
     if (this.fadeOut > 0) {
       this.fadeOut = Math.max(0, this.fadeOut - dt);
       opacity *= this.fadeOut / RainbowArch.FADE_OUT_SEC;
+    } else if (this.rewarded) {
+      opacity = 0;
     }
 
     if (this.fadeIn > 0) {
