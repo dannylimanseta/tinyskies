@@ -1049,7 +1049,7 @@ export class Game {
       this.aurora.group.visible = nightW > 0.01;
       this.aurora.setOpacity(nightW);
     }
-    if (this.playerLight) this.playerLight.intensity = nightW * 0.8;
+    if (this.playerLight) this.playerLight.intensity = nightW * 1.0;
     if (this.lensFlare) this.lensFlare.setColorScale([
       p.flareColorScale[0] * dayW,
       p.flareColorScale[1] * dayW,
