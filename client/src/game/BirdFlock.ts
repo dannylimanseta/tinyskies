@@ -133,6 +133,12 @@ export class BirdFlock {
   private formationHold = 0;
   private rewarded = false;
   private rewardCooldown = 0;
+  private fadeDelay = 0;
+  private fadeOut = 0;
+  private fadeIn = 0;
+  private static readonly FADE_DELAY_SEC = 5;
+  private static readonly FADE_OUT_SEC = 2;
+  private static readonly FADE_IN_SEC = 1;
   private spawnSalt = 0;
   private ducks: DuckInstance[] = [];
   private time = 0;
@@ -167,7 +173,23 @@ export class BirdFlock {
     this.heading = spawn.heading;
     this.formationHold = 0;
     this.rewarded = false;
+    this.fadeDelay = 0;
+    this.fadeOut = 0;
+    this.fadeIn = BirdFlock.FADE_IN_SEC;
     this.group.visible = true;
+    this.setFlockOpacity(0);
+  }
+
+  private setFlockOpacity(opacity: number) {
+    for (const duck of this.ducks) {
+      duck.root.traverse((child) => {
+        if ((child as Mesh).isMesh) {
+          const mat = (child as Mesh).material as MeshPhongMaterial;
+          mat.transparent = true;
+          mat.opacity = opacity;
+        }
+      });
+    }
   }
 
   update(
@@ -177,6 +199,26 @@ export class BirdFlock {
     playerHeading: number,
   ): { progress: number; justCompleted: boolean; flockActive: boolean } {
     this.time += dt;
+
+    let opacity = 1;
+    if (this.fadeIn > 0) {
+      this.fadeIn = Math.max(0, this.fadeIn - dt);
+      opacity = 1 - this.fadeIn / BirdFlock.FADE_IN_SEC;
+    }
+    if (this.fadeDelay > 0) {
+      this.fadeDelay = Math.max(0, this.fadeDelay - dt);
+      if (this.fadeDelay <= 0) {
+        this.fadeOut = BirdFlock.FADE_OUT_SEC;
+      }
+    }
+    if (this.fadeOut > 0) {
+      this.fadeOut = Math.max(0, this.fadeOut - dt);
+      opacity *= this.fadeOut / BirdFlock.FADE_OUT_SEC;
+      if (this.fadeOut <= 0) {
+        this.group.visible = false;
+      }
+    }
+    this.setFlockOpacity(opacity);
 
     const arc = (FLOCK_SPEED * dt) / this.globeRadius;
     this.leaderQ.copy(moveOnSphere(this.leaderQ, this.heading, arc));
@@ -230,8 +272,7 @@ export class BirdFlock {
     if (this.rewardCooldown > 0) {
       this.rewardCooldown -= dt;
       if (this.rewardCooldown <= 0) {
-        this.rewarded = false;
-        this.formationHold = 0;
+        this.respawn((this.spawnSalt + 1) * 1103515245);
       }
       return { progress: 0, justCompleted: false, flockActive: true };
     }
@@ -264,6 +305,7 @@ export class BirdFlock {
       this.rewarded = true;
       justCompleted = true;
       this.rewardCooldown = REWARD_COOLDOWN_SEC;
+      this.fadeDelay = BirdFlock.FADE_DELAY_SEC;
     }
 
     return { progress: this.rewarded ? 0 : progress, justCompleted, flockActive: true };

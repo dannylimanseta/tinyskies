@@ -109,6 +109,10 @@ export class RainbowArch {
 
   private rewarded = false;
   private cooldown = 0;
+  private fadeOut = 0;
+  private fadeIn = 0;
+  private static readonly FADE_OUT_SEC = 1.5;
+  private static readonly FADE_IN_SEC = 1.0;
 
   private scratch = new Vector3();
 
@@ -167,13 +171,26 @@ export class RainbowArch {
     playerAlt: number,
     dayWeight: number,
   ): { justCollected: boolean } {
-    this.material.uniforms.uDayWeight.value = dayWeight;
-    this.group.visible = dayWeight > 0.01;
+    let opacity = dayWeight;
+
+    if (this.fadeOut > 0) {
+      this.fadeOut = Math.max(0, this.fadeOut - dt);
+      opacity *= this.fadeOut / RainbowArch.FADE_OUT_SEC;
+    }
+
+    if (this.fadeIn > 0) {
+      this.fadeIn = Math.max(0, this.fadeIn - dt);
+      opacity *= 1 - this.fadeIn / RainbowArch.FADE_IN_SEC;
+    }
+
+    this.material.uniforms.uDayWeight.value = opacity;
+    this.group.visible = opacity > 0.01;
 
     if (this.cooldown > 0) {
       this.cooldown -= dt;
       if (this.cooldown <= 0) {
         this.rewarded = false;
+        this.fadeIn = RainbowArch.FADE_IN_SEC;
       }
       return { justCollected: false };
     }
@@ -202,6 +219,7 @@ export class RainbowArch {
       this.rewarded = true;
       justCollected = true;
       this.cooldown = REWARD_COOLDOWN_SEC;
+      this.fadeOut = RainbowArch.FADE_OUT_SEC;
     }
 
     return { justCollected };
