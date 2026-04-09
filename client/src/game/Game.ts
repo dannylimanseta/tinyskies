@@ -52,6 +52,7 @@ import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { FlockFormationHUD } from "../ui/FlockFormationHUD";
 import { BirdFlock, BIRD_FLOCK_COUNT, FLOCK_FORMATION_XP } from "./BirdFlock";
 import { RainbowArch, RAINBOW_COUNT, RAINBOW_XP } from "./RainbowArch";
+import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingLanterns";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
@@ -154,6 +155,7 @@ export class Game {
   private packageQuestHUD!: PackageQuestHUD;
   private birdFlocks: BirdFlock[] = [];
   private rainbowArches: RainbowArch[] = [];
+  private lanternClusters: FloatingLanterns[] = [];
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -639,6 +641,10 @@ export class Game {
       this.rainbowArches.push(new RainbowArch(this.scene, globeRadius, seed, ri));
     }
 
+    for (let li = 0; li < LANTERN_CLUSTER_COUNT; li++) {
+      this.lanternClusters.push(new FloatingLanterns(this.scene, globeRadius, seed, li));
+    }
+
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     landmarkRegistry.registerLighthouses(this.globe.lighthouseCenters, seed);
@@ -992,6 +998,34 @@ export class Game {
       }
     }
 
+    if (this.lanternClusters.length > 0) {
+      const nightW = this.dayNightCycle.getNightWeight();
+      for (let li = 0; li < this.lanternClusters.length; li++) {
+        const cluster = this.lanternClusters[li]!;
+        const { justCollected } = cluster.update(
+          dt,
+          this.localPlayer.qPosition,
+          this.localPlayer.altitude,
+          nightW,
+          li,
+          this.worldConfig?.seed ?? 42,
+        );
+        if (justCollected) {
+          this.hud.showLanternCelebrate();
+          this.ringManager.applyBonusXP(LANTERN_XP);
+          this.hud.showXPGain(LANTERN_XP);
+          this.hud.setXP(
+            this.ringManager.getXP(),
+            this.ringManager.getXPForNextLevel(),
+            this.ringManager.getXPForCurrentLevel(),
+            this.ringManager.getLevel(),
+          );
+          this.vehicleFlashTimer = 0.35;
+          this.cameraRig.shake();
+        }
+      }
+    }
+
     if (this.vehicleFlashTimer > 0) {
       this.vehicleFlashTimer -= dt;
       const intensity = Math.max(0, this.vehicleFlashTimer / 0.35);
@@ -1256,6 +1290,8 @@ export class Game {
     this.birdFlocks = [];
     for (const r of this.rainbowArches) r.dispose();
     this.rainbowArches = [];
+    for (const l of this.lanternClusters) l.dispose();
+    this.lanternClusters = [];
     this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();

@@ -1,6 +1,7 @@
 import {
   Group,
-  Mesh,
+  InstancedMesh,
+  Matrix4,
   Scene,
   ConeGeometry,
   SphereGeometry,
@@ -19,13 +20,10 @@ import {
 } from "./SphericalMath";
 
 const FLOCK_ALTITUDE = 0.55;
-/** Arc speed along the globe (same units as `Plane` speed). */
 const FLOCK_SPEED = 0.58;
 const FORMATION_HOLD_SEC = 2;
 export const FLOCK_FORMATION_XP = 45;
-/** How many independent V formations exist in the world (plane mode). */
-export const BIRD_FLOCK_COUNT = 4;
-/** Seconds the flock keeps flying after a reward before it can be earned again. */
+export const BIRD_FLOCK_COUNT = 2;
 const REWARD_COOLDOWN_SEC = 85;
 
 const V_OFFSETS: [number, number][] = [
@@ -37,96 +35,76 @@ const V_OFFSETS: [number, number][] = [
   [-0.39, -0.25],
   [-0.39, 0.25],
 ];
+const DUCK_COUNT = V_OFFSETS.length;
 
-/** Formation “sweet spot” behind the leader; generous radius so you needn’t sit dead center. */
 const SLOT_BACK = 0.34;
 const SLOT_LAT = 0;
-/** Near the rear-center slot, or anywhere this close to any duck counts as “in formation”. */
 const SLOT_DIST_MAX = 0.62;
 const NEAR_ANY_DUCK_DIST = 0.48;
 const ALT_MATCH = 0.24;
-/** ~cos(52°) — same rough direction as the flock, not perfectly parallel. */
 const HEADING_DOT_MIN = 0.62;
 
 const WING_FLAP_SPEED = 8;
 const WING_FLAP_AMP = 0.55;
 
-/** Build a low-poly duck: ellipsoid body, cone beak, two flat-triangle wings returned as children. */
-function createDuck(): { root: Group; leftWing: Mesh; rightWing: Mesh } {
-  const white = new MeshPhongMaterial({
-    color: 0xf0f0f0,
-    emissive: 0x222222,
-    flatShading: true,
-  });
-  const orange = new MeshPhongMaterial({
-    color: 0xee8822,
-    emissive: 0x331100,
-    flatShading: true,
-  });
+/* ── Shared geometry (created once, reused across all flocks) ──── */
 
-  const root = new Group();
-  const pivot = new Group();
-  pivot.rotation.y = -Math.PI / 2;
-  root.add(pivot);
+let _bodyGeo: SphereGeometry | null = null;
+let _headGeo: SphereGeometry | null = null;
+let _beakGeo: ConeGeometry | null = null;
+let _leftWingGeo: BufferGeometry | null = null;
+let _rightWingGeo: BufferGeometry | null = null;
 
-  const bodyGeo = new SphereGeometry(0.018, 6, 5);
-  bodyGeo.scale(1.4, 0.8, 0.9);
-  const body = new Mesh(bodyGeo, white);
-  pivot.add(body);
-
-  const headGeo = new SphereGeometry(0.01, 5, 4);
-  const head = new Mesh(headGeo, white);
-  head.position.set(0.022, 0.008, 0);
-  pivot.add(head);
-
-  const beakGeo = new ConeGeometry(0.004, 0.012, 4);
-  beakGeo.rotateZ(-Math.PI / 2);
-  const beak = new Mesh(beakGeo, orange);
-  beak.position.set(0.034, 0.008, 0);
-  pivot.add(beak);
-
-  const wingVerts = new Float32Array([
-    0, 0, 0,
-    -0.02, 0, -0.04,
-    0.01, 0, -0.035,
-  ]);
-  const wingGeo = new BufferGeometry();
-  wingGeo.setAttribute("position", new Float32BufferAttribute(wingVerts, 3));
-  wingGeo.computeVertexNormals();
-
-  const leftWing = new Mesh(wingGeo, white.clone());
-  leftWing.material.side = DoubleSide;
-  leftWing.position.set(0, 0.002, -0.005);
-  pivot.add(leftWing);
-
-  const rightWingGeo = wingGeo.clone();
-  const posAttr = rightWingGeo.getAttribute("position");
-  for (let i = 0; i < posAttr.count; i++) {
-    (posAttr as Float32BufferAttribute).setZ(i, -(posAttr as Float32BufferAttribute).getZ(i));
+function getSharedGeometries() {
+  if (!_bodyGeo) {
+    _bodyGeo = new SphereGeometry(0.018, 6, 5);
+    _bodyGeo.scale(1.4, 0.8, 0.9);
   }
-  rightWingGeo.computeVertexNormals();
-
-  const rightWing = new Mesh(rightWingGeo, white.clone());
-  rightWing.material.side = DoubleSide;
-  rightWing.position.set(0, 0.002, 0.005);
-  pivot.add(rightWing);
-
-  return { root, leftWing, rightWing };
+  if (!_headGeo) {
+    _headGeo = new SphereGeometry(0.01, 5, 4);
+  }
+  if (!_beakGeo) {
+    _beakGeo = new ConeGeometry(0.004, 0.012, 4);
+    _beakGeo.rotateZ(-Math.PI / 2);
+  }
+  if (!_leftWingGeo) {
+    const verts = new Float32Array([0, 0, 0, -0.02, 0, -0.04, 0.01, 0, -0.035]);
+    _leftWingGeo = new BufferGeometry();
+    _leftWingGeo.setAttribute("position", new Float32BufferAttribute(verts, 3));
+    _leftWingGeo.computeVertexNormals();
+  }
+  if (!_rightWingGeo) {
+    _rightWingGeo = _leftWingGeo.clone();
+    const pa = _rightWingGeo.getAttribute("position") as Float32BufferAttribute;
+    for (let i = 0; i < pa.count; i++) pa.setZ(i, -pa.getZ(i));
+    _rightWingGeo.computeVertexNormals();
+  }
+  return {
+    body: _bodyGeo,
+    head: _headGeo,
+    beak: _beakGeo,
+    leftWing: _leftWingGeo,
+    rightWing: _rightWingGeo,
+  };
 }
 
-interface DuckInstance {
-  root: Group;
-  leftWing: Mesh;
-  rightWing: Mesh;
-  flapPhase: number;
-}
+/* ── Local offsets in pivot space ───────────────────────────────── */
+
+const HEAD_OFFSET = new Vector3(0.022, 0.008, 0);
+const BEAK_OFFSET = new Vector3(0.034, 0.008, 0);
+const LWING_OFFSET = new Vector3(0, 0.002, -0.005);
+const RWING_OFFSET = new Vector3(0, 0.002, 0.005);
+const PIVOT_QUAT = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -Math.PI / 2);
+const X_AXIS = new Vector3(1, 0, 0);
+const ONE_SCALE = new Vector3(1, 1, 1);
+
+/* ── Class ──────────────────────────────────────────────────────── */
 
 export class BirdFlock {
   readonly group = new Group();
 
   private globeRadius: number;
   private seed: number;
-  /** Separates spawn paths so multiple flocks don’t overlap the same route. */
   private readonly flockIndex: number;
   private leaderQ = new Quaternion();
   private heading = 0;
@@ -140,8 +118,20 @@ export class BirdFlock {
   private static readonly FADE_OUT_SEC = 2;
   private static readonly FADE_IN_SEC = 1;
   private spawnSalt = 0;
-  private ducks: DuckInstance[] = [];
   private time = 0;
+
+  private whiteMat: MeshPhongMaterial;
+  private orangeMat: MeshPhongMaterial;
+  private wingMat: MeshPhongMaterial;
+
+  private bodyMesh: InstancedMesh;
+  private headMesh: InstancedMesh;
+  private beakMesh: InstancedMesh;
+  private leftWingMesh: InstancedMesh;
+  private rightWingMesh: InstancedMesh;
+
+  private flapPhases: number[] = [];
+  private duckPositions: Vector3[] = [];
 
   private leaderPos = new Vector3();
   private slotPos = new Vector3();
@@ -150,16 +140,40 @@ export class BirdFlock {
   private scratch = new Vector3();
   private birdOffset = new Vector3();
 
+  private tmpMat = new Matrix4();
+  private tmpTarget = new Vector3();
+  private lookAtQuat = new Quaternion();
+  private duckQuat = new Quaternion();
+  private wingQuat = new Quaternion();
+  private flapQuat = new Quaternion();
+  private partWorldPos = new Vector3();
+
   constructor(scene: Scene, globeRadius: number, worldSeed: number, flockIndex: number) {
     this.globeRadius = globeRadius;
     this.seed = worldSeed;
     this.flockIndex = flockIndex;
-    for (let i = 0; i < V_OFFSETS.length; i++) {
-      const { root, leftWing, rightWing } = createDuck();
-      root.castShadow = true;
-      this.ducks.push({ root, leftWing, rightWing, flapPhase: i * 0.7 });
-      this.group.add(root);
+
+    this.whiteMat = new MeshPhongMaterial({ color: 0xf0f0f0, emissive: 0x222222, flatShading: true, transparent: true });
+    this.orangeMat = new MeshPhongMaterial({ color: 0xee8822, emissive: 0x331100, flatShading: true, transparent: true });
+    this.wingMat = new MeshPhongMaterial({ color: 0xf0f0f0, emissive: 0x222222, flatShading: true, transparent: true, side: DoubleSide });
+
+    const geo = getSharedGeometries();
+    this.bodyMesh = new InstancedMesh(geo.body, this.whiteMat, DUCK_COUNT);
+    this.headMesh = new InstancedMesh(geo.head, this.whiteMat, DUCK_COUNT);
+    this.beakMesh = new InstancedMesh(geo.beak, this.orangeMat, DUCK_COUNT);
+    this.leftWingMesh = new InstancedMesh(geo.leftWing, this.wingMat, DUCK_COUNT);
+    this.rightWingMesh = new InstancedMesh(geo.rightWing, this.wingMat, DUCK_COUNT);
+
+    for (const m of [this.bodyMesh, this.headMesh, this.beakMesh, this.leftWingMesh, this.rightWingMesh]) {
+      m.frustumCulled = false;
+      this.group.add(m);
     }
+
+    for (let i = 0; i < DUCK_COUNT; i++) {
+      this.flapPhases.push(i * 0.7);
+      this.duckPositions.push(new Vector3());
+    }
+
     this.respawn(0);
     scene.add(this.group);
   }
@@ -177,19 +191,23 @@ export class BirdFlock {
     this.fadeOut = 0;
     this.fadeIn = BirdFlock.FADE_IN_SEC;
     this.group.visible = true;
-    this.setFlockOpacity(0);
+    this.setOpacity(0);
   }
 
-  private setFlockOpacity(opacity: number) {
-    for (const duck of this.ducks) {
-      duck.root.traverse((child) => {
-        if ((child as Mesh).isMesh) {
-          const mat = (child as Mesh).material as MeshPhongMaterial;
-          mat.transparent = true;
-          mat.opacity = opacity;
-        }
-      });
-    }
+  private setOpacity(opacity: number) {
+    this.whiteMat.opacity = opacity;
+    this.orangeMat.opacity = opacity;
+    this.wingMat.opacity = opacity;
+  }
+
+  private setInstanceMatrix(
+    mesh: InstancedMesh,
+    index: number,
+    pos: Vector3,
+    quat: Quaternion,
+  ) {
+    this.tmpMat.compose(pos, quat, ONE_SCALE);
+    mesh.setMatrixAt(index, this.tmpMat);
   }
 
   update(
@@ -200,6 +218,7 @@ export class BirdFlock {
   ): { progress: number; justCompleted: boolean; flockActive: boolean } {
     this.time += dt;
 
+    /* ── Fade ──────────────────────────────────────────────────── */
     let opacity = 1;
     if (this.fadeIn > 0) {
       this.fadeIn = Math.max(0, this.fadeIn - dt);
@@ -207,79 +226,85 @@ export class BirdFlock {
     }
     if (this.fadeDelay > 0) {
       this.fadeDelay = Math.max(0, this.fadeDelay - dt);
-      if (this.fadeDelay <= 0) {
-        this.fadeOut = BirdFlock.FADE_OUT_SEC;
-      }
+      if (this.fadeDelay <= 0) this.fadeOut = BirdFlock.FADE_OUT_SEC;
     }
     if (this.fadeOut > 0) {
       this.fadeOut = Math.max(0, this.fadeOut - dt);
       opacity *= this.fadeOut / BirdFlock.FADE_OUT_SEC;
-      if (this.fadeOut <= 0) {
-        this.group.visible = false;
-      }
+      if (this.fadeOut <= 0) this.group.visible = false;
     }
-    this.setFlockOpacity(opacity);
+    this.setOpacity(opacity);
 
+    /* ── Move leader ───────────────────────────────────────────── */
     const arc = (FLOCK_SPEED * dt) / this.globeRadius;
     this.leaderQ.copy(moveOnSphere(this.leaderQ, this.heading, arc));
 
     const frame = tangentFrame(this.leaderQ);
-    const cos = Math.cos(this.heading);
-    const sin = Math.sin(this.heading);
-    this.dir
-      .copy(frame.north)
-      .multiplyScalar(cos)
-      .addScaledVector(frame.east, sin)
-      .normalize();
-    this.right
-      .copy(frame.north)
-      .multiplyScalar(-sin)
-      .addScaledVector(frame.east, cos)
-      .normalize();
+    const cosH = Math.cos(this.heading);
+    const sinH = Math.sin(this.heading);
+    this.dir.copy(frame.north).multiplyScalar(cosH).addScaledVector(frame.east, sinH).normalize();
+    this.right.copy(frame.north).multiplyScalar(-sinH).addScaledVector(frame.east, cosH).normalize();
 
-    this.leaderPos.copy(
-      cartesianFromSpherical(this.leaderQ, FLOCK_ALTITUDE, this.globeRadius),
-    );
-
+    this.leaderPos.copy(cartesianFromSpherical(this.leaderQ, FLOCK_ALTITUDE, this.globeRadius));
     const up = this.scratch.copy(this.leaderPos).normalize();
 
+    /* ── Compute orientation quaternion for ducks ──────────────── */
+    this.tmpTarget.copy(this.leaderPos).add(this.dir);
+    this.tmpMat.lookAt(this.tmpTarget, this.leaderPos, up);
+    this.lookAtQuat.setFromRotationMatrix(this.tmpMat);
+
+    /* ── Position each duck instance ───────────────────────────── */
     const playerPos = cartesianFromSpherical(playerQ, playerAlt, this.globeRadius);
     let minDistToAnyDuck = Infinity;
 
-    for (let i = 0; i < V_OFFSETS.length; i++) {
+    for (let i = 0; i < DUCK_COUNT; i++) {
       const [back, lat] = V_OFFSETS[i]!;
-      this.birdOffset
-        .copy(this.dir)
-        .multiplyScalar(back)
-        .addScaledVector(this.right, lat);
-      const duck = this.ducks[i]!;
-      duck.root.position.copy(this.leaderPos).add(this.birdOffset);
-      minDistToAnyDuck = Math.min(minDistToAnyDuck, playerPos.distanceTo(duck.root.position));
+      this.birdOffset.copy(this.dir).multiplyScalar(back).addScaledVector(this.right, lat);
+      const duckPos = this.duckPositions[i]!;
+      duckPos.copy(this.leaderPos).add(this.birdOffset);
 
-      duck.root.lookAt(duck.root.position.clone().add(this.dir));
-      duck.root.up.copy(up);
+      minDistToAnyDuck = Math.min(minDistToAnyDuck, playerPos.distanceTo(duckPos));
 
-      const flap = Math.sin(this.time * WING_FLAP_SPEED + duck.flapPhase) * WING_FLAP_AMP;
-      duck.leftWing.rotation.x = flap;
-      duck.rightWing.rotation.x = -flap;
+      this.duckQuat.copy(this.lookAtQuat).multiply(PIVOT_QUAT);
+
+      this.setInstanceMatrix(this.bodyMesh, i, duckPos, this.duckQuat);
+
+      this.partWorldPos.copy(HEAD_OFFSET).applyQuaternion(this.duckQuat).add(duckPos);
+      this.setInstanceMatrix(this.headMesh, i, this.partWorldPos, this.duckQuat);
+
+      this.partWorldPos.copy(BEAK_OFFSET).applyQuaternion(this.duckQuat).add(duckPos);
+      this.setInstanceMatrix(this.beakMesh, i, this.partWorldPos, this.duckQuat);
+
+      const flap = Math.sin(this.time * WING_FLAP_SPEED + this.flapPhases[i]!) * WING_FLAP_AMP;
+
+      this.flapQuat.setFromAxisAngle(X_AXIS, flap);
+      this.wingQuat.copy(this.duckQuat).multiply(this.flapQuat);
+      this.partWorldPos.copy(LWING_OFFSET).applyQuaternion(this.duckQuat).add(duckPos);
+      this.setInstanceMatrix(this.leftWingMesh, i, this.partWorldPos, this.wingQuat);
+
+      this.flapQuat.setFromAxisAngle(X_AXIS, -flap);
+      this.wingQuat.copy(this.duckQuat).multiply(this.flapQuat);
+      this.partWorldPos.copy(RWING_OFFSET).applyQuaternion(this.duckQuat).add(duckPos);
+      this.setInstanceMatrix(this.rightWingMesh, i, this.partWorldPos, this.wingQuat);
     }
 
-    this.slotPos
-      .copy(this.leaderPos)
-      .addScaledVector(this.dir, -SLOT_BACK)
-      .addScaledVector(this.right, SLOT_LAT);
+    this.bodyMesh.instanceMatrix.needsUpdate = true;
+    this.headMesh.instanceMatrix.needsUpdate = true;
+    this.beakMesh.instanceMatrix.needsUpdate = true;
+    this.leftWingMesh.instanceMatrix.needsUpdate = true;
+    this.rightWingMesh.instanceMatrix.needsUpdate = true;
+
+    /* ── Formation slot ────────────────────────────────────────── */
+    this.slotPos.copy(this.leaderPos).addScaledVector(this.dir, -SLOT_BACK).addScaledVector(this.right, SLOT_LAT);
 
     if (this.rewardCooldown > 0) {
       this.rewardCooldown -= dt;
-      if (this.rewardCooldown <= 0) {
-        this.respawn((this.spawnSalt + 1) * 1103515245);
-      }
+      if (this.rewardCooldown <= 0) this.respawn((this.spawnSalt + 1) * 1103515245);
       return { progress: 0, justCompleted: false, flockActive: true };
     }
 
     const distToSlot = playerPos.distanceTo(this.slotPos);
-    const posOk =
-      distToSlot < SLOT_DIST_MAX || minDistToAnyDuck < NEAR_ANY_DUCK_DIST;
+    const posOk = distToSlot < SLOT_DIST_MAX || minDistToAnyDuck < NEAR_ANY_DUCK_DIST;
     const altOk = Math.abs(playerAlt - FLOCK_ALTITUDE) < ALT_MATCH;
 
     const pFrame = tangentFrame(playerQ);
@@ -291,7 +316,6 @@ export class BirdFlock {
     const headOk = pFwd.dot(this.dir) > HEADING_DOT_MIN;
 
     const inFormation = posOk && altOk && headOk;
-
     if (inFormation) {
       this.formationHold += dt;
     } else {
@@ -312,20 +336,14 @@ export class BirdFlock {
   }
 
   dispose() {
-    for (const duck of this.ducks) {
-      duck.root.traverse((child) => {
-        if ((child as Mesh).isMesh) {
-          const m = child as Mesh;
-          m.geometry.dispose();
-          if (Array.isArray(m.material)) {
-            m.material.forEach((mt) => mt.dispose());
-          } else {
-            m.material.dispose();
-          }
-        }
-      });
-    }
-    this.ducks.length = 0;
+    this.whiteMat.dispose();
+    this.orangeMat.dispose();
+    this.wingMat.dispose();
+    this.bodyMesh.dispose();
+    this.headMesh.dispose();
+    this.beakMesh.dispose();
+    this.leftWingMesh.dispose();
+    this.rightWingMesh.dispose();
     this.group.removeFromParent();
   }
 }

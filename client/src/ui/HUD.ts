@@ -146,6 +146,16 @@ export class HUD {
     setTimeout(() => el.remove(), 1600);
   }
 
+  showLanternCelebrate() {
+    const el = document.createElement("div");
+    el.className = "hud-lantern-celebration";
+    el.textContent = "You drifted through the lanterns";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-lantern-celebration-animate"));
+    setTimeout(() => el.remove(), 1600);
+  }
+
   setMuteToggle(fn: () => boolean) {
     this.onMuteToggle = fn;
   }
@@ -423,6 +433,53 @@ export class HUD {
         }
       }
 
+      .hud-lantern-celebration {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(255, 170, 50, 0.6), 0 0 28px rgba(255, 120, 20, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        z-index: 14;
+      }
+      .hud-lantern-celebration::before,
+      .hud-lantern-celebration::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 1px;
+        flex-shrink: 0;
+      }
+      .hud-lantern-celebration::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 180, 60, 0.6));
+      }
+      .hud-lantern-celebration::after {
+        background: linear-gradient(90deg, rgba(255, 140, 30, 0.6), transparent);
+      }
+      .hud-lantern-celebration-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-lantern-celebration {
+          transform: translate(-50%, calc(-50% - 58px));
+        }
+        .hud-lantern-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
       .hud-levelup {
         position: absolute; top: 35%; left: 50%;
         transform: translate(-50%, -50%) scale(0.5);
@@ -545,6 +602,16 @@ export class HUD {
         .hud-rainbow-celebration::before,
         .hud-rainbow-celebration::after { width: 24px; }
         .hud-rainbow-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+
+        .hud-lantern-celebration {
+          font-size: 0.82rem;
+          gap: 8px;
+        }
+        .hud-lantern-celebration::before,
+        .hud-lantern-celebration::after { width: 24px; }
+        .hud-lantern-celebration-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
 

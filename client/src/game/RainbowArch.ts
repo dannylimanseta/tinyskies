@@ -15,7 +15,7 @@ import {
   tangentFrame,
 } from "./SphericalMath";
 
-export const RAINBOW_COUNT = 3;
+export const RAINBOW_COUNT = 2;
 export const RAINBOW_XP = 35;
 
 const REWARD_COOLDOWN_SEC = 90;
