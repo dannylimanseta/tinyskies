@@ -99,7 +99,7 @@ const BOX_COLLECT_SFX_VOLUME = 0.52;
 const CHEER_SFX_IDS = ["cheer_1", "cheer_2"] as const;
 const CHEER_SFX_VOLUME = 0.1;
 
-const DIALOGUE_LOOP_NAME = "dialogue_1";
+const DIALOGUE_LOOP_IDS = ["dialogue_1", "dialogue_2", "dialogue_3", "dialogue_4"] as const;
 const DIALOGUE_LOOP_VOLUME = 0.28;
 /** Lower playback rate reads as a slightly deeper “male” bed under the same asset. */
 const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
@@ -227,7 +227,9 @@ export class Game {
       for (const id of CHEER_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
-      this.audioManager.loadSFX(DIALOGUE_LOOP_NAME, `/audio/sfx/${DIALOGUE_LOOP_NAME}.mp3`);
+      for (const id of DIALOGUE_LOOP_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
       for (const id of LEVELUP_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
@@ -621,13 +623,20 @@ export class Game {
     this.packageQuestHUD.onVisibilityChange = (visible, npcName) => {
       this.hud.setBubbleVisible(visible);
       if (visible && npcName) {
+        for (const id of DIALOGUE_LOOP_IDS) {
+          this.audioManager.fadeOutLoop(id);
+        }
+        const id =
+          DIALOGUE_LOOP_IDS[Math.floor(Math.random() * DIALOGUE_LOOP_IDS.length)]!;
         const rate = isNpcMale(npcName)
           ? DIALOGUE_MALE_PLAYBACK_RATE
           : 1;
-        this.audioManager.startLoop(DIALOGUE_LOOP_NAME, 0, rate);
-        this.audioManager.setLoopVolume(DIALOGUE_LOOP_NAME, DIALOGUE_LOOP_VOLUME);
+        this.audioManager.startLoop(id, 0, rate);
+        this.audioManager.setLoopVolume(id, DIALOGUE_LOOP_VOLUME);
       } else if (!visible) {
-        this.audioManager.fadeOutLoop(DIALOGUE_LOOP_NAME);
+        for (const id of DIALOGUE_LOOP_IDS) {
+          this.audioManager.fadeOutLoop(id);
+        }
       }
     };
 
