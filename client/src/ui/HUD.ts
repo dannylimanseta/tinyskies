@@ -166,6 +166,16 @@ export class HUD {
     setTimeout(() => el.remove(), 1400);
   }
 
+  showVolcanoCelebrate() {
+    const el = document.createElement("div");
+    el.className = "hud-volcano-celebration";
+    el.textContent = "Extreme flying!";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-volcano-celebration-animate"));
+    setTimeout(() => el.remove(), 1600);
+  }
+
   setMuteToggle(fn: () => boolean) {
     this.onMuteToggle = fn;
   }
@@ -537,6 +547,53 @@ export class HUD {
         }
       }
 
+      .hud-volcano-celebration {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(255, 100, 20, 0.6), 0 0 28px rgba(255, 50, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        z-index: 14;
+      }
+      .hud-volcano-celebration::before,
+      .hud-volcano-celebration::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 1px;
+        flex-shrink: 0;
+      }
+      .hud-volcano-celebration::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 120, 30, 0.6));
+      }
+      .hud-volcano-celebration::after {
+        background: linear-gradient(90deg, rgba(255, 80, 10, 0.6), transparent);
+      }
+      .hud-volcano-celebration-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-volcano-celebration {
+          transform: translate(-50%, calc(-50% - 58px));
+        }
+        .hud-volcano-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
       .hud-levelup {
         position: absolute; top: 35%; left: 50%;
         transform: translate(-50%, -50%) scale(0.5);
@@ -679,6 +736,16 @@ export class HUD {
         .hud-firefly-celebration::before,
         .hud-firefly-celebration::after { width: 24px; }
         .hud-firefly-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+
+        .hud-volcano-celebration {
+          font-size: 0.82rem;
+          gap: 8px;
+        }
+        .hud-volcano-celebration::before,
+        .hud-volcano-celebration::after { width: 24px; }
+        .hud-volcano-celebration-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
 

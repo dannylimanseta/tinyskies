@@ -14,6 +14,7 @@ import {
   VSMShadowMap,
   CanvasTexture,
   SRGBColorSpace,
+  Quaternion,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig } from "@globefly/shared";
@@ -54,6 +55,7 @@ import { BirdFlock, BIRD_FLOCK_COUNT, FLOCK_FORMATION_XP } from "./BirdFlock";
 import { RainbowArch, RAINBOW_COUNT, RAINBOW_XP } from "./RainbowArch";
 import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingLanterns";
 import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
+import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
@@ -63,6 +65,7 @@ import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
  * Previously ~0.4 was too small — you could fly visually “past” a balloon and
  * never enter the sphere in one frame. ~1.2 matches a comfortable fly-by.
  */
+const _farQ = new Quaternion();
 const BALLOON_GREET_DIST = 1.2;
 const BALLOON_GREET_EXIT_DIST = 1.75;
 /** Seconds before the same balloon can greet again after you leave. */
@@ -158,6 +161,7 @@ export class Game {
   private rainbowArches: RainbowArch[] = [];
   private lanternClusters: FloatingLanterns[] = [];
   private fireflyClusters: FireflyCluster[] = [];
+  private volcanoes: Volcano[] = [];
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -442,6 +446,11 @@ export class Game {
     this.previewCamera = new PerspectiveCamera(60, w / h, 0.1, 100);
     this.previewAngle = 0;
 
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    for (let vi = 0; vi < VOLCANO_COUNT; vi++) {
+      this.volcanoes.push(new Volcano(this.scene, globeRadius, seed, terrainType, vi));
+    }
+
     window.addEventListener("resize", this.onPreviewResize);
   }
 
@@ -463,6 +472,7 @@ export class Game {
     this.previewCamera.lookAt(0, 0, 0);
 
     this.globe.update(dt);
+    for (const v of this.volcanoes) v.update(dt, _farQ, 999);
     this.applyDayNightPreset();
     this.audioManager.update(dt);
     this.aurora?.update(dt, this.previewCamera);
@@ -1055,6 +1065,29 @@ export class Game {
       }
     }
 
+    if (this.volcanoes.length > 0) {
+      for (const volcano of this.volcanoes) {
+        const { justCollected } = volcano.update(
+          dt,
+          this.localPlayer.qPosition,
+          this.localPlayer.altitude,
+        );
+        if (justCollected) {
+          this.hud.showVolcanoCelebrate();
+          this.ringManager.applyBonusXP(VOLCANO_XP);
+          this.hud.showXPGain(VOLCANO_XP);
+          this.hud.setXP(
+            this.ringManager.getXP(),
+            this.ringManager.getXPForNextLevel(),
+            this.ringManager.getXPForCurrentLevel(),
+            this.ringManager.getLevel(),
+          );
+          this.vehicleFlashTimer = 0.35;
+          this.cameraRig.shake();
+        }
+      }
+    }
+
     if (this.vehicleFlashTimer > 0) {
       this.vehicleFlashTimer -= dt;
       const intensity = Math.max(0, this.vehicleFlashTimer / 0.35);
@@ -1323,6 +1356,8 @@ export class Game {
     this.lanternClusters = [];
     for (const f of this.fireflyClusters) f.dispose();
     this.fireflyClusters = [];
+    for (const v of this.volcanoes) v.dispose();
+    this.volcanoes = [];
     this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();

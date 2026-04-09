@@ -1,0 +1,653 @@
+import {
+  AdditiveBlending,
+  CircleGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
+  Group,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  LatheGeometry,
+  Matrix4,
+  Mesh,
+  MeshPhongMaterial,
+  PlaneGeometry,
+  Quaternion,
+  RingGeometry,
+  Scene,
+  ShaderMaterial,
+  SphereGeometry,
+  Vector2,
+  Vector3,
+} from "three";
+import { createNoise3D, terrainNoise } from "./SimplexNoise";
+import { getTerrainParams } from "./TerrainPresets";
+import {
+  cartesianFromSpherical,
+  tangentFrame,
+} from "./SphericalMath";
+import { PROP_TERRAIN_SINK, surfaceDisplacementAt } from "./TerrainSurface";
+
+export const VOLCANO_COUNT = 2;
+export const VOLCANO_XP = 40;
+
+const LAVA_BLOB_COUNT = 30;
+const SMOKE_COUNT = 15;
+const FLY_OVER_DIST = 0.65;
+const REWARD_COOLDOWN_SEC = 90;
+
+const REF_UP = new Vector3(0, 1, 0);
+
+/* ── Volcano body profile ──────────────────────────────────────── */
+
+const S = 0.35;
+const H = 1.25;
+function buildVolcanoGeometry(): LatheGeometry {
+  const profile: Vector2[] = [
+    new Vector2(0.00 * S, 0.92 * S * H),
+    new Vector2(0.12 * S, 0.90 * S * H),
+    new Vector2(0.26 * S, 1.00 * S * H),
+    new Vector2(0.33 * S, 0.95 * S * H),
+    new Vector2(0.40 * S, 0.84 * S * H),
+    new Vector2(0.50 * S, 0.68 * S * H),
+    new Vector2(0.62 * S, 0.48 * S * H),
+    new Vector2(0.76 * S, 0.28 * S * H),
+    new Vector2(0.90 * S, 0.12 * S * H),
+    new Vector2(1.05 * S, 0.03 * S * H),
+    new Vector2(1.15 * S, 0.00 * S * H),
+  ];
+  const geo = new LatheGeometry(profile, 16);
+
+  /* ── Perturb vertices for an irregular, non-circular shape ───── */
+  const posAttr = geo.attributes.position;
+  const rimY = S * H * 1.0;
+
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const r = Math.sqrt(x * x + z * z);
+    if (r < 0.001) continue;
+
+    const angle = Math.atan2(z, x);
+    const t = y / rimY;
+
+    const warp =
+      Math.sin(angle * 2.0) * 0.35 +
+      Math.sin(angle * 5.0 + 1.3) * 0.30 +
+      Math.sin(angle * 9.0 + 2.7) * 0.20 +
+      Math.sin(angle * 13.0 + 4.1) * 0.15;
+
+    const slopeBand = Math.sin(t * Math.PI);
+    const heightFade = Math.max(slopeBand, (1.0 - t) * 0.5);
+    const radialScale = 1.0 + warp * 0.25 * heightFade;
+
+    posAttr.setX(i, x * radialScale);
+    posAttr.setZ(i, z * radialScale);
+
+    const yWarp = warp * 0.06 * S * slopeBand;
+    posAttr.setY(i, y + yWarp);
+  }
+  posAttr.needsUpdate = true;
+
+  /* ── Vertex colors ───────────────────────────────────────────── */
+  const colors = new Float32Array(posAttr.count * 3);
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const r = Math.sqrt(x * x + z * z);
+    const t = Math.max(0, y / rimY);
+
+    let cr: number, cg: number, cb: number;
+    if (t > 0.88 && r < 0.04 * S) {
+      cr = 0.65; cg = 0.18; cb = 0.05;
+    } else if (t > 0.85) {
+      cr = 0.22; cg = 0.12; cb = 0.08;
+    } else if (t > 0.65) {
+      const tipT = (t - 0.65) / (0.85 - 0.65);
+      const darkR = 0.14; const darkG = 0.08; const darkB = 0.05;
+      const midR = 0.42; const midG = 0.16; const midB = 0.08;
+      cr = midR + (darkR - midR) * tipT;
+      cg = midG + (darkG - midG) * tipT;
+      cb = midB + (darkB - midB) * tipT;
+    } else {
+      const slopeT = Math.max(0, Math.min(1, t / 0.65));
+      const topR = 0.42; const topG = 0.16; const topB = 0.08;
+      const botR = 0.25; const botG = 0.20; const botB = 0.18;
+      cr = botR + (topR - botR) * slopeT;
+      cg = botG + (topG - botG) * slopeT;
+      cb = botB + (topB - botB) * slopeT;
+    }
+    colors[i * 3] = cr;
+    colors[i * 3 + 1] = cg;
+    colors[i * 3 + 2] = cb;
+  }
+  geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/* ── Crater glow shaders ───────────────────────────────────────── */
+
+const craterGlowVert = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const craterGlowFrag = /* glsl */ `
+uniform float uTime;
+varying vec2 vUv;
+void main() {
+  float d = distance(vUv, vec2(0.5)) * 2.0;
+  vec3 core = vec3(1.0, 0.7, 0.12);
+  vec3 edge = vec3(1.0, 0.3, 0.0);
+  vec3 col = mix(core, edge, smoothstep(0.0, 1.0, d));
+  float pulse = 0.8 + 0.2 * sin(uTime * 2.0);
+  float alpha = (1.0 - smoothstep(0.6, 1.0, d)) * pulse;
+  gl_FragColor = vec4(col * 3.0, alpha);
+}
+`;
+
+/* ── Lava blob shaders ─────────────────────────────────────────── */
+
+const lavaVert = /* glsl */ `
+attribute float aLife;
+varying vec2 vUv;
+varying float vLife;
+void main() {
+  vUv = uv;
+  vLife = aLife;
+  vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * modelViewMatrix * worldPos;
+}
+`;
+
+const lavaFrag = /* glsl */ `
+varying vec2 vUv;
+varying float vLife;
+void main() {
+  float d = length(vUv - 0.5) * 2.0;
+  vec3 core = vec3(1.0, 0.75, 0.15);
+  vec3 mid  = vec3(1.0, 0.45, 0.02);
+  vec3 edge = vec3(0.9, 0.20, 0.0);
+  vec3 col = mix(core, mid, smoothstep(0.0, 0.5, d));
+  col = mix(col, edge, smoothstep(0.4, 0.9, d));
+  float fade = 1.0 - smoothstep(0.65, 1.0, vLife);
+  float alpha = (1.0 - smoothstep(0.5, 1.0, d)) * fade;
+  gl_FragColor = vec4(col * 3.0, alpha);
+}
+`;
+
+/* ── Smoke shaders (billboard) ─────────────────────────────────── */
+
+const smokeVert = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  vec4 instancePos = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 mvPos = modelViewMatrix * instancePos;
+  float scaleX = length(vec3(instanceMatrix[0][0], instanceMatrix[0][1], instanceMatrix[0][2]));
+  float scaleY = length(vec3(instanceMatrix[1][0], instanceMatrix[1][1], instanceMatrix[1][2]));
+  mvPos.xy += position.xy * vec2(scaleX, scaleY);
+  gl_Position = projectionMatrix * mvPos;
+}
+`;
+
+const smokeFrag = /* glsl */ `
+uniform float uOpacity;
+varying vec2 vUv;
+void main() {
+  float d = length(vUv - 0.5) * 2.0;
+  vec3 inner = vec3(1.0, 0.45, 0.05);
+  vec3 outer = vec3(0.55, 0.12, 0.02);
+  float t = smoothstep(0.0, 0.8, d);
+  vec3 col = mix(inner, outer, t);
+  float alpha = (1.0 - smoothstep(0.3, 1.0, d)) * uOpacity;
+  gl_FragColor = vec4(col * 1.6, alpha * 0.5);
+}
+`;
+
+/* ── Blending skirt shader ─────────────────────────────────────── */
+
+const skirtVert = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const skirtFrag = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  float r = length(vUv - 0.5) * 2.0;
+  float inner = 0.35;
+  float alpha = 1.0 - smoothstep(inner, 1.0, r);
+  vec3 col = vec3(0.22, 0.18, 0.15);
+  gl_FragColor = vec4(col, alpha * 0.7);
+}
+`;
+
+/* ── Per-particle state ────────────────────────────────────────── */
+
+interface LavaBlob {
+  pos: Vector3;
+  vel: Vector3;
+  life: number;
+  maxLife: number;
+  scale: number;
+}
+
+interface SmokeWisp {
+  pos: Vector3;
+  vel: Vector3;
+  life: number;
+  maxLife: number;
+  scale: number;
+  baseScale: number;
+}
+
+/* ── Volcano Class ─────────────────────────────────────────────── */
+
+export class Volcano {
+  readonly group = new Group();
+  readonly craterWorldPos = new Vector3();
+
+  private globeRadius: number;
+  private normal = new Vector3();
+  private up = new Vector3();
+  private north = new Vector3();
+  private east = new Vector3();
+
+  private craterGlowMat: ShaderMaterial;
+  private lavaMat: ShaderMaterial;
+  private smokeMat: ShaderMaterial;
+  private skirtMat: ShaderMaterial;
+  private volcanoGeo: LatheGeometry;
+  private craterGeo: CircleGeometry;
+  private lavaSphereGeo: SphereGeometry;
+  private smokePlaneGeo: PlaneGeometry;
+  private skirtGeo: CircleGeometry;
+
+  private lavaInstanced: InstancedMesh;
+  private smokeInstanced: InstancedMesh;
+  private lavaBlobs: LavaBlob[] = [];
+  private smokeWisps: SmokeWisp[] = [];
+  private lavaLifeAttr: InstancedBufferAttribute;
+
+  private rewarded = false;
+  private cooldown = 0;
+  private time = 0;
+
+  private tmpMat = new Matrix4();
+  private tmpPos = new Vector3();
+  private tmpQuat = new Quaternion();
+  private tmpScale = new Vector3();
+
+  private seedVal: number;
+
+  constructor(
+    scene: Scene,
+    globeRadius: number,
+    worldSeed: number,
+    terrainType: string,
+    volcanoIndex: number,
+  ) {
+    this.globeRadius = globeRadius;
+    this.seedVal = worldSeed + volcanoIndex * 7723451;
+
+    this.placeOnHighTerrain(worldSeed, terrainType, volcanoIndex);
+
+    /* ── Volcano body ──────────────────────────────────────────── */
+    this.volcanoGeo = buildVolcanoGeometry();
+    const volcanoMat = new MeshPhongMaterial({
+      vertexColors: true,
+      flatShading: true,
+      emissive: 0x2a0a00,
+      shininess: 5,
+      side: DoubleSide,
+    });
+    const bodyMesh = new Mesh(this.volcanoGeo, volcanoMat);
+    bodyMesh.castShadow = true;
+    this.group.add(bodyMesh);
+
+    /* ── Blending skirt ────────────────────────────────────────── */
+    const skirtRadius = S * 1.8;
+    this.skirtGeo = new CircleGeometry(skirtRadius, 24);
+    this.skirtMat = new ShaderMaterial({
+      vertexShader: skirtVert,
+      fragmentShader: skirtFrag,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    const skirtMesh = new Mesh(this.skirtGeo, this.skirtMat);
+    skirtMesh.rotation.x = -Math.PI / 2;
+    skirtMesh.position.y = S * H * 0.06;
+    this.group.add(skirtMesh);
+
+    /* ── Crater glow disc ──────────────────────────────────────── */
+    this.craterGeo = new CircleGeometry(0.035 * S / 0.12, 12);
+    this.craterGlowMat = new ShaderMaterial({
+      vertexShader: craterGlowVert,
+      fragmentShader: craterGlowFrag,
+      uniforms: { uTime: { value: 0 } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+    });
+    const glowDisc = new Mesh(this.craterGeo, this.craterGlowMat);
+    glowDisc.position.y = S * H * 0.92;
+    glowDisc.rotation.x = -Math.PI / 2;
+    this.group.add(glowDisc);
+
+    /* ── Lava blobs (instanced) ────────────────────────────────── */
+    this.lavaSphereGeo = new SphereGeometry(0.02, 5, 4);
+    const lifeArray = new Float32Array(LAVA_BLOB_COUNT);
+    this.lavaLifeAttr = new InstancedBufferAttribute(lifeArray, 1);
+    this.lavaSphereGeo.setAttribute("aLife", this.lavaLifeAttr);
+
+    this.lavaMat = new ShaderMaterial({
+      vertexShader: lavaVert,
+      fragmentShader: lavaFrag,
+      uniforms: { uTime: { value: 0 } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+    this.lavaInstanced = new InstancedMesh(this.lavaSphereGeo, this.lavaMat, LAVA_BLOB_COUNT);
+    this.lavaInstanced.frustumCulled = false;
+    this.group.add(this.lavaInstanced);
+
+    for (let i = 0; i < LAVA_BLOB_COUNT; i++) {
+      this.lavaBlobs.push(this.spawnLavaBlob(i));
+    }
+
+    /* ── Smoke wisps (instanced billboard) ─────────────────────── */
+    this.smokePlaneGeo = new PlaneGeometry(0.07, 0.07);
+    this.smokeMat = new ShaderMaterial({
+      vertexShader: smokeVert,
+      fragmentShader: smokeFrag,
+      uniforms: { uOpacity: { value: 1.0 } },
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    this.smokeInstanced = new InstancedMesh(this.smokePlaneGeo, this.smokeMat, SMOKE_COUNT);
+    this.smokeInstanced.frustumCulled = false;
+    this.group.add(this.smokeInstanced);
+
+    for (let i = 0; i < SMOKE_COUNT; i++) {
+      this.smokeWisps.push(this.spawnSmokeWisp(i));
+    }
+
+    scene.add(this.group);
+  }
+
+  /* ── Terrain placement ───────────────────────────────────────── */
+
+  private placeOnHighTerrain(
+    worldSeed: number,
+    terrainType: string,
+    volcanoIndex: number,
+  ) {
+    const noise = createNoise3D(worldSeed);
+    const params = getTerrainParams(terrainType);
+    const rand = this.seededRandom(worldSeed + volcanoIndex * 314159);
+
+    let bestNormal: Vector3 | null = null;
+    let bestElevation = 0;
+
+    for (let attempts = 0; attempts < 3000; attempts++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < 0.4) continue;
+
+      if (elevation > bestElevation) {
+        bestElevation = elevation;
+        bestNormal = new Vector3(nx, ny, nz);
+      }
+
+      if (bestElevation > 0.6) break;
+    }
+
+    if (!bestNormal) {
+      bestNormal = new Vector3(0, 1, 0);
+    }
+
+    this.normal.copy(bestNormal);
+    const displacement = surfaceDisplacementAt(
+      worldSeed, terrainType, bestNormal.x, bestNormal.y, bestNormal.z,
+    );
+    const surfaceR = this.globeRadius + displacement - PROP_TERRAIN_SINK;
+
+    const sinkIntoTerrain = S * 0.42;
+    const placementR = surfaceR - sinkIntoTerrain;
+
+    this.group.position.copy(bestNormal.clone().multiplyScalar(placementR));
+    this.group.quaternion.setFromUnitVectors(REF_UP, bestNormal);
+    this.group.rotateY(this.seededRandom(this.seedVal + 999)() * Math.PI * 2);
+
+    const frame = tangentFrame(this.group.quaternion);
+    this.up.copy(frame.up);
+    this.north.copy(frame.north);
+    this.east.copy(frame.east);
+
+    this.craterWorldPos
+      .copy(bestNormal)
+      .multiplyScalar(placementR + S * H * 0.92);
+  }
+
+  private seededRandom(seed: number): () => number {
+    let s = seed;
+    return () => {
+      s = (s * 16807 + 0) % 2147483647;
+      return (s & 0x7fffffff) / 0x7fffffff;
+    };
+  }
+
+  /* ── Lava blob lifecycle ─────────────────────────────────────── */
+
+  private spawnLavaBlob(index: number): LavaBlob {
+    const rand = this.seededRandom(this.seedVal + index * 6971 + Math.floor(this.time * 100));
+    const spread = 0.03;
+    const upSpeed = 0.12 + rand() * 0.16;
+    return {
+      pos: new Vector3(
+        (rand() - 0.5) * spread,
+        S * H * 0.92,
+        (rand() - 0.5) * spread,
+      ),
+      vel: new Vector3(
+        (rand() - 0.5) * 0.12,
+        upSpeed,
+        (rand() - 0.5) * 0.12,
+      ),
+      life: rand() * 3.0,
+      maxLife: 2.5 + rand() * 2.0,
+      scale: 0.8 + rand() * 0.8,
+    };
+  }
+
+  private recycleLavaBlob(blob: LavaBlob, index: number) {
+    const rand = this.seededRandom(this.seedVal + index * 6971 + Math.floor(this.time * 1000));
+    const spread = 0.03;
+    const upSpeed = 0.12 + rand() * 0.16;
+    blob.pos.set(
+      (rand() - 0.5) * spread,
+      S * H * 0.92,
+      (rand() - 0.5) * spread,
+    );
+    blob.vel.set(
+      (rand() - 0.5) * 0.12,
+      upSpeed,
+      (rand() - 0.5) * 0.12,
+    );
+    blob.life = 0;
+    blob.maxLife = 2.5 + rand() * 2.0;
+    blob.scale = 0.8 + rand() * 0.8;
+  }
+
+  /* ── Smoke wisp lifecycle ────────────────────────────────────── */
+
+  private spawnSmokeWisp(index: number): SmokeWisp {
+    const rand = this.seededRandom(this.seedVal + index * 3389 + Math.floor(this.time * 100));
+    const baseScale = 1.0 + rand() * 1.2;
+    return {
+      pos: new Vector3(
+        (rand() - 0.5) * 0.04,
+        S * H * 0.95 + rand() * 0.05,
+        (rand() - 0.5) * 0.04,
+      ),
+      vel: new Vector3(
+        (rand() - 0.5) * 0.008,
+        0.025 + rand() * 0.025,
+        (rand() - 0.5) * 0.008,
+      ),
+      life: rand() * 3.0,
+      maxLife: 2.5 + rand() * 2.5,
+      scale: baseScale,
+      baseScale,
+    };
+  }
+
+  private recycleSmokeWisp(wisp: SmokeWisp, index: number) {
+    const rand = this.seededRandom(this.seedVal + index * 3389 + Math.floor(this.time * 1000));
+    wisp.baseScale = 1.0 + rand() * 1.2;
+    wisp.pos.set(
+      (rand() - 0.5) * 0.04,
+      S * H * 0.95 + rand() * 0.05,
+      (rand() - 0.5) * 0.04,
+    );
+    wisp.vel.set(
+      (rand() - 0.5) * 0.008,
+      0.025 + rand() * 0.025,
+      (rand() - 0.5) * 0.008,
+    );
+    wisp.life = 0;
+    wisp.maxLife = 2.5 + rand() * 2.5;
+    wisp.scale = wisp.baseScale;
+  }
+
+  /* ── Update ──────────────────────────────────────────────────── */
+
+  update(
+    dt: number,
+    playerQ: Quaternion,
+    playerAlt: number,
+  ): { justCollected: boolean } {
+    this.time += dt;
+    this.craterGlowMat.uniforms.uTime.value = this.time;
+    this.lavaMat.uniforms.uTime.value = this.time;
+
+    const gravity = 0.08;
+    const craterY = S * H * 0.92;
+
+    /* ── Lava blobs ────────────────────────────────────────────── */
+    for (let i = 0; i < LAVA_BLOB_COUNT; i++) {
+      const b = this.lavaBlobs[i]!;
+      b.life += dt;
+
+      if (b.life >= b.maxLife) {
+        this.recycleLavaBlob(b, i);
+      }
+
+      b.vel.y -= gravity * dt;
+      b.pos.addScaledVector(b.vel, dt);
+
+      if (b.pos.y < 0) {
+        this.recycleLavaBlob(b, i);
+      }
+
+      const lifeRatio = Math.min(1, b.life / b.maxLife);
+      const scaleDecay = lifeRatio < 0.7 ? 1.0 : 1.0 - (lifeRatio - 0.7) / 0.3;
+      const fadeScale = b.scale * scaleDecay;
+
+      this.lavaLifeAttr.setX(i, lifeRatio);
+
+      this.tmpScale.setScalar(fadeScale);
+      this.tmpQuat.identity();
+      this.tmpMat.compose(b.pos, this.tmpQuat, this.tmpScale);
+      this.lavaInstanced.setMatrixAt(i, this.tmpMat);
+    }
+    this.lavaInstanced.instanceMatrix.needsUpdate = true;
+    this.lavaLifeAttr.needsUpdate = true;
+
+    /* ── Smoke wisps ───────────────────────────────────────────── */
+    for (let i = 0; i < SMOKE_COUNT; i++) {
+      const w = this.smokeWisps[i]!;
+      w.life += dt;
+
+      if (w.life >= w.maxLife) {
+        this.recycleSmokeWisp(w, i);
+      }
+
+      w.pos.addScaledVector(w.vel, dt);
+
+      const lifeRatio = w.life / w.maxLife;
+      w.scale = w.baseScale * (1 + lifeRatio * 1.5);
+
+      this.tmpScale.setScalar(w.scale);
+      this.tmpQuat.identity();
+      this.tmpMat.compose(w.pos, this.tmpQuat, this.tmpScale);
+      this.smokeInstanced.setMatrixAt(i, this.tmpMat);
+    }
+    this.smokeInstanced.instanceMatrix.needsUpdate = true;
+
+    /* ── Cooldown ──────────────────────────────────────────────── */
+    if (this.cooldown > 0) {
+      this.cooldown -= dt;
+      if (this.cooldown <= 0) {
+        this.rewarded = false;
+      }
+      return { justCollected: false };
+    }
+    if (this.rewarded) return { justCollected: false };
+
+    /* ── Fly-over detection ────────────────────────────────────── */
+    const playerPos = this.tmpPos.copy(
+      cartesianFromSpherical(playerQ, playerAlt, this.globeRadius),
+    );
+    const dist = playerPos.distanceTo(this.craterWorldPos);
+
+    let justCollected = false;
+    if (dist < FLY_OVER_DIST) {
+      this.rewarded = true;
+      justCollected = true;
+      this.cooldown = REWARD_COOLDOWN_SEC;
+    }
+
+    return { justCollected };
+  }
+
+  /* ── Dispose ─────────────────────────────────────────────────── */
+
+  dispose() {
+    this.volcanoGeo.dispose();
+    this.craterGeo.dispose();
+    this.craterGlowMat.dispose();
+    this.lavaSphereGeo.dispose();
+    this.lavaMat.dispose();
+    this.lavaInstanced.dispose();
+    this.smokePlaneGeo.dispose();
+    this.smokeMat.dispose();
+    this.smokeInstanced.dispose();
+    this.skirtGeo.dispose();
+    this.skirtMat.dispose();
+    this.group.removeFromParent();
+  }
+}
