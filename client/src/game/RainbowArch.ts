@@ -171,7 +171,8 @@ export class RainbowArch {
     playerAlt: number,
     dayWeight: number,
   ): { justCollected: boolean } {
-    let opacity = dayWeight;
+    const sharpDay = dayWeight * dayWeight * (3 - 2 * dayWeight);
+    let opacity = sharpDay;
 
     if (this.fadeOut > 0) {
       this.fadeOut = Math.max(0, this.fadeOut - dt);

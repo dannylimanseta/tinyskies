@@ -58,11 +58,8 @@ void main() {
   float emissive = (1.0 - smoothstep(0.0, 0.45, d)) * 0.7;
   col += vec3(emissive * 0.4, emissive * 0.1, emissive * 0.02);
 
-  float edgeFade = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x)
-                 * smoothstep(0.0, 0.05, vUv.y) * smoothstep(1.0, 0.95, vUv.y);
-
-  float flicker = 0.9 + 0.1 * uFlicker;
-  float alpha = edgeFade * flicker * uNightWeight;
+  float flicker = 0.95 + 0.05 * uFlicker;
+  float alpha = flicker * uNightWeight;
 
   gl_FragColor = vec4(col * 2.0, alpha);
 }
@@ -191,7 +188,8 @@ export class FloatingLanterns {
     this.time += dt;
 
     /* ── Visibility / fade ─────────────────────────────────────── */
-    let opacity = nightWeight;
+    const sharpNight = nightWeight * nightWeight * (3 - 2 * nightWeight);
+    let opacity = sharpNight;
 
     if (this.fadeDelay > 0) {
       this.fadeDelay = Math.max(0, this.fadeDelay - dt);

@@ -53,6 +53,7 @@ import { FlockFormationHUD } from "../ui/FlockFormationHUD";
 import { BirdFlock, BIRD_FLOCK_COUNT, FLOCK_FORMATION_XP } from "./BirdFlock";
 import { RainbowArch, RAINBOW_COUNT, RAINBOW_XP } from "./RainbowArch";
 import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingLanterns";
+import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
@@ -156,6 +157,7 @@ export class Game {
   private birdFlocks: BirdFlock[] = [];
   private rainbowArches: RainbowArch[] = [];
   private lanternClusters: FloatingLanterns[] = [];
+  private fireflyClusters: FireflyCluster[] = [];
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -643,6 +645,10 @@ export class Game {
       this.lanternClusters.push(new FloatingLanterns(this.scene, globeRadius, seed, li));
     }
 
+    for (let fi = 0; fi < FIREFLY_CLUSTER_COUNT; fi++) {
+      this.fireflyClusters.push(new FireflyCluster(this.scene, globeRadius, seed, terrainType, fi));
+    }
+
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     landmarkRegistry.registerLighthouses(this.globe.lighthouseCenters, seed);
@@ -1023,6 +1029,32 @@ export class Game {
       }
     }
 
+    if (this.fireflyClusters.length > 0) {
+      const nightW = this.dayNightCycle.getNightWeight();
+      for (let fi = 0; fi < this.fireflyClusters.length; fi++) {
+        const cluster = this.fireflyClusters[fi]!;
+        const { justCollected } = cluster.update(
+          dt,
+          this.localPlayer.qPosition,
+          this.localPlayer.altitude,
+          nightW,
+          fi,
+        );
+        if (justCollected) {
+          this.hud.showFireflyCelebrate();
+          this.ringManager.applyBonusXP(FIREFLY_XP);
+          this.hud.showXPGain(FIREFLY_XP);
+          this.hud.setXP(
+            this.ringManager.getXP(),
+            this.ringManager.getXPForNextLevel(),
+            this.ringManager.getXPForCurrentLevel(),
+            this.ringManager.getLevel(),
+          );
+          this.vehicleFlashTimer = 0.35;
+        }
+      }
+    }
+
     if (this.vehicleFlashTimer > 0) {
       this.vehicleFlashTimer -= dt;
       const intensity = Math.max(0, this.vehicleFlashTimer / 0.35);
@@ -1289,6 +1321,8 @@ export class Game {
     this.rainbowArches = [];
     for (const l of this.lanternClusters) l.dispose();
     this.lanternClusters = [];
+    for (const f of this.fireflyClusters) f.dispose();
+    this.fireflyClusters = [];
     this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();
