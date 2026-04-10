@@ -491,7 +491,7 @@ export class CampsiteScene {
     this.fireLight.intensity = 1.6 + Math.sin(this.time * 5.0) * 0.28 + Math.sin(this.time * 8.3) * 0.16;
 
     const state = this.controls.getState();
-    this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2);
+    this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2, state.jump);
 
     const ap = this.avatar.group.position;
     this.camTarget.set(ap.x, 0.42, ap.z);

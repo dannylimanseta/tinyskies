@@ -97,23 +97,18 @@ const TITLES: Record<Vehicle, string> = {
   carpet: "Carpet",
 };
 
-/**
- * Desktop-only keyboard hints for the current vehicle. Hidden on narrow viewports.
- */
-export function mountControlHints(parent: HTMLElement, vehicle: Vehicle, desktop: boolean): void {
-  if (!desktop) return;
+function buildHints(parent: HTMLElement, ariaLabel: string, rows: Row[]): HTMLElement {
   injectStyles();
-
   const wrap = document.createElement("div");
   wrap.className = "control-hints";
-  wrap.setAttribute("aria-label", `Keyboard controls (${TITLES[vehicle]})`);
+  wrap.setAttribute("aria-label", ariaLabel);
 
   const title = document.createElement("div");
   title.className = "control-hints-title";
   title.textContent = "Controls";
   wrap.appendChild(title);
 
-  for (const row of rowsForVehicle(vehicle)) {
+  for (const row of rows) {
     const line = document.createElement("div");
     line.className = "control-hints-row";
 
@@ -135,4 +130,23 @@ export function mountControlHints(parent: HTMLElement, vehicle: Vehicle, desktop
   }
 
   parent.appendChild(wrap);
+  return wrap;
+}
+
+/** Desktop-only keyboard hints for the current vehicle. Returns the element. */
+export function mountControlHints(parent: HTMLElement, vehicle: Vehicle, desktop: boolean): HTMLElement | null {
+  if (!desktop) return null;
+  return buildHints(parent, `Keyboard controls (${TITLES[vehicle]})`, rowsForVehicle(vehicle));
+}
+
+/** Desktop-only keyboard hints for the campsite scene. Returns the element. */
+export function mountCampsiteControlHints(parent: HTMLElement, desktop: boolean): HTMLElement | null {
+  if (!desktop) return null;
+  const rows: Row[] = [
+    { keys: ["W", "A", "S", "D"], label: "Move" },
+    { keys: ["↑", "↓", "←", "→"], label: "Move" },
+    { keys: ["Space"], label: "Jump" },
+    { keys: ["F"], label: "Fly away" },
+  ];
+  return buildHints(parent, "Keyboard controls (Campsite)", rows);
 }

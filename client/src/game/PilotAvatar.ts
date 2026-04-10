@@ -66,6 +66,12 @@ export class PilotAvatar {
   private currentHeading = 0;
   private readonly scarfColor: number;
 
+  private isJumping    = false;
+  private jumpTime     = 0;
+  private landingSquash = 0;
+  private readonly JUMP_DUR = 0.58;
+  private readonly JUMP_H   = 0.55;  // pre-scale arc height
+
   constructor(scarfColor = 0xff4444) {
     this.scarfColor = scarfColor;
     this.group.add(this.pivot);
@@ -140,19 +146,6 @@ export class PilotAvatar {
     this.rightEye.position.set( 0.160, -0.06, HEAD_R * 0.90);
 
     this.headGroup.add(this.leftEye, this.rightEye);
-
-    /* single tiny white specular dot per eye — AC style ── */
-    const hlMat = new MeshPhongMaterial({
-      color: 0xffffff,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.9,
-    });
-    const hlGeo = new SphereGeometry(0.018, 5, 4);
-    for (const xOff of [-0.125, 0.190]) {
-      const hl = new Mesh(hlGeo, hlMat);
-      hl.position.set(xOff, 0.02, HEAD_R * 0.97);
-      this.headGroup.add(hl);
-    }
 
     /* ── NOSE — downward-pointing orange triangle ──────────────
      *  ConeGeometry(r, h, 3) = triangular pyramid, apex at +Y.
@@ -268,7 +261,7 @@ export class PilotAvatar {
 
   /* ── Update ──────────────────────────────────────────────────── */
 
-  update(dt: number, moveX: number, moveZ: number, bounds: number) {
+  update(dt: number, moveX: number, moveZ: number, bounds: number, jump = false) {
     const isMoving = Math.abs(moveX) > 0.01 || Math.abs(moveZ) > 0.01;
 
     if (isMoving) {
@@ -290,6 +283,46 @@ export class PilotAvatar {
       this.idleTime += dt;
       this.walkTime  = 0;
       this.animateIdle(dt);
+    }
+
+    /* trigger jump (only when not already airborne) */
+    if (jump && !this.isJumping) {
+      this.isJumping  = true;
+      this.jumpTime   = 0;
+    }
+
+    /* jump arc — owns pivot.position.y exclusively while airborne so the
+     * walk bob underneath can't shrink the visible height */
+    if (this.isJumping) {
+      this.jumpTime += dt;
+      const t = this.jumpTime / this.JUMP_DUR;
+      if (t >= 1) {
+        this.isJumping     = false;
+        this.jumpTime      = 0;
+        this.landingSquash = 1;
+      } else {
+        const arc = Math.sin(t * Math.PI);
+
+        /* override Y — consistent height whether walking or standing */
+        this.pivot.position.y = arc * this.JUMP_H;
+
+        /* front/back leg split: left kicks forward, right kicks back */
+        const split = arc * 0.70;
+        this.leftLeg.rotation.x  = -split;
+        this.rightLeg.rotation.x =  split;
+
+        /* arms counter-swing to match legs (opposite phase) */
+        const armFlight = arc * 0.40;
+        this.leftArm.rotation.x  =  armFlight;
+        this.rightArm.rotation.x = -armFlight;
+      }
+    }
+
+    /* landing squash — decays back to neutral */
+    this.landingSquash = Math.max(0, this.landingSquash - dt * 7);
+    if (this.landingSquash > 0) {
+      const sq = this.landingSquash;
+      this.bodyMesh.scale.set(1 + sq * 0.10, 1 - sq * 0.13, 1 + sq * 0.10);
     }
 
     this.animateScarf(isMoving);
@@ -317,8 +350,10 @@ export class PilotAvatar {
     /* Torso tilts in the direction of the sway */
     this.pivot.rotation.z = sw * 0.085;
 
-    /* Very small vertical hop — 2 hops per stride cycle via abs(sin) */
-    this.pivot.position.y = Math.abs(sw) * 0.018;
+    /* Vertical hop — skipped while airborne so jump owns Y exclusively */
+    if (!this.isJumping) {
+      this.pivot.position.y = Math.abs(sw) * 0.08;
+    }
 
     /* Head counter-tilts to stay roughly level */
     this.headGroup.position.y = HEAD_Y;
@@ -340,8 +375,9 @@ export class PilotAvatar {
   private animateIdle(dt: number) {
     const decay = Math.max(0, 1 - dt * 14);
     this.pivot.position.x *= decay;
-    this.pivot.position.y *= decay;
     this.pivot.rotation.z *= decay;
+    /* don't touch Y while airborne — jump owns it */
+    if (!this.isJumping) this.pivot.position.y *= decay;
 
     this.leftLeg.rotation.x  *= decay;
     this.rightLeg.rotation.x *= decay;

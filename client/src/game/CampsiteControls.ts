@@ -2,6 +2,7 @@ export interface CampsiteControlState {
   moveX: number;
   moveZ: number;
   takeOff: boolean;
+  jump: boolean;
 }
 
 const JOYSTICK_RADIUS = 56;
@@ -11,12 +12,15 @@ export class CampsiteControls {
   private keys = new Set<string>();
   private _enabled = true;
   private takeOffQueued = false;
+  private jumpQueued = false;
 
   /* ── Mobile touch overlay ──────────────────────────────── */
   private touchEl: HTMLDivElement | null = null;
   private joyBase: HTMLDivElement | null = null;
   private joyThumb: HTMLDivElement | null = null;
   private takeOffBtn: HTMLButtonElement | null = null;
+
+  private jumpBtn: HTMLButtonElement | null = null;
 
   private joyTouchId: number | null = null;
   private joyCenterX = 0;
@@ -42,7 +46,7 @@ export class CampsiteControls {
   }
 
   getState(): CampsiteControlState {
-    if (!this._enabled) return { moveX: 0, moveZ: 0, takeOff: false };
+    if (!this._enabled) return { moveX: 0, moveZ: 0, takeOff: false, jump: false };
 
     let moveX = 0;
     let moveZ = 0;
@@ -65,7 +69,9 @@ export class CampsiteControls {
 
     const takeOff = this.takeOffQueued;
     this.takeOffQueued = false;
-    return { moveX, moveZ, takeOff };
+    const jump = this.jumpQueued;
+    this.jumpQueued = false;
+    return { moveX, moveZ, takeOff, jump };
   }
 
   /* ── Keyboard ──────────────────────────────────────────── */
@@ -74,6 +80,7 @@ export class CampsiteControls {
     if (!this._enabled) return;
     const key = e.key.toLowerCase();
     if (key === "f" && !e.repeat) this.takeOffQueued = true;
+    if (e.key === " " && !e.repeat) { e.preventDefault(); this.jumpQueued = true; }
     this.keys.add(key);
   };
 
@@ -120,6 +127,24 @@ export class CampsiteControls {
     this.joyBase.appendChild(this.joyThumb);
     this.touchEl.appendChild(this.joyBase);
 
+    this.jumpBtn = document.createElement("button");
+    this.jumpBtn.textContent = "↑";
+    Object.assign(this.jumpBtn.style, {
+      position: "absolute",
+      bottom: "190px",
+      right: "40px",
+      width: "72px",
+      height: "72px",
+      borderRadius: "50%",
+      border: "2px solid rgba(255,255,255,0.4)",
+      background: "rgba(255,255,255,0.2)",
+      color: "#fff",
+      fontSize: "28px",
+      pointerEvents: "auto",
+      touchAction: "none",
+    } as CSSStyleDeclaration);
+    this.touchEl.appendChild(this.jumpBtn);
+
     this.takeOffBtn = document.createElement("button");
     this.takeOffBtn.textContent = "✈";
     Object.assign(this.takeOffBtn.style, {
@@ -142,6 +167,11 @@ export class CampsiteControls {
     this.joyBase.addEventListener("touchmove", this.onJoyMove, { passive: false });
     this.joyBase.addEventListener("touchend", this.onJoyEnd, { passive: false });
     this.joyBase.addEventListener("touchcancel", this.onJoyEnd, { passive: false });
+
+    this.jumpBtn.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      this.jumpQueued = true;
+    }, { passive: false });
 
     this.takeOffBtn.addEventListener("touchstart", (e) => {
       e.preventDefault();

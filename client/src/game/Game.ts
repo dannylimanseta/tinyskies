@@ -47,7 +47,7 @@ import { pickRandomVehicleColor } from "./vehicleColors";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
-import { mountControlHints } from "../ui/ControlHints";
+import { mountControlHints, mountCampsiteControlHints } from "../ui/ControlHints";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { FlockFormationHUD } from "../ui/FlockFormationHUD";
@@ -176,6 +176,8 @@ export class Game {
   private gamePhase: "flying" | "campsite" | "transitioning" = "flying";
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
+  private vehicleHintsEl: HTMLElement | null = null;
+  private campsiteHintsEl: HTMLElement | null = null;
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
 
@@ -646,7 +648,7 @@ export class Game {
     this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
     });
-    mountControlHints(this.hud.root, vehicle, !this.mobile);
+    this.vehicleHintsEl = mountControlHints(this.hud.root, vehicle, !this.mobile);
     this.hud.hideUI();
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
 
@@ -1267,6 +1269,14 @@ export class Game {
       this.dayNightCycle.getPreset(),
     );
 
+    /* Swap control hints to campsite layout */
+    if (this.vehicleHintsEl) this.vehicleHintsEl.style.display = "none";
+    if (!this.campsiteHintsEl) {
+      this.campsiteHintsEl = mountCampsiteControlHints(this.hud.root, !this.mobile);
+    } else {
+      this.campsiteHintsEl.style.display = "";
+    }
+
     /* Switch to campsite rendering before fade-in so the overlay reveals the camp scene,
        not an empty globe (which read as a second fade to black when zoomed in). */
     this.gamePhase = "campsite";
@@ -1282,6 +1292,10 @@ export class Game {
 
     this.campsiteScene.exit();
     this.localPlayer.group.visible = true;
+
+    /* Restore vehicle control hints */
+    if (this.campsiteHintsEl) this.campsiteHintsEl.style.display = "none";
+    if (this.vehicleHintsEl) this.vehicleHintsEl.style.display = "";
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.localPlayer.qPosition.copy(this.campsiteMarker.surfaceQuat);
