@@ -17,7 +17,10 @@ export class HUD {
   private landmarkHiddenByBubble = false;
   private landmarkHUD: { setHidden(h: boolean): void } | null = null;
   private onMuteToggle: (() => boolean) | null = null;
+  private onCampsiteClick: (() => void) | null = null;
+  private campsiteBtn!: HTMLButtonElement;
   private entranceDone = false;
+  private campsitePromptEl: HTMLDivElement | null = null;
 
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
@@ -43,18 +46,26 @@ export class HUD {
         <div class="hud-world-name"></div>
         <div class="hud-player-count">1 player</div>
       </div>
-      <button class="hud-mute-btn" aria-label="Toggle music">
-        <svg class="hud-mute-icon-on" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-        </svg>
-        <svg class="hud-mute-icon-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <line x1="23" y1="9" x2="17" y2="15"/>
-          <line x1="17" y1="9" x2="23" y2="15"/>
-        </svg>
-      </button>
+      <div class="hud-top-right">
+        <button class="hud-campsite-btn" aria-label="Go to campsite">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2 3 20h18Z"/>
+            <path d="M9 20v-6l3-2 3 2v6"/>
+          </svg>
+        </button>
+        <button class="hud-mute-btn" aria-label="Toggle music">
+          <svg class="hud-mute-icon-on" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+          <svg class="hud-mute-icon-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <line x1="23" y1="9" x2="17" y2="15"/>
+            <line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+        </button>
+      </div>
       <div class="hud-xp-panel">
         <span class="hud-xp-level">LVL 1</span>
         <div class="hud-xp-bar-row">
@@ -73,6 +84,11 @@ export class HUD {
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
     this.muteBtn = this.el.querySelector(".hud-mute-btn")!;
+    this.campsiteBtn = this.el.querySelector(".hud-campsite-btn")!;
+
+    this.campsiteBtn.addEventListener("click", () => {
+      this.onCampsiteClick?.();
+    });
 
     this.muteBtn.addEventListener("click", () => {
       if (!this.onMuteToggle) return;
@@ -176,8 +192,45 @@ export class HUD {
     setTimeout(() => el.remove(), 1600);
   }
 
+  showCampsitePrompt(visible: boolean) {
+    if (visible && !this.campsitePromptEl) {
+      this.campsitePromptEl = document.createElement("div");
+      Object.assign(this.campsitePromptEl.style, {
+        position: "absolute",
+        bottom: "20%",
+        left: "50%",
+        transform: "translateX(-50%)",
+        padding: "10px 24px",
+        background: "rgba(0,0,0,0.55)",
+        borderRadius: "12px",
+        color: "#fff",
+        fontFamily: "'Nunito', 'Quicksand', sans-serif",
+        fontSize: "15px",
+        fontWeight: "600",
+        letterSpacing: "0.5px",
+        pointerEvents: "none",
+        whiteSpace: "nowrap",
+        border: "1px solid rgba(255,200,100,0.3)",
+        textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+      } as CSSStyleDeclaration);
+      this.campsitePromptEl.textContent = "Press F to land at camp";
+      this.el.appendChild(this.campsitePromptEl);
+    } else if (!visible && this.campsitePromptEl) {
+      this.campsitePromptEl.remove();
+      this.campsitePromptEl = null;
+    }
+  }
+
   setMuteToggle(fn: () => boolean) {
     this.onMuteToggle = fn;
+  }
+
+  setCampsiteAction(fn: () => void) {
+    this.onCampsiteClick = fn;
+  }
+
+  setCampsiteButtonVisible(visible: boolean) {
+    this.campsiteBtn.style.display = visible ? "" : "none";
   }
 
   registerLandmarkHUD(lhud: { setHidden(h: boolean): void }) {
@@ -240,11 +293,18 @@ export class HUD {
         color: rgba(255, 255, 255, 0.45);
       }
 
-      .hud-mute-btn {
+      .hud-top-right {
         position: absolute;
         top: 20px;
         right: 24px;
         z-index: 1;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .hud-campsite-btn,
+      .hud-mute-btn {
         pointer-events: auto;
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -259,10 +319,12 @@ export class HUD {
         transition: background 0.2s, color 0.2s;
         padding: 0;
       }
+      .hud-campsite-btn:hover,
       .hud-mute-btn:hover {
         background: rgba(255, 255, 255, 0.15);
         color: rgba(255, 255, 255, 0.95);
       }
+      .hud-campsite-btn:active,
       .hud-mute-btn:active {
         background: rgba(255, 255, 255, 0.2);
       }
@@ -657,7 +719,7 @@ export class HUD {
         animation: hudEntranceInLeft 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         animation-delay: 0ms;
       }
-      #hud.hud--entrance .hud-mute-btn {
+      #hud.hud--entrance .hud-top-right {
         opacity: 0;
         animation: hudEntranceInRight 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         animation-delay: 0.05s;
@@ -678,9 +740,12 @@ export class HUD {
           top: max(12px, env(safe-area-inset-top));
           left: max(12px, env(safe-area-inset-left));
         }
-        .hud-mute-btn {
+        .hud-top-right {
           top: max(12px, env(safe-area-inset-top));
           right: max(12px, env(safe-area-inset-right));
+        }
+        .hud-campsite-btn,
+        .hud-mute-btn {
           width: 40px;
           height: 40px;
         }

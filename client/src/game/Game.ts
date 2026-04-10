@@ -59,6 +59,9 @@ import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
+import { CampsiteMarker } from "./CampsiteMarker";
+import { CampsiteScene } from "./CampsiteScene";
+import { TransitionOverlay } from "../ui/TransitionOverlay";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -169,6 +172,12 @@ export class Game {
   private balloonGreetSalt = 0;
   private balloonPosScratch = new Vector3();
   private localPlayerWorldScratch = new Vector3();
+
+  private gamePhase: "flying" | "campsite" | "transitioning" = "flying";
+  private campsiteMarker: CampsiteMarker | null = null;
+  private campsiteScene: CampsiteScene | null = null;
+  private transitionOverlay: TransitionOverlay | null = null;
+  private hullColor = 0xff4444;
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -451,6 +460,8 @@ export class Game {
       this.volcanoes.push(new Volcano(this.scene, globeRadius, seed, terrainType, vi));
     }
 
+    this.campsiteMarker = new CampsiteMarker(this.scene, globeRadius, seed, terrainType);
+
     window.addEventListener("resize", this.onPreviewResize);
   }
 
@@ -473,6 +484,7 @@ export class Game {
 
     this.globe.update(dt);
     for (const v of this.volcanoes) v.update(dt, _farQ, 999);
+    this.campsiteMarker?.update(dt);
     this.applyDayNightPreset();
     this.audioManager.update(dt);
     this.aurora?.update(dt, this.previewCamera);
@@ -503,6 +515,12 @@ export class Game {
     const spawnSessionSalt =
       (Date.now() ^ ((Math.random() * 0xffffffff) | 0) ^ (seed * 7919)) >>> 0;
     const hullColor = pickRandomVehicleColor(vehicle);
+    this.hullColor = hullColor;
+
+    const w2 = this.container.clientWidth;
+    const h2 = this.container.clientHeight;
+    this.campsiteScene = new CampsiteScene(w2 / h2, this.mobile, this.container);
+    this.transitionOverlay = new TransitionOverlay(this.container);
 
     if (vehicle === "boat") {
       this.localPlayer = new Boat(globeRadius, seed, terrainType, hullColor, spawnSessionSalt);
@@ -635,6 +653,9 @@ export class Game {
     this.hud = new HUD(this.container);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
     this.hud.setMuteToggle(() => this.audioManager.toggleMute());
+    this.hud.setCampsiteAction(() => {
+      if (this.gamePhase === "flying") this.doLanding();
+    });
     this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
     });
@@ -932,7 +953,22 @@ export class Game {
       return;
     }
 
-    const { turnRate, forward, brake, elevate, descend, barrelRoll } =
+    /* ── Campsite phase ────────────────────────────────── */
+    if (this.gamePhase === "campsite" && this.campsiteScene) {
+      const result = this.campsiteScene.update(dt);
+      this.applyDayNightPreset();
+      this.campsiteScene.updatePreset(this.dayNightCycle.getPreset());
+      this.audioManager.update(dt);
+      this.renderer.render(this.campsiteScene.scene, this.campsiteScene.camera);
+      if (result.takeOff) this.doTakeOff();
+      return;
+    }
+    if (this.gamePhase === "transitioning") {
+      this.renderer.render(this.scene, this.cameraRig.camera);
+      return;
+    }
+
+    const { turnRate, forward, brake, elevate, descend, barrelRoll, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll, descend);
 
@@ -1088,6 +1124,18 @@ export class Game {
       }
     }
 
+    /* ── Campsite landing detection ─────────────────────── */
+    this.campsiteMarker?.update(dt);
+    if (this.campsiteMarker) {
+      const nearCamp = this.campsiteMarker.isPlayerNear(
+        this.localPlayer.qPosition, this.localPlayer.altitude, globeRadius,
+      );
+      this.hud.showCampsitePrompt(nearCamp);
+      if (nearCamp && interact) {
+        this.doLanding();
+      }
+    }
+
     if (this.vehicleFlashTimer > 0) {
       this.vehicleFlashTimer -= dt;
       const intensity = Math.max(0, this.vehicleFlashTimer / 0.35);
@@ -1180,6 +1228,57 @@ export class Game {
     this.rainOverlay?.render(this.renderer);
   };
 
+  /* ── Campsite landing / takeoff ─────────────────────────────── */
+
+  private async doLanding() {
+    if (!this.transitionOverlay || !this.campsiteScene) return;
+    this.gamePhase = "transitioning";
+    this.hud.showCampsitePrompt(false);
+    this.hud.setCampsiteButtonVisible(false);
+    this.controls.enabled = false;
+    if (this.touchControls) this.touchControls.enabled = false;
+
+    await this.transitionOverlay.fadeOut();
+
+    this.localPlayer.group.visible = false;
+    const preset = this.dayNightCycle.getPreset();
+    this.campsiteScene.enter(this.playerVehicle, this.hullColor, preset);
+
+    await this.transitionOverlay.fadeIn();
+    this.gamePhase = "campsite";
+  }
+
+  private async doTakeOff() {
+    if (!this.transitionOverlay || !this.campsiteScene || !this.campsiteMarker) return;
+    this.gamePhase = "transitioning";
+
+    await this.transitionOverlay.fadeOut();
+
+    this.campsiteScene.exit();
+    this.localPlayer.group.visible = true;
+
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    this.localPlayer.qPosition.copy(this.campsiteMarker.surfaceQuat);
+    this.localPlayer.altitude = 0.4;
+    this.localPlayer.heading = 0;
+
+    this.cameraRig.snapTo(
+      this.localPlayer.qPosition,
+      this.localPlayer.heading,
+      this.localPlayer.altitude,
+      globeRadius,
+      this.vehicleFeatures.cameraFollowDistance,
+      this.vehicleFeatures.cameraFollowHeight,
+    );
+
+    this.controls.enabled = true;
+    if (this.touchControls) this.touchControls.enabled = true;
+
+    await this.transitionOverlay.fadeIn();
+    this.gamePhase = "flying";
+    this.hud.setCampsiteButtonVisible(true);
+  }
+
   /* ── Resize ──────────────────────────────────────────────────────── */
 
   private onResize = () => {
@@ -1187,6 +1286,7 @@ export class Game {
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
     this.cameraRig.resize(w / h);
+    this.campsiteScene?.resize(w / h);
   };
 
   /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -1358,6 +1458,9 @@ export class Game {
     this.fireflyClusters = [];
     for (const v of this.volcanoes) v.dispose();
     this.volcanoes = [];
+    this.campsiteMarker?.dispose();
+    this.campsiteScene?.dispose();
+    this.transitionOverlay?.dispose();
     this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
     this.stateSync?.stop();

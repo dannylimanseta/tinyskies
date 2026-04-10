@@ -7,12 +7,14 @@ export interface ControlState {
   elevate: boolean;
   descend: boolean;
   barrelRoll: boolean;
+  interact: boolean;
 }
 
 export class FlightControls {
   private keys = new Set<string>();
   private _enabled = true;
   private barrelRollQueued = false;
+  private interactQueued = false;
 
   constructor(element: HTMLElement) {
     window.addEventListener("keydown", this.onKeyDown);
@@ -31,7 +33,7 @@ export class FlightControls {
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false };
+      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false, interact: false };
     }
 
     let turnRate = 0;
@@ -45,8 +47,10 @@ export class FlightControls {
     const descend = this.keys.has("s");
     const barrelRoll = this.barrelRollQueued;
     this.barrelRollQueued = false;
+    const interact = this.interactQueued;
+    this.interactQueued = false;
 
-    return { turnRate, forward, brake, elevate, descend, barrelRoll };
+    return { turnRate, forward, brake, elevate, descend, barrelRoll, interact };
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -54,6 +58,9 @@ export class FlightControls {
     const key = e.key.toLowerCase();
     if (key === "e" && !e.repeat) {
       this.barrelRollQueued = true;
+    }
+    if (key === "f" && !e.repeat) {
+      this.interactQueued = true;
     }
     this.keys.add(key);
   };

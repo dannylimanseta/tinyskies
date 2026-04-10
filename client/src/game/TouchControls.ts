@@ -105,7 +105,7 @@ export class TouchControls {
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false };
+      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false, interact: false };
     }
 
     const nx = JOYSTICK_RADIUS > 0 ? this.joyDx / JOYSTICK_RADIUS : 0;
@@ -124,7 +124,7 @@ export class TouchControls {
       this.actionQueued = false;
     }
 
-    return { turnRate, forward, brake, elevate, descend, barrelRoll };
+    return { turnRate, forward, brake, elevate, descend, barrelRoll, interact: false };
   }
 
   /* ── Joystick touch handling ─────────────────────────────── */
