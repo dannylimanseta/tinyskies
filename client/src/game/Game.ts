@@ -62,6 +62,7 @@ import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
+import { getSkyPreset } from "./SkyPresets";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -189,6 +190,7 @@ export class Game {
   private vehicleFeatures!: VehicleGameFeatures;
 
   private introActive = false;
+  private pendingCampsiteAfterIntro = false;
   private introTimer = 0;
   private vehicleFlashTimer = 0;
   private lastDiamondCollectAt = 0;
@@ -276,7 +278,8 @@ export class Game {
       playerName: this.playerName,
       mobile: this.mobile,
       onNameChange: (name) => { this.playerName = name; },
-      onPlay: (vehicle) => {
+      onPlay: (vehicle, options) => {
+        this.pendingCampsiteAfterIntro = options?.startAtCampsite ?? false;
         this.playerVehicle = vehicle;
         this.audioManager.startMusic();
         void this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3").then(() => {
@@ -949,6 +952,10 @@ export class Game {
           this.vehicleFeatures.cameraFollowHeight,
         );
         this.hud.show();
+        if (this.pendingCampsiteAfterIntro) {
+          this.pendingCampsiteAfterIntro = false;
+          void this.doLanding();
+        }
       }
       return;
     }
@@ -957,7 +964,8 @@ export class Game {
     if (this.gamePhase === "campsite" && this.campsiteScene) {
       const result = this.campsiteScene.update(dt);
       this.applyDayNightPreset();
-      this.campsiteScene.updatePreset(this.dayNightCycle.getPreset());
+      /* Campsite: lock to day preset while tuning colors (globe still uses full cycle). */
+      this.campsiteScene.updatePreset(getSkyPreset("day"));
       this.audioManager.update(dt);
       this.renderer.render(this.campsiteScene.scene, this.campsiteScene.camera);
       if (result.takeOff) this.doTakeOff();
@@ -1241,8 +1249,11 @@ export class Game {
     await this.transitionOverlay.fadeOut();
 
     this.localPlayer.group.visible = false;
-    const preset = this.dayNightCycle.getPreset();
-    this.campsiteScene.enter(this.playerVehicle, this.hullColor, preset);
+    this.campsiteScene.enter(
+      this.playerVehicle,
+      this.hullColor,
+      getSkyPreset("day"),
+    );
 
     await this.transitionOverlay.fadeIn();
     this.gamePhase = "campsite";

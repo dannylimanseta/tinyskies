@@ -24,10 +24,14 @@ export function generateWhimsicalName(): string {
 
 /* ── Lobby ─────────────────────────────────────────────────────────── */
 
+export interface PlayOptions {
+  startAtCampsite?: boolean;
+}
+
 interface LobbyOptions {
   playerName: string;
   mobile?: boolean;
-  onPlay: (vehicle: Vehicle) => void;
+  onPlay: (vehicle: Vehicle, options?: PlayOptions) => void;
   onNameChange?: (name: string) => void;
 }
 
@@ -78,6 +82,12 @@ export class Lobby {
               <span class="lobby-vlabel">Carpet</span>
             </button>
           </div>
+          <button type="button" class="lobby-camp" id="btn-camp" aria-label="Start at campsite">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2 3 20h18Z"/>
+              <path d="M9 20v-6l3-2 3 2v6"/>
+            </svg>
+          </button>
           <button type="button" class="lobby-fly" id="btn-fly">GO</button>
         </div>
       </div>
@@ -144,9 +154,22 @@ export class Lobby {
       });
     }
 
-    this.el.querySelector("#btn-fly")!.addEventListener("click", () => {
-      const btn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
-      btn.disabled = true;
+    const flyBtn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
+    const campBtn = this.el.querySelector("#btn-camp") as HTMLButtonElement;
+
+    const lockLobbyButtons = () => {
+      flyBtn.disabled = true;
+      campBtn.disabled = true;
+    };
+
+    campBtn.addEventListener("click", () => {
+      lockLobbyButtons();
+      Lobby.requestFullscreen();
+      this.options.onPlay(this.selectedVehicle, { startAtCampsite: true });
+    });
+
+    flyBtn.addEventListener("click", () => {
+      lockLobbyButtons();
       Lobby.requestFullscreen();
       this.options.onPlay(this.selectedVehicle);
     });
@@ -333,6 +356,34 @@ export class Lobby {
         letter-spacing: 0.03em;
       }
 
+      /* ── Campsite (tent) ───────────────────────────── */
+      .lobby-camp {
+        align-self: stretch;
+        flex-shrink: 0;
+        width: 48px;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.95);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s, transform 0.15s, border-color 0.2s;
+      }
+      .lobby-camp:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.35);
+      }
+      .lobby-camp:active:not(:disabled) {
+        transform: scale(0.96);
+      }
+      .lobby-camp:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
       /* ── FLY Button ─────────────────────────────────── */
       .lobby-fly {
         align-self: stretch;
@@ -380,6 +431,7 @@ export class Lobby {
         .lobby-vicon svg { width: 22px; height: 22px; }
         .lobby-vlabel { font-size: 0.75rem; }
         .lobby-fly { padding: 0 20px; font-size: 0.9rem; min-height: 44px; }
+        .lobby-camp { width: 44px; min-height: 44px; min-width: 44px; }
       }
     `;
     document.head.appendChild(style);

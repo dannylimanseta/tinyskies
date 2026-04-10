@@ -6,12 +6,14 @@ import {
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
+  Fog,
   Float32BufferAttribute,
   Group,
   HemisphereLight,
   InstancedMesh,
   LatheGeometry,
   Mesh,
+  MeshLambertMaterial,
   MeshPhongMaterial,
   Object3D,
   PerspectiveCamera,
@@ -25,25 +27,29 @@ import {
   Vector3,
   BufferGeometry,
   Points,
+  MathUtils,
 } from "three";
-import type { SkyPreset } from "./SkyPresets";
+import { getSkyPreset, type SkyPreset } from "./SkyPresets";
 import type { Vehicle } from "@globefly/shared";
 import { createBiplane } from "./BiplaneMesh";
 import { createBoat } from "./BoatMesh";
 import { createCarpet } from "./CarpetMesh";
 import { PilotAvatar } from "./PilotAvatar";
 import { CampsiteControls, type CampsiteControlState } from "./CampsiteControls";
+import { addRimLight } from "./RimLight";
 
 const CAMP_SIZE = 50;
 const CAMP_HALF = CAMP_SIZE / 2;
-const CAM_HEIGHT = 11;
-const CAM_BACK = 9;
+const CAM_HEIGHT = 9.1;
+const CAM_BACK = 8.2;
 const CAM_LERP = 4;
 const GRASS_COUNT = 360000;
+const GRASS_CLUSTER_COUNT = 5200;
+const FIRE_EXCLUSION_R2 = 0.64;
 const BLADE_H = 0.3;
 
-const TREE_RING_INNER = 10;
-const TREE_RING_OUTER = 22;
+const TREE_RING_INNER = 9;
+const TREE_RING_OUTER = 24;
 
 /* ── Flame billboard shaders ─────────────────────────────── */
 
@@ -120,6 +126,9 @@ attribute vec3 color;
 varying vec3 vColor;
 varying float vHeight;
 varying float vFaceSun;
+varying vec3 vWorldPos;
+varying vec3 vViewPosition;
+varying vec3 vNormal;
 
 void main() {
   vColor = color;
@@ -152,10 +161,18 @@ void main() {
   ));
   vFaceSun = max(0.0, dot(bent, uSunDir));
 
+  vNormal = normalize(normalMatrix * normal);
+
   #ifdef USE_INSTANCING
-    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+    vec4 mvPos = modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+    vViewPosition = mvPos.xyz;
+    vWorldPos = (instanceMatrix * vec4(pos, 1.0)).xyz;
+    gl_Position = projectionMatrix * mvPos;
   #else
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    vec4 mvPos2 = modelViewMatrix * vec4(pos, 1.0);
+    vViewPosition = mvPos2.xyz;
+    vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+    gl_Position = projectionMatrix * mvPos2;
   #endif
 }
 `;
@@ -165,22 +182,43 @@ uniform vec3 uSunColor;
 uniform float uSunIntensity;
 uniform vec3 uAmbientColor;
 uniform float uAmbientIntensity;
+uniform vec3 uHemiSkyColor;
+uniform vec3 uHemiGroundColor;
+uniform float uHemiIntensity;
+uniform float uCampHalf;
+uniform vec3 uRimColor;
+uniform float uRimIntensity;
+uniform float uRimPower;
 
 varying vec3 vColor;
 varying float vHeight;
 varying float vFaceSun;
+varying vec3 vWorldPos;
+varying vec3 vViewPosition;
+varying vec3 vNormal;
 
 void main() {
-  float ao = 0.6 + 0.4 * vHeight;
+  float ao = 1.0;
+
+  float skyMix = clamp(vHeight * 0.62 + 0.18, 0.0, 1.0);
+  vec3 hemi = mix(uHemiGroundColor, uHemiSkyColor, skyMix) * uHemiIntensity;
 
   vec3 ambient = uAmbientColor * uAmbientIntensity;
   vec3 sun = uSunColor * uSunIntensity * vFaceSun;
-  vec3 lighting = ambient + sun * 0.5;
-  lighting = clamp(lighting, 0.08, 1.2);
+  vec3 lighting = ambient * 0.55 + hemi * 0.42 + sun * 0.52;
+  lighting = clamp(lighting, 0.06, 1.35);
 
   vec3 col = vColor * ao * lighting;
 
-  float alpha = smoothstep(0.0, 0.35, vHeight);
+  vec3 rimViewDir = normalize(vViewPosition);
+  vec3 rimN = normalize(vNormal);
+  float rimFresnel = 1.0 - abs(dot(rimViewDir, rimN));
+  col += uRimColor * uRimIntensity * pow(rimFresnel, uRimPower);
+
+  float alpha = smoothstep(0.0, 0.55, vHeight);
+  float radial = length(vWorldPos.xz) / max(uCampHalf, 0.001);
+  float edgeFade = 1.0 - smoothstep(0.68, 0.98, radial);
+  alpha *= edgeFade;
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -197,10 +235,22 @@ export class CampsiteScene {
   private hemiLight: HemisphereLight;
   private ambientLight: AmbientLight;
   private sunLight: DirectionalLight;
+  /** Key / fill / rim rig aligned with main globe preview (`Game.initPreview`). */
+  private fillLight: DirectionalLight;
+  private backLight: DirectionalLight;
+  private sun2Light: DirectionalLight;
+  private fill2Light: DirectionalLight;
+
+  private groundMat: MeshLambertMaterial;
+
+  private readonly lightingColorA = new Color();
+  private readonly lightingColorB = new Color();
 
   private flameMat: ShaderMaterial;
   private emberMat: ShaderMaterial;
   private grassWindTime = { value: 0 };
+  /** Shared clock for campsite canopy sway (vertex shader). */
+  private treeSwayTime = { value: 0 };
   private time = 0;
 
   private camTarget = new Vector3();
@@ -210,17 +260,25 @@ export class CampsiteScene {
   private skyTexture: CanvasTexture;
 
   private groundGeo: PlaneGeometry;
+  private groundMesh: Mesh;
   private groundAlphaMap: CanvasTexture;
   private grassShaderMat: ShaderMaterial | null = null;
+
+  private mobile: boolean;
+
+  /** Shared rim tint for Phong meshes + grass; synced from `SkyPreset.rimColor`. */
+  private rimLightColor = new Color(0xffeebb);
+  private rimMaterialsDone = new WeakSet<MeshPhongMaterial>();
 
   constructor(
     aspect: number,
     mobile: boolean,
     container: HTMLElement,
   ) {
+    this.mobile = mobile;
     this.camera = new PerspectiveCamera(55, aspect, 0.1, 100);
     this.camera.position.copy(this.camPos);
-    this.camera.lookAt(0, 0.5, 0);
+    this.camera.lookAt(0, 0.4, 0);
 
     this.controls = new CampsiteControls(container, mobile);
     this.controls.enabled = false;
@@ -235,16 +293,19 @@ export class CampsiteScene {
     this.displaceGround();
     this.colorGround();
     this.groundAlphaMap = createRadialAlphaMap();
-    const groundMat = new MeshPhongMaterial({
+    this.groundMat = new MeshLambertMaterial({
       vertexColors: true,
       flatShading: true,
       transparent: true,
       alphaMap: this.groundAlphaMap,
       depthWrite: false,
+      /* Yellow–green turf tint; vertex colors add variation. Tuned in `updateLighting`. */
+      color: 0x92b882,
     });
-    const ground = new Mesh(this.groundGeo, groundMat);
-    ground.renderOrder = -1;
-    this.scene.add(ground);
+    this.patchGroundFlattenLighting();
+    this.groundMesh = new Mesh(this.groundGeo, this.groundMat);
+    this.groundMesh.renderOrder = -1;
+    this.scene.add(this.groundMesh);
 
     /* ── Sitting log ─────────────────────────────────── */
     this.addSittingLog();
@@ -263,7 +324,7 @@ export class CampsiteScene {
     this.skyTexture.colorSpace = SRGBColorSpace;
     this.scene.background = this.skyTexture;
 
-    /* ── Lighting ────────────────────────────────────── */
+    /* ── Lighting (three-point + hemisphere, matches globe rig) ── */
     this.hemiLight = new HemisphereLight(0x80ccdd, 0x337755, 0.6);
     this.scene.add(this.hemiLight);
 
@@ -272,7 +333,40 @@ export class CampsiteScene {
 
     this.sunLight = new DirectionalLight(0xfff4e6, 1.0);
     this.sunLight.position.set(5, 10, 3);
+    this.sunLight.castShadow = true;
+    {
+      const shadowRes = mobile ? 1024 : 2048;
+      this.sunLight.shadow.mapSize.set(shadowRes, shadowRes);
+      this.sunLight.shadow.camera.near = 0.5;
+      this.sunLight.shadow.camera.far = 90;
+      const span = CAMP_HALF + 8;
+      this.sunLight.shadow.camera.left = -span;
+      this.sunLight.shadow.camera.right = span;
+      this.sunLight.shadow.camera.top = span;
+      this.sunLight.shadow.camera.bottom = -span;
+      this.sunLight.shadow.bias = -0.00045;
+      this.sunLight.shadow.normalBias = 0.028;
+      this.sunLight.shadow.radius = 2.2;
+    }
     this.scene.add(this.sunLight);
+
+    this.fillLight = new DirectionalLight(0x90bbcc, 0.5);
+    this.fillLight.position.set(-8, -5, -10);
+    this.scene.add(this.fillLight);
+
+    this.backLight = new DirectionalLight(0xaaddee, 0.4);
+    this.backLight.position.set(-3, 10, -6);
+    this.scene.add(this.backLight);
+
+    this.sun2Light = new DirectionalLight(0xfff0d0, 0.4);
+    this.sun2Light.position.set(-10, -12, -5);
+    this.scene.add(this.sun2Light);
+
+    this.fill2Light = new DirectionalLight(0x90bbcc, 0.35);
+    this.fill2Light.position.set(8, -8, -10);
+    this.scene.add(this.fill2Light);
+
+    this.scene.fog = new Fog(0x60ccde, 15, 40);
 
     /* ── Campfire ────────────────────────────────────── */
     const fireGroup = buildCampfire();
@@ -326,6 +420,11 @@ export class CampsiteScene {
     const emberPoints = new Points(emberGeo, this.emberMat);
     emberPoints.frustumCulled = false;
     this.scene.add(emberPoints);
+
+    this.configureShadowMeshes();
+
+    this.applyRimToCampsiteMeshes();
+    this.updateLighting(getSkyPreset("day"));
   }
 
   /* ── Scene lifecycle ───────────────────────────────────── */
@@ -368,6 +467,7 @@ export class CampsiteScene {
     this.flameMat.uniforms.uTime.value = this.time;
     this.emberMat.uniforms.uTime.value = this.time;
     this.grassWindTime.value = this.time;
+    this.treeSwayTime.value = this.time;
 
     this.fireLight.intensity = 2.5 + Math.sin(this.time * 5) * 0.5 + Math.sin(this.time * 8.3) * 0.3;
 
@@ -375,7 +475,7 @@ export class CampsiteScene {
     this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2);
 
     const ap = this.avatar.group.position;
-    this.camTarget.set(ap.x, 0.5, ap.z);
+    this.camTarget.set(ap.x, 0.42, ap.z);
     const desiredCam = new Vector3(
       ap.x,
       CAM_HEIGHT,
@@ -406,6 +506,7 @@ export class CampsiteScene {
     this.grassShaderMat?.dispose();
     this.groundGeo.dispose();
     this.groundAlphaMap.dispose();
+    this.scene.fog = null;
     this.scene.traverse((child) => {
       if (child instanceof Mesh || child instanceof InstancedMesh) {
         child.geometry?.dispose();
@@ -426,31 +527,56 @@ export class CampsiteScene {
       const z = posAttr.getZ(i);
       const dist = Math.sqrt(x * x + z * z);
       const radial = dist / CAMP_HALF;
-      const noise = Math.sin(x * 2.3 + z * 1.7) * 0.03
-        + Math.cos(x * 1.1 - z * 3.1) * 0.02
-        + Math.sin(x * 4.5 - z * 0.7) * 0.015;
+      const noise = Math.sin(x * 2.3 + z * 1.7) * 0.025
+        + Math.cos(x * 1.1 - z * 3.1) * 0.018
+        + Math.sin(x * 4.5 - z * 0.7) * 0.012;
       const rim = Math.max(0, (radial - 0.5) / 0.5);
       const campfireBlend = Math.max(0, 1 - dist / 1.5);
 
-      let r = 0.28 + noise;
-      let g = 0.52 + noise * 1.5;
-      let b = 0.18 + noise * 0.5;
+      /* Warm yellow–green turf (slightly higher R vs pure green). */
+      let r = 0.23 + noise * 0.48;
+      let g = 0.54 + noise * 0.86;
+      let b = 0.13 + noise * 0.33;
 
-      r = r * (1 - rim * 0.3) * (1 - campfireBlend * 0.25);
-      g = g * (1 - rim * 0.2) * (1 - campfireBlend * 0.2);
-      b = b * (1 - rim * 0.3) * (1 - campfireBlend * 0.2);
+      r *= 1 - rim * 0.14;
+      g *= 1 - rim * 0.1;
+      b *= 1 - rim * 0.14;
+      r *= 1 - campfireBlend * 0.14;
+      g *= 1 - campfireBlend * 0.12;
+      b *= 1 - campfireBlend * 0.14;
 
       const pathBlend = Math.max(0, 1 - Math.abs(z - 0.6) / 0.6)
         * Math.max(0, 1 - Math.abs(x + 1.8) / 1.8);
-      r += pathBlend * 0.08;
-      g -= pathBlend * 0.04;
-      b -= pathBlend * 0.02;
+      r += pathBlend * 0.012;
+      g -= pathBlend * 0.01;
+      b += pathBlend * 0.006;
 
-      colors[i * 3] = Math.max(0, Math.min(1, r));
-      colors[i * 3 + 1] = Math.max(0, Math.min(1, g));
-      colors[i * 3 + 2] = Math.max(0, Math.min(1, b));
+      const darken = 0.99;
+      colors[i * 3] = Math.max(0, Math.min(1, r * darken));
+      colors[i * 3 + 1] = Math.max(0, Math.min(1, g * darken));
+      colors[i * 3 + 2] = Math.max(0, Math.min(1, b * darken));
     }
     this.groundGeo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  }
+
+  /**
+   * Lambert is already matte (no specular). This further damps directional contrast by
+   * blending the lit output toward the vertex albedo so the pad doesn’t blow out pale.
+   */
+  private patchGroundFlattenLighting() {
+    const mat = this.groundMat;
+    mat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <dithering_fragment>",
+        `vec3 _alb = diffuseColor.rgb;
+#ifdef USE_COLOR
+  _alb *= vColor;
+#endif
+gl_FragColor.rgb = mix(_alb, gl_FragColor.rgb, 0.68);
+#include <dithering_fragment>`,
+      );
+    };
+    mat.needsUpdate = true;
   }
 
   private displaceGround() {
@@ -479,23 +605,32 @@ export class CampsiteScene {
     bladeGeo.translate(0, BLADE_H / 2, 0);
 
     const posAttr = bladeGeo.getAttribute("position");
+    const TIP_START = 0.58;
     for (let i = 0; i < posAttr.count; i++) {
       const y = posAttr.getY(i);
       const t = y / BLADE_H;
-      const roundedTaper = Math.cos(t * Math.PI * 0.5);
-      posAttr.setX(i, posAttr.getX(i) * Math.max(0.05, roundedTaper));
+      let width: number;
+      if (t <= TIP_START) {
+        width = Math.cos(t * Math.PI * 0.5);
+      } else {
+        const u = (t - TIP_START) / (1 - TIP_START);
+        const wBase = Math.cos(TIP_START * Math.PI * 0.5);
+        width = wBase * Math.cos(u * Math.PI * 0.5);
+      }
+      posAttr.setX(i, posAttr.getX(i) * Math.max(0.04, width));
     }
     posAttr.needsUpdate = true;
     bladeGeo.computeVertexNormals();
 
     const bladeColors = new Float32Array(posAttr.count * 3);
+    /* Darker than before; hue aligned with `colorGround()` mid turf (~0.23 / 0.54 / 0.13). */
+    const br = 0.27;
+    const bg = 0.5;
+    const bb = 0.12;
     for (let i = 0; i < posAttr.count; i++) {
-      const y = posAttr.getY(i);
-      const t = y / BLADE_H;
-      const tipBlend = Math.max(0, Math.min(1, (t - 0.5) / 0.3));
-      bladeColors[i * 3] = 0.52 + tipBlend * 0.15;
-      bladeColors[i * 3 + 1] = 0.78 + tipBlend * 0.14;
-      bladeColors[i * 3 + 2] = 0.34 + tipBlend * 0.12;
+      bladeColors[i * 3] = br;
+      bladeColors[i * 3 + 1] = bg;
+      bladeColors[i * 3 + 2] = bb;
     }
     bladeGeo.setAttribute("color", new Float32BufferAttribute(bladeColors, 3));
 
@@ -509,6 +644,13 @@ export class CampsiteScene {
         uSunIntensity: { value: 1.0 },
         uAmbientColor: { value: new Vector3(1.0, 1.0, 1.0) },
         uAmbientIntensity: { value: 0.3 },
+        uHemiSkyColor: { value: new Vector3(0.5, 0.8, 0.86) },
+        uHemiGroundColor: { value: new Vector3(0.4, 0.66, 0.27) },
+        uHemiIntensity: { value: 1.25 },
+        uCampHalf: { value: CAMP_HALF },
+        uRimColor: { value: this.rimLightColor },
+        uRimIntensity: { value: 0.28 },
+        uRimPower: { value: 3.0 },
       },
       side: DoubleSide,
       transparent: true,
@@ -517,27 +659,78 @@ export class CampsiteScene {
 
     const grassMesh = new InstancedMesh(bladeGeo, this.grassShaderMat, GRASS_COUNT);
     const dummy = new Object3D();
-    let placed = 0;
 
-    while (placed < GRASS_COUNT) {
+    const maxR = CAMP_HALF - 1.0;
+    const maxR2 = maxR * maxR;
+
+    const clusters: { cx: number; cz: number; rad: number }[] = [];
+    let clusterAttempts = 0;
+    while (clusters.length < GRASS_CLUSTER_COUNT && clusterAttempts < 120000) {
+      clusterAttempts++;
       const angle = Math.random() * Math.PI * 2;
-      const maxR = CAMP_HALF - 1.0;
-      const r = Math.sqrt(Math.random()) * maxR;
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
+      const rr = Math.sqrt(Math.random()) * maxR;
+      const cx = Math.cos(angle) * rr;
+      const cz = Math.sin(angle) * rr;
+      const d2 = cx * cx + cz * cz;
+      if (d2 < FIRE_EXCLUSION_R2) continue;
+      const dist = Math.sqrt(d2);
+      const radial = dist / CAMP_HALF;
+      const clusterEdgeFade = 1.0 - Math.max(0, Math.min(1, (radial - 0.62) / 0.34));
+      if (Math.random() > 0.15 + clusterEdgeFade * 0.85) continue;
+      clusters.push({
+        cx,
+        cz,
+        rad: 0.18 + Math.random() * 0.42,
+      });
+    }
+    while (clusters.length < GRASS_CLUSTER_COUNT) {
+      const angle = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * maxR;
+      const cx = Math.cos(angle) * rr;
+      const cz = Math.sin(angle) * rr;
+      if (cx * cx + cz * cz < FIRE_EXCLUSION_R2) continue;
+      clusters.push({
+        cx,
+        cz,
+        rad: 0.18 + Math.random() * 0.42,
+      });
+    }
 
-      if (x * x + z * z < 0.64) continue;
+    const n = clusters.length;
+    const basePer = Math.floor(GRASS_COUNT / n);
+    const extra = GRASS_COUNT % n;
 
-      dummy.position.set(x, 0, z);
-      dummy.rotation.set(0, Math.random() * Math.PI, 0);
-      dummy.scale.set(
-        0.8 + Math.random() * 0.7,
-        0.6 + Math.random() * 0.8,
-        1,
-      );
-      dummy.updateMatrix();
-      grassMesh.setMatrixAt(placed, dummy.matrix);
-      placed++;
+    let placed = 0;
+    for (let ci = 0; ci < n; ci++) {
+      const c = clusters[ci]!;
+      const count = basePer + (ci < extra ? 1 : 0);
+      for (let k = 0; k < count; k++) {
+        let x = c.cx;
+        let z = c.cz;
+        for (let attempt = 0; attempt < 14; attempt++) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = c.rad * Math.sqrt(Math.random());
+          x = c.cx + Math.cos(a) * rr;
+          z = c.cz + Math.sin(a) * rr;
+          const d2 = x * x + z * z;
+          if (d2 >= FIRE_EXCLUSION_R2 && d2 <= maxR2) break;
+        }
+
+        const dx = x - c.cx;
+        const dz = z - c.cz;
+        const distInCluster = Math.sqrt(dx * dx + dz * dz);
+        const edgeT = Math.min(1, distInCluster / Math.max(0.001, c.rad));
+        const clusterShrink = 1.0 - 0.58 * Math.pow(edgeT, 1.2);
+
+        dummy.position.set(x, 0, z);
+        dummy.rotation.set(0, Math.random() * Math.PI, 0);
+        const sx = (0.8 + Math.random() * 0.7) * clusterShrink;
+        const sy = (0.6 + Math.random() * 0.8) * clusterShrink;
+        dummy.scale.set(sx, sy, 1);
+        dummy.updateMatrix();
+        grassMesh.setMatrixAt(placed, dummy.matrix);
+        placed++;
+      }
     }
     grassMesh.instanceMatrix.needsUpdate = true;
     grassMesh.frustumCulled = false;
@@ -563,18 +756,20 @@ export class CampsiteScene {
     this.scene.add(stump2);
   }
 
+  /**
+   * Ring of teardrop canopies only (no trunks) — **not** shared with the globe.
+   * Sway is applied in `attachCampsiteTreeSway` after rim compile.
+   */
   private addTrees() {
     const treeGeo = createTeardropGeo(1, 1);
-    const trunkGeo = new CylinderGeometry(0.06, 0.09, 1, 5);
-    const trunkMat = new MeshPhongMaterial({ color: 0x6b4226, flatShading: true });
-    const leafShades = [0x4a9a3a, 0x55a545, 0x48953a, 0x3a8a2a, 0x2d6b1e];
+    const leafShades = [0x449a3e, 0x4fa84a, 0x429038, 0x368a32, 0x2a7020];
 
-    const TREE_COUNT = 65;
+    const TREE_COUNT = 175;
     const placed: { x: number; z: number }[] = [];
-    const MIN_SPACING = 2.0;
+    const MIN_SPACING = 1.38;
     let attempts = 0;
 
-    while (placed.length < TREE_COUNT && attempts < 2000) {
+    while (placed.length < TREE_COUNT && attempts < 9000) {
       attempts++;
       const angle = Math.random() * Math.PI * 2;
       const r = TREE_RING_INNER + Math.random() * (TREE_RING_OUTER - TREE_RING_INNER);
@@ -594,13 +789,7 @@ export class CampsiteScene {
 
       placed.push({ x, z });
 
-      const scale = 1.2 + Math.random() * 1.0;
-      const trunkH = scale * 1.1;
-
-      const trunk = new Mesh(trunkGeo, trunkMat);
-      trunk.position.set(x, trunkH * 0.45, z);
-      trunk.scale.set(scale * 0.7, trunkH, scale * 0.7);
-      this.scene.add(trunk);
+      const scale = (1.2 + Math.random() * 1.0) * 0.7;
 
       const shade = leafShades[Math.floor(Math.random() * leafShades.length)]!;
       const leafMat = new MeshPhongMaterial({
@@ -608,14 +797,43 @@ export class CampsiteScene {
         vertexColors: true,
         flatShading: true,
       });
+      leafMat.userData.campsiteTreeSway = true;
 
       const canopy = new Mesh(treeGeo, leafMat);
-      canopy.position.set(x, trunkH * 0.65, z);
+      canopy.position.set(x, 0.02, z);
       const canopyScale = scale * 0.8;
       canopy.scale.set(canopyScale, scale * 2.0, canopyScale);
       canopy.rotation.y = Math.random() * Math.PI * 2;
       this.scene.add(canopy);
     }
+  }
+
+  /** Gentle wind sway on Phong canopies; must run after `addRimLight` on the same material. */
+  private attachCampsiteTreeSway(mat: MeshPhongMaterial) {
+    const rimCompile = mat.onBeforeCompile!.bind(mat);
+    mat.onBeforeCompile = (shader, renderer) => {
+      rimCompile(shader, renderer);
+      if (shader.vertexShader.includes("campsite_tree_sway")) return;
+      shader.uniforms.swayTime = this.treeSwayTime;
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+uniform float swayTime;
+// campsite_tree_sway`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+float swayHeight = position.y;
+vec4 wp = modelMatrix * vec4(position, 1.0);
+float swayPhase = wp.x * 2.4 + wp.z * 2.1;
+float sway = sin(swayTime * 1.25 + swayPhase) * 0.088 * swayHeight * swayHeight;
+float sway2 = cos(swayTime * 0.9 + swayPhase * 0.72) * 0.07 * swayHeight * swayHeight;
+transformed.x += sway;
+transformed.z += sway2;`,
+      );
+    };
+    mat.needsUpdate = true;
   }
 
   private updateSky(preset: SkyPreset) {
@@ -637,20 +855,128 @@ export class CampsiteScene {
     this.hemiLight.intensity = preset.hemiIntensity;
 
     this.ambientLight.color.set(preset.ambientColor);
-    this.ambientLight.intensity = preset.ambientIntensity;
+    this.ambientLight.intensity = preset.ambientIntensity * 0.88;
 
     this.sunLight.color.set(preset.sunColor);
     this.sunLight.intensity = preset.sunIntensity;
 
+    this.fillLight.color.set(preset.fillColor);
+    this.fillLight.intensity = preset.fillIntensity;
+
+    this.backLight.color.set(preset.backColor);
+    this.backLight.intensity = preset.backIntensity;
+
+    this.sun2Light.color.set(preset.sun2Color);
+    this.sun2Light.intensity = preset.sun2Intensity;
+
+    this.fill2Light.color.set(preset.fill2Color);
+    this.fill2Light.intensity = preset.fill2Intensity;
+
+    this.rimLightColor.set(preset.rimColor);
+
+    const sunT = MathUtils.clamp((preset.sunIntensity - 1.0) / 2.5, 0, 1);
+    /* Warm yellow–green turf multiply. */
+    this.lightingColorA.set(0x5c7a50);
+    this.lightingColorB.set(0x96d090);
+    this.groundMat.color.copy(this.lightingColorA).lerp(this.lightingColorB, sunT);
+
+    /* Emissive: anchor to a yellow–green, then let hemisphere nudge. */
+    this.lightingColorA.set(0x5cb058);
+    this.lightingColorB.set(preset.hemiGroundColor);
+    const emissiveAmp = MathUtils.clamp(
+      0.042 + preset.sunIntensity * 0.03,
+      0.034,
+      0.115,
+    );
+    this.groundMat.emissive
+      .copy(this.lightingColorA)
+      .lerp(this.lightingColorB, 0.45)
+      .multiplyScalar(emissiveAmp);
+
+    const fog = this.scene.fog;
+    if (fog instanceof Fog) {
+      fog.color.set(preset.fogColor);
+      fog.near = preset.fogNear;
+      fog.far = preset.fogFar;
+    }
+
     if (this.grassShaderMat) {
       const u = this.grassShaderMat.uniforms;
-      const sc = new Color(preset.sunColor);
-      u.uSunColor.value.set(sc.r, sc.g, sc.b);
+      this.lightingColorA.set(preset.sunColor);
+      u.uSunColor.value.set(
+        this.lightingColorA.r,
+        this.lightingColorA.g,
+        this.lightingColorA.b,
+      );
       u.uSunIntensity.value = preset.sunIntensity;
-      const ac = new Color(preset.ambientColor);
-      u.uAmbientColor.value.set(ac.r, ac.g, ac.b);
+      this.lightingColorA.set(preset.ambientColor);
+      u.uAmbientColor.value.set(
+        this.lightingColorA.r,
+        this.lightingColorA.g,
+        this.lightingColorA.b,
+      );
       u.uAmbientIntensity.value = preset.ambientIntensity;
+      this.lightingColorA.set(preset.hemiSkyColor);
+      this.lightingColorB.set(preset.hemiGroundColor);
+      u.uHemiSkyColor.value.set(
+        this.lightingColorA.r,
+        this.lightingColorA.g,
+        this.lightingColorA.b,
+      );
+      u.uHemiGroundColor.value.set(
+        this.lightingColorB.r,
+        this.lightingColorB.g,
+        this.lightingColorB.b,
+      );
+      u.uHemiIntensity.value = preset.hemiIntensity;
+      u.uSunDir.value.copy(this.sunLight.position).normalize();
     }
+  }
+
+  /**
+   * Primary directional casts VSM shadows (see `Game` renderer). Phong meshes cast; ground (Lambert) receives.
+   * Grass uses `ShaderMaterial` and does not cast. On mobile, `Game` may disable `shadowMap` entirely.
+   */
+  private configureShadowMeshes() {
+    this.groundMesh.receiveShadow = true;
+    this.scene.traverse((o) => {
+      if (o instanceof Mesh && o.material instanceof MeshPhongMaterial) {
+        o.castShadow = true;
+      }
+    });
+  }
+
+  /**
+   * Fresnel rim on campsite Phong materials (trees, campfire, avatar — not the ground plane).
+   * Skips the parked vehicle subtree — those meshes already use `addRimLight` in their builders.
+   */
+  private applyRimToCampsiteMeshes() {
+    const underVehicle = (o: Object3D): boolean => {
+      const v = this.vehicleClone;
+      if (!v) return false;
+      let p: Object3D | null = o;
+      while (p) {
+        if (p === v) return true;
+        p = p.parent;
+      }
+      return false;
+    };
+
+    this.scene.traverse((obj) => {
+      if (underVehicle(obj)) return;
+      if (!(obj instanceof Mesh) && !(obj instanceof InstancedMesh)) return;
+
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const mat of mats) {
+        if (!(mat instanceof MeshPhongMaterial)) continue;
+        if (this.rimMaterialsDone.has(mat)) continue;
+        this.rimMaterialsDone.add(mat);
+        addRimLight(mat, this.rimLightColor, 0.48, 3.0);
+        if (mat.userData.campsiteTreeSway) {
+          this.attachCampsiteTreeSway(mat);
+        }
+      }
+    });
   }
 }
 
