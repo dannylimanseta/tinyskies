@@ -174,7 +174,9 @@ export class Game {
   private balloonPosScratch = new Vector3();
   private localPlayerWorldScratch = new Vector3();
 
-  private gamePhase: "flying" | "campsite" | "transitioning" = "flying";
+  private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" = "flying";
+  private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
+  private moonCinematicTimer = 0;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
   private vehicleHintsEl: HTMLElement | null = null;
@@ -452,6 +454,8 @@ export class Game {
 
     this.moonThreat = new MoonThreat(this.worldConfig?.globeRadius ?? 5);
     this.moonThreat.addTo(this.scene);
+
+    window.addEventListener("keydown", this.onDebugKey);
 
     this.starfield = new Starfield();
     this.starfield.group.visible = preset.stars;
@@ -982,6 +986,13 @@ export class Game {
 
     /* ── Campsite phase ────────────────────────────────── */
     if (this.gamePhase === "campsite" && this.campsiteScene) {
+      this.moonThreat?.update(dt);
+      if (this.moonThreat?.isNearImpact || this.moonThreat?.hasImpacted) {
+        this.campsiteScene.exit();
+        this.localPlayer.group.visible = true;
+        this.startMoonImpactCinematic();
+        return;
+      }
       const result = this.campsiteScene.update(dt);
       this.applyDayNightPreset();
       this.campsiteScene.updatePreset(this.dayNightCycle.getPreset());
@@ -992,6 +1003,12 @@ export class Game {
     }
     if (this.gamePhase === "transitioning") {
       this.renderer.render(this.scene, this.cameraRig.camera);
+      return;
+    }
+
+    /* ── Moon impact cinematic phase ────────────────────── */
+    if (this.gamePhase === "moonImpact") {
+      this.tickMoonImpactCinematic(dt);
       return;
     }
 
@@ -1237,6 +1254,9 @@ export class Game {
     this.moonThreat?.update(dt);
     if (this.moonThreat) {
       this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
+      if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
+        this.startMoonImpactCinematic();
+      }
     }
 
     this.applyDayNightPreset();
@@ -1259,6 +1279,143 @@ export class Game {
     this.lensFlare?.render(this.renderer);
     this.rainOverlay?.render(this.renderer);
   };
+
+  /* ── Debug ──────────────────────────────────────────────────── */
+
+  private onDebugKey = (e: KeyboardEvent) => {
+    if (e.key === "q" || e.key === "Q") {
+      this.moonThreat?.forceImpact();
+    }
+  };
+
+  /* ── Moon impact cinematic ────────────────────────────────────── */
+
+  private moonCinematicCamera: PerspectiveCamera | null = null;
+  private vignetteOverlay: HTMLDivElement | null = null;
+
+  private startMoonImpactCinematic() {
+    if (this.gamePhase === "moonImpact") return;
+    this.gamePhase = "moonImpact";
+    this.moonCinematicStep = "fadeOut1";
+    this.moonCinematicTimer = 0;
+    this.hud.root.style.display = "none";
+    this.controls.enabled = false;
+    if (this.touchControls) this.touchControls.enabled = false;
+
+    // Build a wide-angle camera positioned far from the globe
+    const aspect = this.container.clientWidth / this.container.clientHeight;
+    this.moonCinematicCamera = new PerspectiveCamera(50, aspect, 0.1, 200);
+    const globeR = this.worldConfig?.globeRadius ?? 5;
+    this.moonCinematicCamera.position.set(globeR * 3.2, globeR * 1.8, globeR * 3.2);
+    this.moonCinematicCamera.lookAt(0, globeR * 0.3, 0);
+
+    // Vignette that darkens over the cinematic
+    this.vignetteOverlay = document.createElement("div");
+    const v = this.vignetteOverlay;
+    v.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;z-index:5;" +
+      "background:radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.0) 100%);" +
+      "opacity:0;transition:none;";
+    this.container.appendChild(v);
+
+    this.transitionOverlay?.fadeOut(); // fade to black
+  }
+
+  private tickMoonImpactCinematic(dt: number) {
+    this.moonCinematicTimer += dt;
+    this.moonThreat?.update(dt);
+    this.globe.update(dt);
+
+    if (this.moonThreat) {
+      this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
+    }
+
+    const cam = this.moonCinematicCamera ?? this.cameraRig.camera;
+
+    switch (this.moonCinematicStep) {
+      /* Step 1: Fade to black (0.5s CSS transition) */
+      case "fadeOut1":
+        if (this.moonCinematicTimer > 0.7) {
+          this.moonCinematicStep = "wideShot";
+          this.moonCinematicTimer = 0;
+          // Hide player, switch to cinematic camera, fade back in
+          this.localPlayer.group.visible = false;
+          this.transitionOverlay?.fadeIn();
+        }
+        this.renderer.render(this.scene, this.cameraRig.camera);
+        break;
+
+      /* Step 2: Wide-angle shot — shockwave + debris play out */
+      case "wideShot": {
+        // Slow cinematic camera orbit
+        const orbitSpeed = 0.04;
+        const globeR = this.worldConfig?.globeRadius ?? 5;
+        const angle = this.moonCinematicTimer * orbitSpeed;
+        const dist = globeR * 3.8;
+        cam.position.set(
+          Math.sin(angle) * dist,
+          globeR * 1.6 + this.moonCinematicTimer * 0.08,
+          Math.cos(angle) * dist,
+        );
+        cam.lookAt(0, globeR * 0.2, 0);
+
+        // Apply trauma shake to cinematic camera too
+        if (this.moonThreat) {
+          const trauma = this.moonThreat.getShakeTrauma();
+          const amp = trauma * trauma * 0.06;
+          const t = this.moonCinematicTimer * 11;
+          cam.position.x += Math.sin(t * 23.1 + 1.7) * amp;
+          cam.position.y += Math.sin(t * 17.3 + 4.2) * amp;
+          cam.position.z += Math.cos(t * 19.7 + 2.9) * amp;
+        }
+
+        // Darken the scene progressively via vignette
+        if (this.vignetteOverlay) {
+          const vt = Math.min(this.moonCinematicTimer / 7.0, 1);
+          const edgeDark = 0.3 + vt * 0.7;
+          const centerDark = vt * 0.4;
+          const clearR = Math.max(5, 30 - vt * 25);
+          this.vignetteOverlay.style.background =
+            `radial-gradient(ellipse at center, rgba(0,0,0,${centerDark}) ${clearR}%, rgba(0,0,0,${edgeDark}) 100%)`;
+          this.vignetteOverlay.style.opacity = "1";
+        }
+
+        this.renderer.render(this.scene, cam);
+
+        // After the shockwave + debris play, fade to final black
+        if (this.moonCinematicTimer > 5.0) {
+          this.moonCinematicStep = "fadeOut2";
+          this.moonCinematicTimer = 0;
+          this.transitionOverlay?.fadeOut();
+        }
+        break;
+      }
+
+      /* Step 3: Final fade to black — cinematic complete */
+      case "fadeOut2":
+        if (this.moonThreat) {
+          const trauma = this.moonThreat.getShakeTrauma();
+          const amp = trauma * trauma * 0.06;
+          const t2 = this.moonCinematicTimer * 11;
+          cam.position.x += Math.sin(t2 * 23.1 + 1.7) * amp;
+          cam.position.y += Math.sin(t2 * 17.3 + 4.2) * amp;
+          cam.position.z += Math.cos(t2 * 19.7 + 2.9) * amp;
+        }
+        this.renderer.render(this.scene, cam);
+        if (this.moonCinematicTimer > 1.0) {
+          this.moonCinematicStep = "done";
+          if (this.vignetteOverlay) {
+            this.vignetteOverlay.remove();
+            this.vignetteOverlay = null;
+          }
+          // Future: trigger world migration here
+        }
+        break;
+
+      case "done":
+        break;
+    }
+  }
 
   /* ── Campsite landing / takeoff ─────────────────────────────── */
 
