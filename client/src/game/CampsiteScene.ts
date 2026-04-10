@@ -2,6 +2,7 @@ import {
   AdditiveBlending,
   AmbientLight,
   CanvasTexture,
+  CircleGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -12,13 +13,16 @@ import {
   HemisphereLight,
   InstancedMesh,
   LatheGeometry,
+  Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   MeshPhongMaterial,
   Object3D,
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
+  SpotLight,
   Scene,
   ShaderMaterial,
   SphereGeometry,
@@ -50,6 +54,10 @@ const BLADE_H = 0.3;
 
 const TREE_RING_INNER = 9;
 const TREE_RING_OUTER = 24;
+/** Ground Y for teardrop canopies (lower = trees sit closer to turf). */
+const CAMPSITE_TREE_BASE_Y = -0.24;
+const LEAVES_PER_TREE = 11;
+const LEAF_DISC_RADIUS = 0.09;
 
 /* ── Flame billboard shaders ─────────────────────────────── */
 
@@ -146,11 +154,11 @@ varying vec2 vUv;
 void main() {
   float d = length(vUv - 0.5) * 2.0;           // 0 at centre, 1 at rim
   float a = (1.0 - smoothstep(0.0, 1.0, d));
-  a = pow(a, 1.6) * uIntensity;
+  a = pow(a, 1.3) * uIntensity;                 // lower pow = wider spread
 
-  vec3 innerCol = vec3(1.0, 0.82, 0.28);        // warm yellow-white core
-  vec3 outerCol = vec3(1.0, 0.22, 0.02);        // deep ember red rim
-  vec3 col = mix(innerCol, outerCol, smoothstep(0.05, 0.72, d));
+  vec3 innerCol = vec3(1.0, 0.50, 0.06);        // vivid orange core
+  vec3 outerCol = vec3(0.80, 0.12, 0.01);        // deep ember red rim
+  vec3 col = mix(innerCol, outerCol, smoothstep(0.05, 0.68, d));
 
   gl_FragColor = vec4(col, a);
 }
@@ -278,6 +286,7 @@ export class CampsiteScene {
   private vehicleClone: Group | null = null;
 
   private fireLight: PointLight;
+  private fireSpots: SpotLight[] = [];
   private hemiLight: HemisphereLight;
   private ambientLight: AmbientLight;
   private sunLight: DirectionalLight;
@@ -419,16 +428,32 @@ export class CampsiteScene {
     const fireGroup = buildCampfire();
     this.scene.add(fireGroup);
 
-    this.fireLight = new PointLight(0xff5511, 1.6, 12);
-    this.fireLight.position.set(0, 0.5, 0);
-    if (!mobile) {
-      this.fireLight.castShadow = true;
-      this.fireLight.shadow.mapSize.set(512, 512);
-      this.fireLight.shadow.camera.near = 0.15;
-      this.fireLight.shadow.camera.far = 14;
-      this.fireLight.shadow.bias = -0.004;
-    }
+    this.fireLight = new PointLight(0xff6622, 3.5, 20);
+    this.fireLight.position.set(0, 0.55, 0);
     this.scene.add(this.fireLight);
+
+    /* ── Radial fire shadow spots ────────────────────── */
+    // 4 low-angle SpotLights aimed outward from the fire create long radial
+    // shadows on the ground (PointLight cube shadows are unreliable in Three.js).
+    if (!mobile) {
+      const SPOT_N = 4;
+      for (let i = 0; i < SPOT_N; i++) {
+        const a = (i / SPOT_N) * Math.PI * 2;
+        const spot = new SpotLight(0xff6622, 4.0, 22, Math.PI / 3, 0.5, 1.5);
+        spot.position.set(0, 3, 0);
+        spot.target.position.set(Math.cos(a) * 8, 0, Math.sin(a) * 8);
+        spot.castShadow = true;
+        spot.shadow.mapSize.set(1024, 1024);
+        spot.shadow.camera.near = 0.5;
+        spot.shadow.camera.far = 22;
+        spot.shadow.bias = -0.0005;
+        spot.shadow.normalBias = 0.02;
+        spot.shadow.radius = 4;
+        this.scene.add(spot);
+        this.scene.add(spot.target);
+        this.fireSpots.push(spot);
+      }
+    }
 
     /* ── Campfire glow halo (additive radial disc on ground) ─ */
     const glowGeo = new PlaneGeometry(11, 11);
@@ -539,10 +564,11 @@ export class CampsiteScene {
     this.grassWindTime.value = this.time;
     this.treeSwayTime.value = this.time;
 
-    const firePulse = Math.sin(this.time * 5.0) * 0.28 + Math.sin(this.time * 8.3) * 0.16;
-    this.fireLight.intensity = 1.6 + firePulse;
-    // Glow halo breathes with the fire: ranges roughly 0.42 – 0.62
-    this.glowMat.uniforms.uIntensity.value = 0.52 + firePulse * 0.22;
+    const firePulse = Math.sin(this.time * 5.0) * 0.55 + Math.sin(this.time * 8.3) * 0.30;
+    this.fireLight.intensity = 3.5 + firePulse;
+    for (const spot of this.fireSpots) spot.intensity = 4.0 + firePulse * 0.6;
+    const pulseN = firePulse / 0.85;
+    this.glowMat.uniforms.uIntensity.value = 0.68 + pulseN * 0.16;
 
     const state = this.controls.getState();
     this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2, state.jump);
@@ -838,7 +864,13 @@ gl_FragColor.rgb = mix(_alb, gl_FragColor.rgb, 0.68);
     const leafShades = [0x449a3e, 0x4fa84a, 0x429038, 0x368a32, 0x2a7020];
 
     const TREE_COUNT = 175;
-    const placed: { x: number; z: number }[] = [];
+    const placed: {
+      x: number;
+      z: number;
+      rotY: number;
+      scale: number;
+      canopyScale: number;
+    }[] = [];
     const MIN_SPACING = 1.38;
     let attempts = 0;
 
@@ -860,9 +892,10 @@ gl_FragColor.rgb = mix(_alb, gl_FragColor.rgb, 0.68);
       }
       if (tooClose) continue;
 
-      placed.push({ x, z });
-
       const scale = (1.2 + Math.random() * 1.0) * 0.7;
+      const canopyScale = scale * 0.8;
+      const rotY = Math.random() * Math.PI * 2;
+      placed.push({ x, z, rotY, scale, canopyScale });
 
       const shade = leafShades[Math.floor(Math.random() * leafShades.length)]!;
       const leafMat = new MeshPhongMaterial({
@@ -873,12 +906,80 @@ gl_FragColor.rgb = mix(_alb, gl_FragColor.rgb, 0.68);
       leafMat.userData.campsiteTreeSway = true;
 
       const canopy = new Mesh(treeGeo, leafMat);
-      canopy.position.set(x, 0.02, z);
-      const canopyScale = scale * 0.8;
+      canopy.position.set(x, CAMPSITE_TREE_BASE_Y, z);
       canopy.scale.set(canopyScale, scale * 2.0, canopyScale);
-      canopy.rotation.y = Math.random() * Math.PI * 2;
+      canopy.rotation.y = rotY;
       this.scene.add(canopy);
     }
+
+    /* Surface leaf discs (instanced): use MeshBasicMaterial so Three r172 batching/instancing applies;
+       vertical fade via onBeforeCompile (custom ShaderMaterial broke instance transforms). */
+    const leafDiscGeo = new CircleGeometry(LEAF_DISC_RADIUS, 7);
+    const leafDiscMat = new MeshBasicMaterial({
+      color: 0xaef0a4,
+      transparent: true,
+      opacity: 0.05,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    leafDiscMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uLeafRadius = { value: LEAF_DISC_RADIUS };
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        "#include <common>\nvarying float vLeafY;\n",
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvLeafY = position.y;\n",
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        "#include <common>\nvarying float vLeafY;\nuniform float uLeafRadius;\n",
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        /^(\t*)vec4 diffuseColor = vec4\( diffuse, opacity \);/m,
+        `$1vec4 diffuseColor = vec4( diffuse, opacity );
+$1float ny = (vLeafY + uLeafRadius) / (2.0 * uLeafRadius);
+$1diffuseColor.a *= (1.0 - smoothstep(0.06, 1.0, ny));`,
+      );
+    };
+
+    const nInst = placed.length * LEAVES_PER_TREE;
+    const leafInst = new InstancedMesh(leafDiscGeo, leafDiscMat, nInst);
+    leafInst.frustumCulled = false;
+    leafInst.castShadow = false;
+    leafInst.receiveShadow = false;
+
+    const base = new Object3D();
+    const dummy = new Object3D();
+    const matWorld = new Matrix4();
+    const lp = new Vector3();
+    const ln = new Vector3();
+    let ii = 0;
+    for (const p of placed) {
+      const sy = p.scale * 2.0;
+      base.position.set(p.x, CAMPSITE_TREE_BASE_Y, p.z);
+      base.rotation.set(0, p.rotY, 0);
+      base.scale.set(p.canopyScale, sy, p.canopyScale);
+      base.updateMatrix();
+
+      for (let k = 0; k < LEAVES_PER_TREE; k++) {
+        sampleTeardropSurfaceLocal(lp, ln, Math.random);
+        dummy.position.copy(lp);
+        dummy.position.addScaledVector(ln, 0.028);
+        /* Circle lies in XY with +Z normal; align +Z to analytic surface normal */
+        dummy.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), ln);
+        dummy.rotateZ((Math.random() - 0.5) * 1.4);
+        const s = 0.62 + Math.random() * 0.55;
+        dummy.scale.set(s, s * 1.12, 1);
+        dummy.updateMatrix();
+        matWorld.multiplyMatrices(base.matrix, dummy.matrix);
+        leafInst.setMatrixAt(ii++, matWorld);
+      }
+    }
+    leafInst.instanceMatrix.needsUpdate = true;
+    this.scene.add(leafInst);
   }
 
   /** Gentle wind sway on Phong canopies; must run after `addRimLight` on the same material. */
@@ -1015,8 +1116,6 @@ transformed.z += sway2;`,
     this.scene.traverse((o) => {
       if (o instanceof Mesh && o.material instanceof MeshPhongMaterial) {
         o.castShadow = true;
-        // Allow fire point-light shadows to fall on all Phong surfaces
-        // (avatar, trees, logs) as well as the ground plane.
         o.receiveShadow = true;
       }
     });
@@ -1118,13 +1217,57 @@ function buildCampfire(): Group {
 
 /* ── Teardrop tree geometry (matches globe trees) ────────── */
 
+/** Same profile as `LatheGeometry` points for surface sampling. */
+function teardropProfileRadius(t: number, radius: number): number {
+  return radius * Math.pow(Math.sin(t * Math.PI), 0.35) * Math.pow(1 - t, 0.5);
+}
+
+function teardropProfileRadiusDeriv(t: number, radius: number): number {
+  const h = 1e-4;
+  const t0 = Math.max(0, t - h);
+  const t1 = Math.min(1, t + h);
+  return (
+    (teardropProfileRadius(t1, radius) - teardropProfileRadius(t0, radius)) /
+    (t1 - t0 + 1e-12)
+  );
+}
+
+/**
+ * Surface of revolution P(t,θ) = (r(t)cos θ, y(t), r(t)sin θ), y = t on unit teardrop.
+ * Outward normal ∝ (y′ cos θ, −r′, y′ sin θ) from ∂P/∂t × ∂P/∂θ with y′ = 1.
+ */
+function sampleTeardropSurfaceLocal(
+  outPos: Vector3,
+  outNormal: Vector3,
+  rnd: () => number,
+): void {
+  const t = 0.12 + rnd() * 0.76;
+  const y = t;
+  const r = teardropProfileRadius(t, 1);
+  const theta = rnd() * Math.PI * 2;
+  const inward = 0.93;
+  outPos.set(r * Math.cos(theta) * inward, y, r * Math.sin(theta) * inward);
+
+  const drDt = teardropProfileRadiusDeriv(t, 1);
+  const dyDt = 1.0;
+  let nx = dyDt * Math.cos(theta);
+  let ny = -drDt;
+  let nz = dyDt * Math.sin(theta);
+  outNormal.set(nx, ny, nz);
+  if (outNormal.lengthSq() < 1e-10) {
+    outNormal.set(Math.cos(theta), 0.35, Math.sin(theta)).normalize();
+  } else {
+    outNormal.normalize();
+  }
+}
+
 function createTeardropGeo(height: number, radius: number): LatheGeometry {
   const segments = 10;
   const points: Vector2[] = [];
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     const y = t * height;
-    const r = radius * Math.pow(Math.sin(t * Math.PI), 0.35) * Math.pow(1 - t, 0.5);
+    const r = teardropProfileRadius(t, radius);
     points.push(new Vector2(r, y));
   }
   const geo = new LatheGeometry(points, 6);
