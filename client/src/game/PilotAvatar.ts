@@ -1,5 +1,6 @@
 import {
   CapsuleGeometry,
+  ConeGeometry,
   CylinderGeometry,
   Group,
   Mesh,
@@ -8,343 +9,349 @@ import {
 } from "three";
 
 const MOVE_SPEED = 3.5;
-const TURN_LERP = 10;
+const TURN_LERP  = 10;
 
-/* ── Warm, pastel Animal-Crossing palette ─────────────────── */
+/* ── Palette ─────────────────────────────────────────────── */
 
-const SKIN = 0xffddc0;
-const EYE = 0x2d1b0e;
-const CHEEK = 0xff9999;
-const OUTFIT = 0xc4a882;
-const BOOT = 0x6b4c3b;
-const HAIR = 0x7b5b3a;
-const HAT = 0x8b6f4e;
-const HAT_BAND = 0x5c4033;
+const SKIN     = 0xffd5aa;
+const EYE      = 0x1c1008;
+const NOSE_COL = 0xe07535;   // warm orange — the iconic AC triangle nose
+const CHEEK    = 0xff8080;
+const HAIR     = 0x7b5230;
+const HAT      = 0x8c6848;
+const HAT_BAND = 0x4e3020;
+const OUTFIT   = 0xb89a6e;
+const PANTS    = 0x4a5a78;   // dark trousers
+const BOOT     = 0x5c3a1e;
+
+/* ── Rig constants — local space, pre-scale ──────────────── */
+
+const HEAD_R     = 0.40;
+const HEAD_Y     = 1.52;   // head group position  (head top = 1.92)
+
+const BODY_BOT_Y = 0.62;   // bottom of torso cylinder  (= hip joint)
+const BODY_H     = 0.50;   // torso height               (top = 1.12)
+const SHOULDER_Y = 1.07;   // arm pivot
+
+const HIP_Y      = 0.62;   // leg pivot
+
+/* ── Proportions check:
+ *   head  = 0.80  (40% of 1.92)
+ *   body  = 0.50  (26%)
+ *   legs  = 0.62  (32%)
+ *   total ≈ 1.92 → ~2.4 heads tall  — matches AC reference
+ * ─────────────────────────────────────────────────────────── */
 
 export class PilotAvatar {
   readonly group = new Group();
 
-  /** Inner pivot for bounce/waddle without touching world position. */
-  private pivot = new Group();
+  /** Inner pivot — carries all bounce/sway without touching world position. */
+  private readonly pivot = new Group();
 
-  private headGroup = new Group();
+  private readonly headGroup = new Group();
   private bodyMesh!: Mesh;
-  private leftArm = new Group();
-  private rightArm = new Group();
-  private leftLeg = new Group();
-  private rightLeg = new Group();
+  private readonly leftArm  = new Group();
+  private readonly rightArm = new Group();
+  private readonly leftLeg  = new Group();
+  private readonly rightLeg = new Group();
+
   private scarfTail!: Mesh;
-  private leftEye!: Mesh;
+  private leftEye!:  Mesh;
   private rightEye!: Mesh;
 
-  private walkTime = 0;
-  private idleTime = 0;
-  private blinkTimer = 2.5 + Math.random() * 3;
+  private walkTime  = 0;
+  private idleTime  = 0;
+  private blinkTimer = 2 + Math.random() * 3;
   private blinkPhase = 0;
   private currentHeading = 0;
-  private scarfColor: number;
+  private readonly scarfColor: number;
 
-  private readonly HEAD_Y = 0.88;
-  private readonly BODY_Y = 0.38;
-  private readonly ARM_Y = 0.42;
-
-  constructor(scarfColor: number = 0xff4444) {
+  constructor(scarfColor = 0xff4444) {
     this.scarfColor = scarfColor;
     this.group.add(this.pivot);
     this.buildMesh();
   }
 
-  /* ── Mesh construction ────────────────────────────────────── */
+  /* ── Mesh ─────────────────────────────────────────────────── */
 
   private buildMesh() {
-    const phong = (color: number) =>
-      new MeshPhongMaterial({ color, flatShading: true });
-    const smooth = (color: number) =>
-      new MeshPhongMaterial({ color });
+    const phong  = (c: number) => new MeshPhongMaterial({ color: c, flatShading: true });
+    const smooth = (c: number) => new MeshPhongMaterial({ color: c });
 
-    /* ── Head (big chibi sphere) ──────────────────────── */
-    const head = new Mesh(new SphereGeometry(0.4, 16, 14), smooth(SKIN));
-    head.scale.y = 0.93;
-    this.headGroup.add(head);
+    /* ── HEAD — large round sphere, slightly front-flattened ── */
+    const headMesh = new Mesh(new SphereGeometry(HEAD_R, 18, 14), smooth(SKIN));
+    headMesh.scale.set(1.0, 0.95, 0.97);
+    this.headGroup.add(headMesh);
 
-    /* ── Aviator cap ─────────────────────────────────── */
+    /* ── AVIATOR CAP — dome over upper hemisphere ────────────── */
     const capMat = phong(HAT);
     const cap = new Mesh(
-      new SphereGeometry(0.41, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.48),
+      new SphereGeometry(HEAD_R + 0.018, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.50),
       capMat,
     );
-    cap.position.y = 0.04;
+    cap.position.y = 0.02;
     this.headGroup.add(cap);
 
     const band = new Mesh(
-      new CylinderGeometry(0.41, 0.41, 0.035, 14),
+      new CylinderGeometry(HEAD_R + 0.018, HEAD_R + 0.018, 0.045, 14),
       phong(HAT_BAND),
     );
-    band.position.y = 0.04;
+    band.position.y = 0.02;
     this.headGroup.add(band);
 
-    const flapGeo = new CapsuleGeometry(0.055, 0.1, 4, 6);
-    const leftFlap = new Mesh(flapGeo, capMat);
-    leftFlap.position.set(-0.33, -0.04, 0);
-    leftFlap.rotation.z = 0.3;
-    this.headGroup.add(leftFlap);
+    /* ear flaps */
+    const flapGeo = new CapsuleGeometry(0.065, 0.14, 4, 6);
+    for (const s of [-1, 1] as const) {
+      const flap = new Mesh(flapGeo, capMat);
+      flap.position.set(s * (HEAD_R + 0.02), -0.06, 0);
+      flap.rotation.z = -s * 0.22;
+      this.headGroup.add(flap);
+    }
 
-    const rightFlap = new Mesh(flapGeo, capMat);
-    rightFlap.position.set(0.33, -0.04, 0);
-    rightFlap.rotation.z = -0.3;
-    this.headGroup.add(rightFlap);
-
-    /* ── Hair tufts peeking from cap ─────────────────── */
+    /* ── HAIR — small tufts at the forehead under the cap ────── */
     const hairMat = phong(HAIR);
-    const tuftGeo = new SphereGeometry(0.07, 6, 5);
-
-    for (const xOff of [-0.16, 0.16]) {
-      const tuft = new Mesh(tuftGeo, hairMat);
-      tuft.position.set(xOff, -0.02, 0.32);
-      tuft.scale.set(1.0, 0.55, 0.65);
+    for (const [x, yOff] of [[-0.20, 0], [0, 0.06], [0.20, 0]] as [number, number][]) {
+      const tuft = new Mesh(new SphereGeometry(0.072, 6, 4), hairMat);
+      tuft.position.set(x, -0.10 + yOff, HEAD_R - 0.08);
+      tuft.scale.set(1, 0.44, 0.52);
       this.headGroup.add(tuft);
     }
 
-    const centerTuft = new Mesh(
-      new SphereGeometry(0.06, 5, 4),
-      hairMat,
-    );
-    centerTuft.position.set(0, 0.08, 0.35);
-    centerTuft.scale.set(0.8, 0.5, 0.6);
-    this.headGroup.add(centerTuft);
+    /* ── EYES — large tall oval discs, AC signature ────────────
+     *  SphereGeometry scaled (width=0.70, height=1.0, depth=0.26)
+     *  gives a flat oval pressed against the face surface.
+     *  No white-circle highlights — specular on the material creates
+     *  a natural glint from the scene lights.
+     * ──────────────────────────────────────────────────────────*/
+    const eyeMat = new MeshPhongMaterial({
+      color: EYE,
+      specular: 0x555555,
+      shininess: 80,
+    });
+    const eyeGeo = new SphereGeometry(0.110, 14, 11);
 
-    /* ── Eyes (big round beads) ───────────────────────── */
-    const eyeGeo = new SphereGeometry(0.082, 10, 8);
-    const eyeMat = smooth(EYE);
-
-    this.leftEye = new Mesh(eyeGeo, eyeMat);
-    this.leftEye.position.set(-0.15, -0.02, 0.34);
-    this.headGroup.add(this.leftEye);
-
+    this.leftEye  = new Mesh(eyeGeo, eyeMat);
     this.rightEye = new Mesh(eyeGeo, eyeMat);
-    this.rightEye.position.set(0.15, -0.02, 0.34);
-    this.headGroup.add(this.rightEye);
 
-    /* ── Eye highlights (large = cuter) ──────────────── */
+    this.leftEye.scale.set(0.68, 1.0, 0.24);
+    this.rightEye.scale.set(0.68, 1.0, 0.24);
+
+    this.leftEye.position.set(-0.160, -0.06, HEAD_R * 0.90);
+    this.rightEye.position.set( 0.160, -0.06, HEAD_R * 0.90);
+
+    this.headGroup.add(this.leftEye, this.rightEye);
+
+    /* single tiny white specular dot per eye — AC style ── */
     const hlMat = new MeshPhongMaterial({
       color: 0xffffff,
       emissive: 0xffffff,
-      emissiveIntensity: 0.5,
+      emissiveIntensity: 0.9,
     });
+    const hlGeo = new SphereGeometry(0.018, 5, 4);
+    for (const xOff of [-0.125, 0.190]) {
+      const hl = new Mesh(hlGeo, hlMat);
+      hl.position.set(xOff, 0.02, HEAD_R * 0.97);
+      this.headGroup.add(hl);
+    }
 
-    const hl1Geo = new SphereGeometry(0.035, 6, 6);
-    const leftHl = new Mesh(hl1Geo, hlMat);
-    leftHl.position.set(-0.12, 0.01, 0.40);
-    this.headGroup.add(leftHl);
-
-    const rightHl = new Mesh(hl1Geo, hlMat);
-    rightHl.position.set(0.18, 0.01, 0.40);
-    this.headGroup.add(rightHl);
-
-    const hl2Geo = new SphereGeometry(0.017, 4, 4);
-    const leftHl2 = new Mesh(hl2Geo, hlMat);
-    leftHl2.position.set(-0.17, -0.04, 0.39);
-    this.headGroup.add(leftHl2);
-
-    const rightHl2 = new Mesh(hl2Geo, hlMat);
-    rightHl2.position.set(0.13, -0.04, 0.39);
-    this.headGroup.add(rightHl2);
-
-    /* ── Tiny nose ────────────────────────────────────── */
+    /* ── NOSE — downward-pointing orange triangle ──────────────
+     *  ConeGeometry(r, h, 3) = triangular pyramid, apex at +Y.
+     *  rotation.set(PI/2, 0, -PI/2) orients the apex forward (+Z)
+     *  and rotates the base triangle so the single vertex points DOWN,
+     *  two at top-left / top-right — the classic ▽ AC nose.
+     * ──────────────────────────────────────────────────────────*/
     const nose = new Mesh(
-      new SphereGeometry(0.025, 6, 5),
-      smooth(0xeec8a0),
+      new ConeGeometry(0.040, 0.058, 3),
+      phong(NOSE_COL),
     );
-    nose.position.set(0, -0.1, 0.37);
+    nose.rotation.set(Math.PI / 2, 0, -Math.PI / 2);
+    nose.position.set(0, -0.09, HEAD_R * 0.90);
     this.headGroup.add(nose);
 
-    /* ── Rosy cheeks ──────────────────────────────────── */
-    const cheekGeo = new SphereGeometry(0.065, 8, 6);
-    const cheekMat = new MeshPhongMaterial({
-      color: CHEEK,
-      transparent: true,
-      opacity: 0.5,
-    });
+    /* ── CHEEKS ───────────────────────────────────────────────── */
+    const cheekMat = new MeshPhongMaterial({ color: CHEEK, transparent: true, opacity: 0.40 });
+    for (const s of [-1, 1] as const) {
+      const ck = new Mesh(new SphereGeometry(0.090, 8, 6), cheekMat);
+      ck.position.set(s * 0.26, -0.15, HEAD_R * 0.74);
+      ck.scale.set(1.0, 0.52, 0.36);
+      this.headGroup.add(ck);
+    }
 
-    const leftCheek = new Mesh(cheekGeo, cheekMat);
-    leftCheek.position.set(-0.25, -0.1, 0.24);
-    leftCheek.scale.set(1.0, 0.5, 0.4);
-    this.headGroup.add(leftCheek);
-
-    const rightCheek = new Mesh(cheekGeo, cheekMat);
-    rightCheek.position.set(0.25, -0.1, 0.24);
-    rightCheek.scale.set(1.0, 0.5, 0.4);
-    this.headGroup.add(rightCheek);
-
-    this.headGroup.position.y = this.HEAD_Y;
+    this.headGroup.position.y = HEAD_Y;
     this.pivot.add(this.headGroup);
 
-    /* ── Body (small round capsule) ───────────────────── */
+    /* ── BODY — short wide cylinder (barrel silhouette) ─────────
+     *  Slightly wider at shoulders than waist.
+     *  NO neck gap — head sits directly on top of the cylinder.
+     * ──────────────────────────────────────────────────────────*/
     this.bodyMesh = new Mesh(
-      new CapsuleGeometry(0.2, 0.12, 8, 10),
+      new CylinderGeometry(0.255, 0.220, BODY_H, 10),
       phong(OUTFIT),
     );
-    this.bodyMesh.position.y = this.BODY_Y;
+    this.bodyMesh.position.y = BODY_BOT_Y + BODY_H * 0.5;   // = 0.87
     this.pivot.add(this.bodyMesh);
 
-    /* ── Scarf ───────────────────────────────────────── */
+    /* ── SCARF — collar ring + dangling tail ─────────────────── */
     const scarfMat = phong(this.scarfColor);
-
-    const scarfRing = new Mesh(
-      new CylinderGeometry(0.22, 0.22, 0.055, 10),
+    const ring = new Mesh(
+      new CylinderGeometry(0.27, 0.27, 0.068, 10),
       scarfMat,
     );
-    scarfRing.position.y = 0.56;
-    this.pivot.add(scarfRing);
+    ring.position.y = BODY_BOT_Y + BODY_H - 0.04;   // near body top = 1.08
+    this.pivot.add(ring);
 
     this.scarfTail = new Mesh(
-      new CapsuleGeometry(0.032, 0.18, 4, 4),
+      new CapsuleGeometry(0.034, 0.22, 4, 5),
       scarfMat,
     );
-    this.scarfTail.position.set(0, 0.50, -0.18);
-    this.scarfTail.rotation.x = 0.4;
+    this.scarfTail.position.set(0, BODY_BOT_Y + BODY_H - 0.16, -0.24);
+    this.scarfTail.rotation.x = 0.5;
     this.pivot.add(this.scarfTail);
 
-    /* ── Arms (tiny nubs) ────────────────────────────── */
-    const armGeo = new CapsuleGeometry(0.055, 0.1, 4, 6);
-    const armMat = phong(OUTFIT);
+    /* ── ARMS — full length to mid-thigh, with hands ────────────
+     *  Pivot at shoulder. Arm capsule + hand sphere hang downward
+     *  so rotation.x creates a clean shoulder swing.
+     * ──────────────────────────────────────────────────────────*/
+    const armMat  = phong(OUTFIT);
+    const handGeo = new SphereGeometry(0.070, 8, 6);
+    const armGeo  = new CapsuleGeometry(0.070, 0.26, 4, 8);
 
-    const leftArmMesh = new Mesh(armGeo, armMat);
-    leftArmMesh.position.y = -0.06;
-    this.leftArm.add(leftArmMesh);
-    this.leftArm.position.set(-0.26, this.ARM_Y, 0);
-    this.leftArm.rotation.z = 0.2;
-    this.pivot.add(this.leftArm);
+    for (const s of [-1, 1] as const) {
+      const arm = s === -1 ? this.leftArm : this.rightArm;
+      const armMesh = new Mesh(armGeo, armMat);
+      armMesh.position.y = -0.15;
+      arm.add(armMesh);
 
-    const rightArmMesh = new Mesh(armGeo, armMat);
-    rightArmMesh.position.y = -0.06;
-    this.rightArm.add(rightArmMesh);
-    this.rightArm.position.set(0.26, this.ARM_Y, 0);
-    this.rightArm.rotation.z = -0.2;
-    this.pivot.add(this.rightArm);
+      const hand = new Mesh(handGeo, smooth(SKIN));
+      hand.position.y = -0.30;
+      hand.scale.set(0.88, 0.74, 0.92);
+      arm.add(hand);
 
-    /* ── Legs (short stumps + rounded feet) ──────────── */
-    const legGeo = new CapsuleGeometry(0.075, 0.05, 4, 6);
-    const legMat = phong(OUTFIT);
-    const bootMat = phong(BOOT);
-    const footGeo = new SphereGeometry(0.085, 6, 5);
+      arm.position.set(s * 0.31, SHOULDER_Y, 0);
+      arm.rotation.z = s * 0.18;
+      this.pivot.add(arm);
+    }
 
-    const leftLegMesh = new Mesh(legGeo, legMat);
-    leftLegMesh.position.y = -0.04;
-    this.leftLeg.add(leftLegMesh);
+    /* ── LEGS — thigh (pants) + shin + boot ─────────────────────
+     *  Pivot at hip. Three stacked segments per leg give visible
+     *  length and a clear thigh / lower-leg / shoe read.
+     * ──────────────────────────────────────────────────────────*/
+    const thighGeo = new CapsuleGeometry(0.090, 0.20, 4, 8);
+    const shinGeo  = new CapsuleGeometry(0.078, 0.17, 4, 8);
+    const shoeGeo  = new SphereGeometry(0.094, 8, 6);
 
-    const leftFoot = new Mesh(footGeo, bootMat);
-    leftFoot.position.set(0, -0.09, 0.015);
-    leftFoot.scale.set(0.85, 0.5, 1.1);
-    this.leftLeg.add(leftFoot);
+    for (const s of [-1, 1] as const) {
+      const leg = s === -1 ? this.leftLeg : this.rightLeg;
 
-    this.leftLeg.position.set(-0.11, 0.14, 0);
-    this.pivot.add(this.leftLeg);
+      /* thigh */
+      const thigh = new Mesh(thighGeo, phong(PANTS));
+      thigh.position.y = -0.15;
+      leg.add(thigh);
 
-    const rightLegMesh = new Mesh(legGeo, legMat);
-    rightLegMesh.position.y = -0.04;
-    this.rightLeg.add(rightLegMesh);
+      /* shin */
+      const shin = new Mesh(shinGeo, phong(OUTFIT));
+      shin.position.y = -0.37;
+      leg.add(shin);
 
-    const rightFoot = new Mesh(footGeo, bootMat);
-    rightFoot.position.set(0, -0.09, 0.015);
-    rightFoot.scale.set(0.85, 0.5, 1.1);
-    this.rightLeg.add(rightFoot);
+      /* boot/shoe — flattened sphere for that chunky low-poly shoe */
+      const shoe = new Mesh(shoeGeo, phong(BOOT));
+      shoe.position.set(0, -0.55, 0.025);
+      shoe.scale.set(0.84, 0.50, 1.24);
+      leg.add(shoe);
 
-    this.rightLeg.position.set(0.11, 0.14, 0);
-    this.pivot.add(this.rightLeg);
+      leg.position.set(s * 0.13, HIP_Y, 0);
+      this.pivot.add(leg);
+    }
 
-    this.group.scale.setScalar(0.6);
+    this.group.scale.setScalar(0.55);
   }
 
-  /* ── Update ────────────────────────────────────────────────── */
+  /* ── Update ──────────────────────────────────────────────────── */
 
-  update(
-    dt: number,
-    moveX: number,
-    moveZ: number,
-    bounds: number,
-  ) {
+  update(dt: number, moveX: number, moveZ: number, bounds: number) {
     const isMoving = Math.abs(moveX) > 0.01 || Math.abs(moveZ) > 0.01;
 
     if (isMoving) {
       const targetHeading = Math.atan2(moveX, moveZ);
-      this.currentHeading = lerpAngle(
-        this.currentHeading, targetHeading, TURN_LERP * dt,
-      );
+      this.currentHeading = lerpAngle(this.currentHeading, targetHeading, TURN_LERP * dt);
       this.group.rotation.y = this.currentHeading;
 
       const speed = MOVE_SPEED * dt;
       this.group.position.x += moveX * speed;
       this.group.position.z += moveZ * speed;
-
       const half = bounds * 0.5;
       this.group.position.x = Math.max(-half, Math.min(half, this.group.position.x));
       this.group.position.z = Math.max(-half, Math.min(half, this.group.position.z));
 
-      this.walkTime += dt * 9;
-      this.idleTime = 0;
+      this.walkTime += dt * 10;
+      this.idleTime  = 0;
       this.animateWalk();
     } else {
-      this.walkTime = 0;
       this.idleTime += dt;
+      this.walkTime  = 0;
       this.animateIdle(dt);
     }
 
-    this.animateScarf(dt, isMoving);
+    this.animateScarf(isMoving);
     this.animateBlink(dt);
   }
 
-  /* ── Walk: bouncy hop + waddle + squash-stretch ──────────── */
-
+  /* ── Walk — AC lateral hip-sway ──────────────────────────────
+   *
+   *  The defining motion is the SIDE-TO-SIDE body rock, not a
+   *  vertical bounce.  The whole pivot shifts left/right with
+   *  each step while the torso tilts in the same direction — the
+   *  classic penguin waddle.  Vertical bounce is very small (≈2%).
+   *  Leg swing is moderate (short stride, feet barely lift).
+   *  Arms stay close and swing gently.
+   *  Head counter-tilts to remain roughly level.
+   *
+   * ─────────────────────────────────────────────────────────── */
   private animateWalk() {
-    const t = this.walkTime;
+    const t  = this.walkTime;
+    const sw = Math.sin(t);  // oscillates -1..1 per step
 
-    const bounce = Math.abs(Math.sin(t)) * 0.055;
-    this.pivot.position.y = bounce;
+    /* PRIMARY: whole body rocks left / right (local X = perpendicular to travel) */
+    this.pivot.position.x = sw * 0.065;
 
-    const squashAmt = Math.abs(Math.sin(t));
-    this.bodyMesh.scale.set(
-      1 + squashAmt * 0.03,
-      1 - squashAmt * 0.05,
-      1 + squashAmt * 0.03,
-    );
+    /* Torso tilts in the direction of the sway */
+    this.pivot.rotation.z = sw * 0.085;
 
-    const waddle = Math.sin(t) * 0.045;
-    this.pivot.rotation.z = waddle;
-    this.headGroup.rotation.z = -waddle * 0.3;
+    /* Very small vertical hop — 2 hops per stride cycle via abs(sin) */
+    this.pivot.position.y = Math.abs(sw) * 0.018;
 
-    const legSwing = Math.sin(t) * 0.22;
-    this.leftLeg.rotation.x = legSwing;
+    /* Head counter-tilts to stay roughly level */
+    this.headGroup.position.y = HEAD_Y;
+    this.headGroup.rotation.z = -sw * 0.035;
+
+    /* Legs — short stride, moderate swing */
+    const legSwing = sw * 0.30;
+    this.leftLeg.rotation.x  =  legSwing;
     this.rightLeg.rotation.x = -legSwing;
 
-    const armSwing = Math.sin(t) * 0.14;
-    this.leftArm.rotation.x = -armSwing;
-    this.rightArm.rotation.x = armSwing;
-
-    this.headGroup.position.y = this.HEAD_Y;
+    /* Arms — close to body, tight swing */
+    const armSwing = sw * 0.12;
+    this.leftArm.rotation.x  = -armSwing;
+    this.rightArm.rotation.x =  armSwing;
   }
 
-  /* ── Idle: gentle breathing + sway ───────────────────────── */
+  /* ── Idle — gentle breathing + sleepy head sway ──────────── */
 
   private animateIdle(dt: number) {
-    this.pivot.position.y *= Math.max(0, 1 - dt * 10);
-    this.pivot.rotation.z *= Math.max(0, 1 - dt * 10);
+    const decay = Math.max(0, 1 - dt * 14);
+    this.pivot.position.x *= decay;
+    this.pivot.position.y *= decay;
+    this.pivot.rotation.z *= decay;
 
-    this.leftLeg.rotation.x = 0;
-    this.rightLeg.rotation.x = 0;
-    this.leftArm.rotation.x = 0;
-    this.rightArm.rotation.x = 0;
+    this.leftLeg.rotation.x  *= decay;
+    this.rightLeg.rotation.x *= decay;
+    this.leftArm.rotation.x  *= decay;
+    this.rightArm.rotation.x *= decay;
 
-    const breath = Math.sin(this.idleTime * 1.8) * 0.012;
-    this.bodyMesh.scale.set(
-      1 - breath * 0.4,
-      1 + breath,
-      1 - breath * 0.4,
-    );
-    this.headGroup.position.y = this.HEAD_Y + breath * 2.5;
-
-    const sway = Math.sin(this.idleTime * 0.7) * 0.012;
-    this.headGroup.rotation.z = sway;
+    const breath = Math.sin(this.idleTime * 1.6) * 0.013;
+    this.bodyMesh.scale.set(1 - breath * 0.28, 1 + breath, 1 - breath * 0.28);
+    this.headGroup.position.y = HEAD_Y + breath * 3.2;
+    this.headGroup.rotation.z = Math.sin(this.idleTime * 0.6) * 0.016;
   }
 
   /* ── Blink ────────────────────────────────────────────────── */
@@ -352,31 +359,31 @@ export class PilotAvatar {
   private animateBlink(dt: number) {
     this.blinkTimer -= dt;
     if (this.blinkTimer <= 0 && this.blinkPhase === 0) {
-      this.blinkPhase = 0.15;
+      this.blinkPhase = 0.14;
     }
     if (this.blinkPhase > 0) {
       this.blinkPhase -= dt;
-      const shut = this.blinkPhase > 0.075;
-      const sy = shut ? 0.08 : 1;
-      this.leftEye.scale.y = sy;
+      const shut = this.blinkPhase > 0.07;
+      const sy = shut ? 0.07 : 1;
+      this.leftEye.scale.y  = sy;
       this.rightEye.scale.y = sy;
       if (this.blinkPhase <= 0) {
         this.blinkPhase = 0;
-        this.leftEye.scale.y = 1;
+        this.leftEye.scale.y  = 1;
         this.rightEye.scale.y = 1;
-        this.blinkTimer = 2 + Math.random() * 3;
+        this.blinkTimer = 2 + Math.random() * 3.5;
       }
     }
   }
 
   /* ── Scarf flutter ────────────────────────────────────────── */
 
-  private animateScarf(dt: number, moving: boolean) {
+  private animateScarf(moving: boolean) {
     const time = moving ? this.walkTime : this.idleTime;
-    const freq = moving ? 6 : 1.5;
-    const amp = moving ? 0.3 : 0.08;
-    this.scarfTail.rotation.x = 0.4 + Math.sin(time * freq) * amp;
-    this.scarfTail.rotation.z = Math.sin(time * freq * 0.7 + 1.0) * amp * 0.4;
+    const freq = moving ? 5.5 : 1.4;
+    const amp  = moving ? 0.28 : 0.07;
+    this.scarfTail.rotation.x = 0.5 + Math.sin(time * freq) * amp;
+    this.scarfTail.rotation.z = Math.sin(time * freq * 0.7 + 1.1) * amp * 0.35;
   }
 
   /* ── Public API ───────────────────────────────────────────── */
@@ -389,9 +396,7 @@ export class PilotAvatar {
     this.group.traverse((child) => {
       if (child instanceof Mesh) {
         child.geometry.dispose();
-        if (child.material instanceof MeshPhongMaterial) {
-          child.material.dispose();
-        }
+        if (child.material instanceof MeshPhongMaterial) child.material.dispose();
       }
     });
   }
@@ -399,7 +404,7 @@ export class PilotAvatar {
 
 function lerpAngle(a: number, b: number, t: number): number {
   let diff = b - a;
-  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff >  Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
   return a + diff * Math.min(1, t);
 }

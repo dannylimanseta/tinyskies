@@ -67,18 +67,36 @@ const flameFrag = /* glsl */ `
 uniform float uTime;
 varying vec2 vUv;
 void main() {
-  vec2 uv = vUv;
-  float d = length(uv - vec2(0.5, 0.3));
-  float flicker = sin(uTime * 8.0 + uv.x * 6.0) * 0.05 + sin(uTime * 12.0) * 0.03;
-  vec3 core = vec3(1.0, 0.9, 0.3);
-  vec3 mid = vec3(1.0, 0.5, 0.05);
-  vec3 edge = vec3(0.8, 0.15, 0.0);
-  float t = smoothstep(0.0, 0.4, d + flicker);
-  vec3 col = mix(core, mid, t);
-  col = mix(col, edge, smoothstep(0.3, 0.6, d + flicker));
-  float alpha = 1.0 - smoothstep(0.2, 0.55 + flicker, d);
-  alpha *= smoothstep(0.95, 0.7, uv.y);
-  gl_FragColor = vec4(col * 2.0, alpha);
+  float h  = vUv.y;             // 0 = base, 1 = tip
+  float cx = vUv.x - 0.5;      // centred, -0.5 .. 0.5
+
+  /* Multi-frequency flicker: deforms the silhouette edge */
+  float f1   = sin(uTime * 7.0  + h * 5.5 + vUv.x * 3.0) * 0.05;
+  float f2   = sin(uTime * 13.0 + h * 9.0 + vUv.x * 5.0) * 0.025;
+  float lean = sin(uTime * 2.4) * 0.06 * h;   /* whole flame leans */
+  float x    = cx - lean + f1 + f2;
+
+  /* Width: wide at base, tapers to a sharp tip */
+  float halfW = 0.42 * pow(max(0.0, 1.0 - h), 0.6);
+  float edge  = halfW * 0.45;
+  float mask  = 1.0 - smoothstep(halfW - edge, halfW + edge, abs(x));
+
+  /* Fade: pointed at top, soft at base (starts above logs) */
+  float tipFade  = 1.0 - smoothstep(0.68, 1.0, h);
+  float baseFade = smoothstep(0.0, 0.18, h);
+
+  /* Per-layer alpha low enough that 3 additive layers don't blow out */
+  float alpha = mask * tipFade * baseFade * 0.35;
+
+  /* Color: deep red at base → orange mid → warm amber at tip */
+  vec3 baseCol = vec3(0.82, 0.10, 0.0);
+  vec3 midCol  = vec3(1.0,  0.34, 0.04);
+  vec3 tipCol  = vec3(1.0,  0.58, 0.12);
+
+  vec3 col = mix(baseCol, midCol, smoothstep(0.0,  0.5,  h));
+  col      = mix(col,     tipCol, smoothstep(0.38, 0.88, h));
+
+  gl_FragColor = vec4(col, alpha);
 }
 `;
 
@@ -373,8 +391,8 @@ export class CampsiteScene {
     const fireGroup = buildCampfire();
     this.scene.add(fireGroup);
 
-    this.fireLight = new PointLight(0xff6622, 2.5, 15);
-    this.fireLight.position.set(0, 0.6, 0);
+    this.fireLight = new PointLight(0xff5511, 1.6, 12);
+    this.fireLight.position.set(0, 0.5, 0);
     this.scene.add(this.fireLight);
 
     /* ── Flame billboards ────────────────────────────── */
@@ -470,7 +488,7 @@ export class CampsiteScene {
     this.grassWindTime.value = this.time;
     this.treeSwayTime.value = this.time;
 
-    this.fireLight.intensity = 2.5 + Math.sin(this.time * 5) * 0.5 + Math.sin(this.time * 8.3) * 0.3;
+    this.fireLight.intensity = 1.6 + Math.sin(this.time * 5.0) * 0.28 + Math.sin(this.time * 8.3) * 0.16;
 
     const state = this.controls.getState();
     this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2);
