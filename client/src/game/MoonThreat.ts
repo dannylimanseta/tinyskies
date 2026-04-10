@@ -32,7 +32,7 @@ const POST_IMPACT_SPEED = 0.3;
 /* ── Impact cinematic timing ────────────────────────────── */
 const IMPACT_SHOCKWAVE_DUR = 10.0;
 const IMPACT_DEBRIS_DUR = 11.0;
-const NEAR_IMPACT_THRESHOLD = 0.95;
+const NEAR_IMPACT_THRESHOLD = 0.995;
 const DEBRIS_COUNT = 350;
 const CAMERA_ROCK_COUNT = 3;
 const WAVE_COUNT = 3;
@@ -70,10 +70,10 @@ export class MoonThreat {
     return this.impactTime;
   }
 
-  /** Debug: skip straight to impact. */
+  /** Debug: skip to just before impact so the cinematic plays naturally. */
   forceImpact() {
     if (this.impacted) return;
-    this.elapsed = MOON_CYCLE_DURATION;
+    this.elapsed = MOON_CYCLE_DURATION * 0.995;
   }
 
   constructor(private globeRadius: number) {
@@ -191,9 +191,9 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
     if (this.impacted) {
       const t = this.impactTime;
       if (t < 0.3) return 1.0;
-      if (t < 2.0) return 0.6;
-      if (t < 11.0) return 0.35;
-      return Math.max(0, 0.3 - (t - 11.0) * 0.15);
+      if (t < 2.0) return 0.85;
+      if (t < 11.0) return 0.6;
+      return Math.max(0, 0.5 - (t - 11.0) * 0.12);
     }
     const t = this.progress;
     if (t >= 1.0) return 0.5;

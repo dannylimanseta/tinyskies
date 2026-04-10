@@ -1362,7 +1362,7 @@ export class Game {
         // Apply trauma shake to cinematic camera too
         if (this.moonThreat) {
           const trauma = this.moonThreat.getShakeTrauma();
-          const amp = trauma * trauma * 0.06;
+          const amp = trauma * trauma * 0.18;
           const t = this.moonCinematicTimer * 11;
           cam.position.x += Math.sin(t * 23.1 + 1.7) * amp;
           cam.position.y += Math.sin(t * 17.3 + 4.2) * amp;
@@ -1395,7 +1395,7 @@ export class Game {
       case "fadeOut2":
         if (this.moonThreat) {
           const trauma = this.moonThreat.getShakeTrauma();
-          const amp = trauma * trauma * 0.06;
+          const amp = trauma * trauma * 0.18;
           const t2 = this.moonCinematicTimer * 11;
           cam.position.x += Math.sin(t2 * 23.1 + 1.7) * amp;
           cam.position.y += Math.sin(t2 * 17.3 + 4.2) * amp;
