@@ -24,6 +24,8 @@ export class CameraRig {
   private shakeIntensity = 0;
   private shakeDuration = 0;
   private shakeTimer = 0;
+  private trauma = 0;       // persistent trauma level driven externally (0-1)
+  private traumaTime = 0;   // clock for noise variation
   private currentTilt = 0;
   private currentZoom = 0;
 
@@ -36,6 +38,11 @@ export class CameraRig {
     this.shakeIntensity = intensity;
     this.shakeDuration = duration;
     this.shakeTimer = 0;
+  }
+
+  /** Set persistent trauma level (0 = calm, 1 = max). Overwritten each frame by caller. */
+  setTrauma(level: number) {
+    this.trauma = MathUtils.clamp(level, 0, 1);
   }
 
   /**
@@ -103,6 +110,16 @@ export class CameraRig {
       this.camera.position.x += (Math.random() - 0.5) * 2 * amp;
       this.camera.position.y += (Math.random() - 0.5) * 2 * amp;
       this.camera.position.z += (Math.random() - 0.5) * 2 * amp;
+    }
+
+    // Persistent trauma shake (moon approach, etc.)
+    if (this.trauma > 0.001) {
+      this.traumaTime += dt;
+      const amp = this.trauma * this.trauma * 0.06;
+      const t = this.traumaTime;
+      this.camera.position.x += Math.sin(t * 23.1 + 1.7) * amp;
+      this.camera.position.y += Math.sin(t * 17.3 + 4.2) * amp;
+      this.camera.position.z += Math.cos(t * 19.7 + 2.9) * amp;
     }
 
     const camUp = this.currentPos.clone().normalize();

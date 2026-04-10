@@ -61,6 +61,7 @@ import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
+import { MoonThreat } from "./MoonThreat";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 
 /**
@@ -180,6 +181,7 @@ export class Game {
   private campsiteHintsEl: HTMLElement | null = null;
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
+  private moonThreat: MoonThreat | null = null;
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -448,6 +450,9 @@ export class Game {
     );
     this.globe.addTo(this.scene);
 
+    this.moonThreat = new MoonThreat(this.worldConfig?.globeRadius ?? 5);
+    this.moonThreat.addTo(this.scene);
+
     this.starfield = new Starfield();
     this.starfield.group.visible = preset.stars;
     this.scene.add(this.starfield.group);
@@ -487,6 +492,7 @@ export class Game {
     this.previewCamera.lookAt(0, 0, 0);
 
     this.globe.update(dt);
+    this.moonThreat?.update(dt);
     for (const v of this.volcanoes) v.update(dt, _farQ, 999);
     this.campsiteMarker?.update(dt);
     this.applyDayNightPreset();
@@ -930,6 +936,7 @@ export class Game {
       this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ, up);
 
       this.globe.update(dt);
+      this.moonThreat?.update(dt);
       this.remotePlanes.update(dt, this.cameraRig.camera);
       this.applyDayNightPreset();
       this.audioManager.update(dt);
@@ -1225,6 +1232,11 @@ export class Game {
       const engineVol =
         0.08 + (this.localPlayer as Plane).engineSpeedRatio * 0.25;
       this.audioManager.setLoopVolume("engine_biplane", engineVol);
+    }
+
+    this.moonThreat?.update(dt);
+    if (this.moonThreat) {
+      this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
     }
 
     this.applyDayNightPreset();
