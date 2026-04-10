@@ -1,6 +1,7 @@
 import {
   AdditiveBlending,
   CanvasTexture,
+  CircleGeometry,
   CylinderGeometry,
   DoubleSide,
   Group,
@@ -9,11 +10,11 @@ import {
   Matrix4,
   Mesh,
   MeshPhongMaterial,
+  NormalBlending,
   PlaneGeometry,
   Quaternion,
   Scene,
   ShaderMaterial,
-  SphereGeometry,
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
@@ -33,6 +34,9 @@ const REF_UP = new Vector3(0, 1, 0);
 const SMOKE_COUNT = 6;
 const LANDING_DIST = 1.0;
 const MARKER_SCALE = 0.06;
+/** Vertical beacon beam on the globe (halved from original 3.0). */
+const BEAM_HEIGHT = 1.5;
+const BEAM_WIDTH = 0.12;
 
 /* ── Smoke billboard shaders ─────────────────────────────────── */
 
@@ -57,16 +61,19 @@ varying vec2 vUv;
 varying float vLife;
 void main() {
   float d = length(vUv - 0.5) * 2.0;
-  vec3 col = vec3(0.65, 0.62, 0.58);
+  /* Young = ember/orange; old = cool ash — reads as fire + smoke, not white haze. */
+  vec3 ember = vec3(1.0, 0.38, 0.06);
+  vec3 ash = vec3(0.28, 0.24, 0.22);
+  vec3 col = mix(ember, ash, smoothstep(0.12, 0.72, vLife));
   float fadeIn = smoothstep(0.0, 0.15, vLife);
   float fadeOut = 1.0 - smoothstep(0.5, 1.0, vLife);
   float lifeFade = fadeIn * fadeOut;
-  float alpha = (1.0 - smoothstep(0.3, 1.0, d)) * lifeFade;
-  gl_FragColor = vec4(col, alpha * 0.35);
+  float alpha = (1.0 - smoothstep(0.3, 1.0, d)) * lifeFade * 0.32;
+  gl_FragColor = vec4(col, alpha);
 }
 `;
 
-/* ── Beacon beam shaders ──────────────────────────────────── */
+/* ── Beacon beam (warm orange beacon, not white searchlight) ───────── */
 
 const beamVert = /* glsl */ `
 varying vec2 vUv;
@@ -81,16 +88,67 @@ uniform float uTime;
 varying vec2 vUv;
 void main() {
   float xFade = 1.0 - abs(vUv.x - 0.5) * 2.0;
-  xFade = pow(xFade, 3.0);
-  float yFade = smoothstep(0.0, 0.15, vUv.y) * (1.0 - smoothstep(0.7, 1.0, vUv.y));
-  float pulse = 0.7 + 0.3 * sin(uTime * 2.0);
-  vec3 col = vec3(1.0, 0.85, 0.5);
-  float alpha = xFade * yFade * pulse * 0.35;
+  xFade = pow(xFade, 2.8);
+  float yFade = smoothstep(0.0, 0.12, vUv.y) * (1.0 - smoothstep(0.72, 1.0, vUv.y));
+  float pulse = 0.78 + 0.22 * sin(uTime * 2.0);
+  vec3 base = vec3(1.0, 0.42, 0.08);
+  vec3 tip = vec3(1.0, 0.62, 0.18);
+  vec3 col = mix(base, tip, vUv.y);
+  float alpha = xFade * yFade * pulse * 0.2;
   gl_FragColor = vec4(col, alpha);
 }
 `;
 
-function createCampfireIconTexture(): CanvasTexture {
+/* ── Ground ember bed + small flame cards ─────────────────────────── */
+
+const emberFrag = /* glsl */ `
+varying vec2 vUv;
+uniform float uTime;
+void main() {
+  float d = length(vUv - 0.5) * 2.0;
+  float flicker = 0.88 + 0.12 * sin(uTime * 7.0 + d * 4.0);
+  float core = (1.0 - smoothstep(0.15, 1.0, d)) * flicker;
+  vec3 inner = vec3(1.0, 0.45, 0.1);
+  vec3 outer = vec3(1.0, 0.22, 0.02);
+  vec3 col = mix(inner, outer, smoothstep(0.0, 0.85, d));
+  gl_FragColor = vec4(col, core * 0.75);
+}
+`;
+
+const emberVert = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const flameFrag = /* glsl */ `
+varying vec2 vUv;
+uniform float uTime;
+void main() {
+  float taper = 1.0 - abs(vUv.x - 0.5) * 2.0;
+  taper = pow(max(taper, 0.0), 1.4);
+  float h = vUv.y;
+  float waver = sin(uTime * 9.0 + vUv.x * 10.0 + h * 8.0) * 0.05;
+  float body = smoothstep(0.0, 0.18, h + waver) * (1.0 - smoothstep(0.68, 1.0, h));
+  vec3 deep = vec3(1.0, 0.18, 0.02);
+  vec3 mid = vec3(1.0, 0.42, 0.08);
+  vec3 tip = vec3(1.0, 0.68, 0.2);
+  vec3 col = mix(deep, mid, smoothstep(0.0, 0.45, h));
+  col = mix(col, tip, smoothstep(0.3, 0.92, h));
+  float a = taper * body * 0.52;
+  gl_FragColor = vec4(col, a);
+}
+`;
+
+const flameVert = beamVert;
+
+/**
+ * HUD-matching tent icon in a rounded square (same paths as `.hud-campsite-btn` SVG).
+ * Used on a billboard sprite so it stays screen-upright for the player.
+ */
+function createCampsiteTentIconTexture(): CanvasTexture {
   const S = 128;
   const canvas = document.createElement("canvas");
   canvas.width = S;
@@ -99,38 +157,43 @@ function createCampfireIconTexture(): CanvasTexture {
 
   const cx = S / 2;
   const cy = S / 2;
+  const box = S * 0.72;
+  const x0 = cx - box / 2;
+  const y0 = cy - box / 2;
+  const r = S * 0.09;
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(cx, cy, S * 0.45, 0, Math.PI * 2);
+  ctx.roundRect(x0, y0, box, box, r);
   ctx.fill();
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, S * 0.42, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.fillStyle = "#fff";
-  const bx = cx - 16;
-  const by = cy + 8;
-  ctx.fillRect(bx, by, 8, 16);
-  ctx.fillRect(bx + 12, by + 4, 8, 12);
-  ctx.fillRect(bx + 24, by, 8, 16);
-
-  const drawFlame = (fx: number, fy: number, w: number, h: number) => {
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(fx + w * 0.5, fy - h, fx + w, fy);
-    ctx.fill();
-  };
-
-  ctx.fillStyle = "#FFB347";
-  drawFlame(bx - 2, by, 36, 30);
-  ctx.fillStyle = "#FF6B35";
-  drawFlame(bx + 4, by, 24, 22);
-  ctx.fillStyle = "#FFD700";
-  drawFlame(bx + 10, by, 14, 16);
+  /* Same tent strokes as HUD: viewBox 0 0 24 24 */
+  ctx.save();
+  ctx.translate(cx, cy);
+  const scale = box / 24 * 0.78;
+  ctx.scale(scale, scale);
+  ctx.translate(-12, -12);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.lineWidth = 2.2 / scale;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(12, 2);
+  ctx.lineTo(3, 20);
+  ctx.lineTo(21, 20);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(9, 20);
+  ctx.lineTo(9, 14);
+  ctx.lineTo(12, 12);
+  ctx.lineTo(15, 14);
+  ctx.lineTo(15, 20);
+  ctx.stroke();
+  ctx.restore();
 
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
@@ -160,6 +223,10 @@ export class CampsiteMarker {
   private smokePlaneGeo: PlaneGeometry;
   private smokeLifeAttr: InstancedBufferAttribute;
   private beamMat: ShaderMaterial;
+  private emberGeo: CircleGeometry;
+  private emberMat: ShaderMaterial;
+  private flameGeo: PlaneGeometry;
+  private flameMat: ShaderMaterial;
   private iconSprite: Sprite;
   private time = 0;
   private seedVal: number;
@@ -193,9 +260,13 @@ export class CampsiteMarker {
 
     this.worldPosition.copy(this.group.position);
 
-    /* ── Campfire logs ────────────────────────────────────── */
+    /* ── Campfire logs (warm brown, subtle ember catch) ─────────── */
     const logGeo = new CylinderGeometry(0.006, 0.006, 0.05, 5);
-    const logMat = new MeshPhongMaterial({ color: 0x5c3a1e });
+    const logMat = new MeshPhongMaterial({
+      color: 0x4a2e18,
+      emissive: 0x331006,
+      emissiveIntensity: 0.35,
+    });
     for (let i = 0; i < 4; i++) {
       const log = new Mesh(logGeo, logMat);
       const angle = (i / 4) * Math.PI * 2;
@@ -209,20 +280,45 @@ export class CampsiteMarker {
       this.group.add(log);
     }
 
-    /* ── Glow sphere ─────────────────────────────────────── */
-    const glowGeo = new SphereGeometry(0.015, 6, 4);
-    const glowMat = new MeshPhongMaterial({
-      color: 0xff6600,
-      emissive: 0xff4400,
-      emissiveIntensity: 2.0,
+    /* ── Ember bed (horizontal disc, orange — not white) ─────────── */
+    this.emberGeo = new CircleGeometry(0.028, 20);
+    this.emberMat = new ShaderMaterial({
+      vertexShader: emberVert,
+      fragmentShader: emberFrag,
+      uniforms: { uTime: { value: 0 } },
       transparent: true,
-      opacity: 0.7,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
     });
-    const glow = new Mesh(glowGeo, glowMat);
-    glow.position.y = 0.02;
-    this.group.add(glow);
+    const emberDisc = new Mesh(this.emberGeo, this.emberMat);
+    emberDisc.rotation.x = -Math.PI / 2;
+    emberDisc.position.y = 0.005;
+    emberDisc.renderOrder = 10;
+    this.group.add(emberDisc);
 
-    /* ── Smoke wisps ─────────────────────────────────────── */
+    /* ── Flame cards (crossed planes, orange gradient) ───────────── */
+    this.flameGeo = new PlaneGeometry(0.032, 0.048);
+    this.flameMat = new ShaderMaterial({
+      vertexShader: flameVert,
+      fragmentShader: flameFrag,
+      uniforms: { uTime: { value: 0 } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+    });
+    const flame1 = new Mesh(this.flameGeo, this.flameMat);
+    flame1.position.y = 0.036;
+    flame1.renderOrder = 10;
+    this.group.add(flame1);
+    const flame2 = new Mesh(this.flameGeo, this.flameMat);
+    flame2.position.y = 0.036;
+    flame2.rotation.y = Math.PI / 2;
+    flame2.renderOrder = 10;
+    this.group.add(flame2);
+
+    /* ── Smoke / ember wisps ─────────────────────────────────────── */
     this.smokePlaneGeo = new PlaneGeometry(MARKER_SCALE, MARKER_SCALE);
     const lifeArr = new Float32Array(SMOKE_COUNT);
     this.smokeLifeAttr = new InstancedBufferAttribute(lifeArr, 1);
@@ -249,8 +345,6 @@ export class CampsiteMarker {
     }
 
     /* ── Beacon beam ──────────────────────────────────────── */
-    const BEAM_HEIGHT = 3.0;
-    const BEAM_WIDTH = 0.12;
     const beamGeo = new PlaneGeometry(BEAM_WIDTH, BEAM_HEIGHT);
     beamGeo.translate(0, BEAM_HEIGHT / 2, 0);
     this.beamMat = new ShaderMaterial({
@@ -272,13 +366,13 @@ export class CampsiteMarker {
     this.group.add(beam2);
 
     /* ── Campfire icon sprite at beam top ─────────────────── */
-    const iconTex = createCampfireIconTexture();
+    const iconTex = createCampsiteTentIconTexture();
     const iconMat = new SpriteMaterial({
       map: iconTex,
       transparent: true,
-      blending: AdditiveBlending,
+      blending: NormalBlending,
       depthWrite: false,
-      opacity: 0.9,
+      opacity: 0.95,
     });
     this.iconSprite = new Sprite(iconMat);
     this.iconSprite.scale.set(0.35, 0.35, 1);
@@ -393,8 +487,10 @@ export class CampsiteMarker {
     this.time += dt;
 
     this.beamMat.uniforms.uTime.value = this.time;
+    this.emberMat.uniforms.uTime.value = this.time;
+    this.flameMat.uniforms.uTime.value = this.time;
     const bob = Math.sin(this.time * 1.5) * 0.06;
-    this.iconSprite.position.y = 3.0 + 0.15 + bob;
+    this.iconSprite.position.y = BEAM_HEIGHT + 0.15 + bob;
 
     for (let i = 0; i < SMOKE_COUNT; i++) {
       const w = this.smokeWisps[i]!;
@@ -431,6 +527,10 @@ export class CampsiteMarker {
     this.smokeMat.dispose();
     this.smokeInstanced.dispose();
     this.beamMat.dispose();
+    this.emberGeo.dispose();
+    this.emberMat.dispose();
+    this.flameGeo.dispose();
+    this.flameMat.dispose();
     const iconMat = this.iconSprite.material as SpriteMaterial;
     iconMat.map?.dispose();
     iconMat.dispose();

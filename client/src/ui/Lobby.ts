@@ -68,26 +68,26 @@ export class Lobby {
           <p class="lobby-username">Hello, <span class="lobby-name" contenteditable="true" spellcheck="false">${this.options.playerName}</span><button type="button" class="lobby-edit-btn" aria-label="Edit name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button></p>
         </div>
         <div class="lobby-bar">
-          <div class="lobby-vehicles" role="radiogroup" aria-label="Vehicle">
-            <button type="button" class="lobby-vbtn active" data-vehicle="plane" aria-checked="true">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
-              <span class="lobby-vlabel">Plane</span>
-            </button>
-            <button type="button" class="lobby-vbtn" data-vehicle="boat" aria-checked="false">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></svg></span>
-              <span class="lobby-vlabel">Boat</span>
-            </button>
-            <button type="button" class="lobby-vbtn" data-vehicle="carpet" aria-checked="false">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5Q12 15.5 21 17.5L20 11.5Q12 9 4 11.5Z"/><path d="M12 10v7"/><path d="M8 13.5h8"/><path d="M5 17.5v2M9 17.5v2M12 17.5v2M15 17.5v2M19 17.5v2"/><path d="M20 4.5v2M19 5.5h2"/><path d="M5 6v1.5M4.25 6.75h1.5"/><path d="M15.5 7v1M15 7.5h1"/></svg></span>
-              <span class="lobby-vlabel">Carpet</span>
+          <div class="lobby-vehicles">
+            <div class="lobby-vehicle-rg" role="radiogroup" aria-label="Vehicle">
+              <button type="button" class="lobby-vbtn active" data-vehicle="plane" aria-checked="true">
+                <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
+                <span class="lobby-vlabel">Plane</span>
+              </button>
+              <button type="button" class="lobby-vbtn" data-vehicle="boat" aria-checked="false">
+                <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></svg></span>
+                <span class="lobby-vlabel">Boat</span>
+              </button>
+              <button type="button" class="lobby-vbtn" data-vehicle="carpet" aria-checked="false">
+                <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5Q12 15.5 21 17.5L20 11.5Q12 9 4 11.5Z"/><path d="M12 10v7"/><path d="M8 13.5h8"/><path d="M5 17.5v2M9 17.5v2M12 17.5v2M15 17.5v2M19 17.5v2"/><path d="M20 4.5v2M19 5.5h2"/><path d="M5 6v1.5M4.25 6.75h1.5"/><path d="M15.5 7v1M15 7.5h1"/></svg></span>
+                <span class="lobby-vlabel">Carpet</span>
+              </button>
+            </div>
+            <button type="button" class="lobby-vbtn lobby-home" id="btn-camp" aria-label="Start at campsite">
+              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 20h18Z"/><path d="M9 20v-6l3-2 3 2v6"/></svg></span>
+              <span class="lobby-vlabel">Home</span>
             </button>
           </div>
-          <button type="button" class="lobby-camp" id="btn-camp" aria-label="Start at campsite">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2 3 20h18Z"/>
-              <path d="M9 20v-6l3-2 3 2v6"/>
-            </svg>
-          </button>
           <button type="button" class="lobby-fly" id="btn-fly">GO</button>
         </div>
       </div>
@@ -315,12 +315,20 @@ export class Lobby {
         transform: translateX(-50%) translateY(20px);
       }
 
-      /* ── Vehicle Buttons ────────────────────────────── */
+      /* ── Vehicle + Home: four equal columns, even gaps (rg uses display:contents) ─ */
       .lobby-vehicles {
-        display: flex; gap: 4px; flex: 1;
+        display: flex;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+        align-items: stretch;
+      }
+      .lobby-vehicle-rg {
+        display: contents;
       }
       .lobby-vbtn {
         flex: 1;
+        min-width: 0;
         display: flex; flex-direction: column; align-items: center; gap: 4px;
         padding: 10px 12px;
         border: 2px solid transparent;
@@ -331,13 +339,17 @@ export class Lobby {
         transition: background 0.2s, color 0.2s, box-shadow 0.2s, border-color 0.2s;
         font-family: inherit;
       }
-      .lobby-vbtn:hover:not(.active) {
+      .lobby-vbtn:hover:not(.active):not(:disabled) {
         background: rgba(255, 255, 255, 0.12);
         color: #ffffff;
       }
       .lobby-vbtn.active {
         background: rgba(255, 255, 255, 1.0);
         color: rgba(20, 30, 50, 0.9);
+      }
+      .lobby-vbtn:disabled {
+        opacity: 0.5;
+        cursor: default;
       }
       .lobby-vicon {
         display: flex;
@@ -354,34 +366,6 @@ export class Lobby {
         font-size: 0.85rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-      }
-
-      /* ── Campsite (tent) ───────────────────────────── */
-      .lobby-camp {
-        align-self: stretch;
-        flex-shrink: 0;
-        width: 48px;
-        padding: 0;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.95);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.2s, transform 0.15s, border-color 0.2s;
-      }
-      .lobby-camp:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.2);
-        border-color: rgba(255, 255, 255, 0.35);
-      }
-      .lobby-camp:active:not(:disabled) {
-        transform: scale(0.96);
-      }
-      .lobby-camp:disabled {
-        opacity: 0.5;
-        cursor: default;
       }
 
       /* ── FLY Button ─────────────────────────────────── */
@@ -431,7 +415,6 @@ export class Lobby {
         .lobby-vicon svg { width: 22px; height: 22px; }
         .lobby-vlabel { font-size: 0.75rem; }
         .lobby-fly { padding: 0 20px; font-size: 0.9rem; min-height: 44px; }
-        .lobby-camp { width: 44px; min-height: 44px; min-width: 44px; }
       }
     `;
     document.head.appendChild(style);

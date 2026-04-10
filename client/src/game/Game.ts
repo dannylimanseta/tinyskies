@@ -62,7 +62,6 @@ import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
-import { getSkyPreset } from "./SkyPresets";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -538,22 +537,7 @@ export class Game {
     const h = this.container.clientHeight;
     this.cameraRig = new CameraRig(w / h);
 
-    const playerWorldPos = cartesianFromSpherical(
-      this.localPlayer.qPosition,
-      this.localPlayer.altitude,
-      globeRadius,
-    );
-    const frame = tangentFrame(this.localPlayer.qPosition);
-    const fwd = new Vector3()
-      .addScaledVector(frame.north, Math.cos(this.localPlayer.heading))
-      .addScaledVector(frame.east, Math.sin(this.localPlayer.heading))
-      .normalize();
-
-    this.introEndPos
-      .copy(playerWorldPos)
-      .addScaledVector(fwd, -this.vehicleFeatures.cameraFollowDistance)
-      .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
-    this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
+    this.computeIntroEndTargets(globeRadius);
 
     this.introStartPos.copy(this.previewCamera.position);
 
@@ -872,6 +856,44 @@ export class Game {
   /* ── Main game loop ──────────────────────────────────────────────── */
 
   private static readonly INTRO_DURATION = 4.5;
+  /** Tangent-plane heading (rad) for the Home intro camera approach toward the campsite. */
+  private static readonly CAMP_INTRO_APPROACH = 0.85;
+
+  /**
+   * Sets `introEndPos` / `introEndLookAt` for the lobby→game flythrough.
+   * When starting at the campsite (Home), the path ends at the marker; otherwise it chases the vehicle.
+   */
+  private computeIntroEndTargets(globeRadius: number): void {
+    if (this.pendingCampsiteAfterIntro && this.campsiteMarker) {
+      const campPos = this.campsiteMarker.worldPosition;
+      const frame = tangentFrame(this.campsiteMarker.surfaceQuat);
+      const fwd = new Vector3()
+        .addScaledVector(frame.north, Math.cos(Game.CAMP_INTRO_APPROACH))
+        .addScaledVector(frame.east, Math.sin(Game.CAMP_INTRO_APPROACH))
+        .normalize();
+      this.introEndPos
+        .copy(campPos)
+        .addScaledVector(fwd, -this.vehicleFeatures.cameraFollowDistance)
+        .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
+      this.introEndLookAt.copy(campPos).addScaledVector(fwd, 0.5);
+      return;
+    }
+    const playerWorldPos = cartesianFromSpherical(
+      this.localPlayer.qPosition,
+      this.localPlayer.altitude,
+      globeRadius,
+    );
+    const frame = tangentFrame(this.localPlayer.qPosition);
+    const fwd = new Vector3()
+      .addScaledVector(frame.north, Math.cos(this.localPlayer.heading))
+      .addScaledVector(frame.east, Math.sin(this.localPlayer.heading))
+      .normalize();
+    this.introEndPos
+      .copy(playerWorldPos)
+      .addScaledVector(fwd, -this.vehicleFeatures.cameraFollowDistance)
+      .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
+    this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
+  }
 
   private tick = () => {
     if (!this.running) return;
@@ -887,21 +909,7 @@ export class Game {
 
       this.localPlayer.update(dt, 0, false, false, false, false);
 
-      const playerWorldPos = cartesianFromSpherical(
-        this.localPlayer.qPosition,
-        this.localPlayer.altitude,
-        globeRadius,
-      );
-      const frame = tangentFrame(this.localPlayer.qPosition);
-      const fwd = new Vector3()
-        .addScaledVector(frame.north, Math.cos(this.localPlayer.heading))
-        .addScaledVector(frame.east, Math.sin(this.localPlayer.heading))
-        .normalize();
-      this.introEndPos
-        .copy(playerWorldPos)
-        .addScaledVector(fwd, -this.vehicleFeatures.cameraFollowDistance)
-        .addScaledVector(frame.up, this.vehicleFeatures.cameraFollowHeight);
-      this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
+      this.computeIntroEndTargets(globeRadius);
 
       const startDir = this.introStartPos.clone().normalize();
       const endDir = this.introEndPos.clone().normalize();
@@ -943,16 +951,19 @@ export class Game {
 
       if (raw >= 1) {
         this.introActive = false;
-        this.cameraRig.snapTo(
-          this.localPlayer.qPosition,
-          this.localPlayer.heading,
-          this.localPlayer.altitude,
-          globeRadius,
-          this.vehicleFeatures.cameraFollowDistance,
-          this.vehicleFeatures.cameraFollowHeight,
-        );
+        const landingAtCampsite = this.pendingCampsiteAfterIntro;
+        if (!landingAtCampsite) {
+          this.cameraRig.snapTo(
+            this.localPlayer.qPosition,
+            this.localPlayer.heading,
+            this.localPlayer.altitude,
+            globeRadius,
+            this.vehicleFeatures.cameraFollowDistance,
+            this.vehicleFeatures.cameraFollowHeight,
+          );
+        }
         this.hud.show();
-        if (this.pendingCampsiteAfterIntro) {
+        if (landingAtCampsite) {
           this.pendingCampsiteAfterIntro = false;
           void this.doLanding();
         }
@@ -964,8 +975,7 @@ export class Game {
     if (this.gamePhase === "campsite" && this.campsiteScene) {
       const result = this.campsiteScene.update(dt);
       this.applyDayNightPreset();
-      /* Campsite: lock to day preset while tuning colors (globe still uses full cycle). */
-      this.campsiteScene.updatePreset(getSkyPreset("day"));
+      this.campsiteScene.updatePreset(this.dayNightCycle.getPreset());
       this.audioManager.update(dt);
       this.renderer.render(this.campsiteScene.scene, this.campsiteScene.camera);
       if (result.takeOff) this.doTakeOff();
@@ -1240,6 +1250,8 @@ export class Game {
 
   private async doLanding() {
     if (!this.transitionOverlay || !this.campsiteScene) return;
+    if (this.gamePhase !== "flying") return;
+
     this.gamePhase = "transitioning";
     this.hud.showCampsitePrompt(false);
     this.hud.setCampsiteButtonVisible(false);
@@ -1252,11 +1264,14 @@ export class Game {
     this.campsiteScene.enter(
       this.playerVehicle,
       this.hullColor,
-      getSkyPreset("day"),
+      this.dayNightCycle.getPreset(),
     );
 
-    await this.transitionOverlay.fadeIn();
+    /* Switch to campsite rendering before fade-in so the overlay reveals the camp scene,
+       not an empty globe (which read as a second fade to black when zoomed in). */
     this.gamePhase = "campsite";
+
+    await this.transitionOverlay.fadeIn();
   }
 
   private async doTakeOff() {

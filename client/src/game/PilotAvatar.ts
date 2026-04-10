@@ -1,32 +1,31 @@
 import {
-  BoxGeometry,
   CapsuleGeometry,
   CylinderGeometry,
   Group,
   Mesh,
   MeshPhongMaterial,
   SphereGeometry,
-  TorusGeometry,
-  Vector3,
 } from "three";
 
 const MOVE_SPEED = 3.5;
 const TURN_LERP = 10;
 
-/* ── Colors ──────────────────────────────────────────────── */
+/* ── Warm, pastel Animal-Crossing palette ─────────────────── */
 
-const SKIN = 0xf5deb3;
-const EYE = 0x2a1a0a;
-const CHEEK = 0xffb0a0;
-const GOGGLE_STRAP = 0x5c4033;
-const GOGGLE_LENS = 0x88ccee;
-const GOGGLE_FRAME = 0x44322a;
-const OUTFIT = 0x8b6f47;
-const BOOT = 0x4a3728;
-const HAIR = 0x5c3a1e;
+const SKIN = 0xffddc0;
+const EYE = 0x2d1b0e;
+const CHEEK = 0xff9999;
+const OUTFIT = 0xc4a882;
+const BOOT = 0x6b4c3b;
+const HAIR = 0x7b5b3a;
+const HAT = 0x8b6f4e;
+const HAT_BAND = 0x5c4033;
 
 export class PilotAvatar {
   readonly group = new Group();
+
+  /** Inner pivot for bounce/waddle without touching world position. */
+  private pivot = new Group();
 
   private headGroup = new Group();
   private bodyMesh!: Mesh;
@@ -40,15 +39,22 @@ export class PilotAvatar {
 
   private walkTime = 0;
   private idleTime = 0;
-  private blinkTimer = 3 + Math.random() * 3;
+  private blinkTimer = 2.5 + Math.random() * 3;
   private blinkPhase = 0;
   private currentHeading = 0;
   private scarfColor: number;
 
+  private readonly HEAD_Y = 0.88;
+  private readonly BODY_Y = 0.38;
+  private readonly ARM_Y = 0.42;
+
   constructor(scarfColor: number = 0xff4444) {
     this.scarfColor = scarfColor;
+    this.group.add(this.pivot);
     this.buildMesh();
   }
+
+  /* ── Mesh construction ────────────────────────────────────── */
 
   private buildMesh() {
     const phong = (color: number) =>
@@ -56,200 +62,201 @@ export class PilotAvatar {
     const smooth = (color: number) =>
       new MeshPhongMaterial({ color });
 
-    /* ── Head ────────────────────────────────────────── */
-    const headGeo = new SphereGeometry(0.4, 16, 12);
-    const head = new Mesh(headGeo, smooth(SKIN));
-    head.scale.y = 0.88;
+    /* ── Head (big chibi sphere) ──────────────────────── */
+    const head = new Mesh(new SphereGeometry(0.4, 16, 14), smooth(SKIN));
+    head.scale.y = 0.93;
     this.headGroup.add(head);
 
-    /* ── Hair tuft ──────────────────────────────────── */
+    /* ── Aviator cap ─────────────────────────────────── */
+    const capMat = phong(HAT);
+    const cap = new Mesh(
+      new SphereGeometry(0.41, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.48),
+      capMat,
+    );
+    cap.position.y = 0.04;
+    this.headGroup.add(cap);
+
+    const band = new Mesh(
+      new CylinderGeometry(0.41, 0.41, 0.035, 14),
+      phong(HAT_BAND),
+    );
+    band.position.y = 0.04;
+    this.headGroup.add(band);
+
+    const flapGeo = new CapsuleGeometry(0.055, 0.1, 4, 6);
+    const leftFlap = new Mesh(flapGeo, capMat);
+    leftFlap.position.set(-0.33, -0.04, 0);
+    leftFlap.rotation.z = 0.3;
+    this.headGroup.add(leftFlap);
+
+    const rightFlap = new Mesh(flapGeo, capMat);
+    rightFlap.position.set(0.33, -0.04, 0);
+    rightFlap.rotation.z = -0.3;
+    this.headGroup.add(rightFlap);
+
+    /* ── Hair tufts peeking from cap ─────────────────── */
     const hairMat = phong(HAIR);
-    for (let i = 0; i < 3; i++) {
-      const tuft = new Mesh(
-        new SphereGeometry(0.1 + i * 0.02, 5, 4),
-        hairMat,
-      );
-      tuft.position.set(
-        (i - 1) * 0.08,
-        0.32 + (1 - Math.abs(i - 1)) * 0.05,
-        -0.1,
-      );
-      tuft.scale.set(1, 0.7, 0.9);
+    const tuftGeo = new SphereGeometry(0.07, 6, 5);
+
+    for (const xOff of [-0.16, 0.16]) {
+      const tuft = new Mesh(tuftGeo, hairMat);
+      tuft.position.set(xOff, -0.02, 0.32);
+      tuft.scale.set(1.0, 0.55, 0.65);
       this.headGroup.add(tuft);
     }
 
-    /* ── Eyes ────────────────────────────────────────── */
-    const eyeGeo = new SphereGeometry(0.06, 8, 6);
+    const centerTuft = new Mesh(
+      new SphereGeometry(0.06, 5, 4),
+      hairMat,
+    );
+    centerTuft.position.set(0, 0.08, 0.35);
+    centerTuft.scale.set(0.8, 0.5, 0.6);
+    this.headGroup.add(centerTuft);
+
+    /* ── Eyes (big round beads) ───────────────────────── */
+    const eyeGeo = new SphereGeometry(0.082, 10, 8);
     const eyeMat = smooth(EYE);
+
     this.leftEye = new Mesh(eyeGeo, eyeMat);
-    this.leftEye.position.set(-0.13, 0.04, 0.34);
+    this.leftEye.position.set(-0.15, -0.02, 0.34);
     this.headGroup.add(this.leftEye);
 
     this.rightEye = new Mesh(eyeGeo, eyeMat);
-    this.rightEye.position.set(0.13, 0.04, 0.34);
+    this.rightEye.position.set(0.15, -0.02, 0.34);
     this.headGroup.add(this.rightEye);
 
-    /* ── Eye highlights ─────────────────────────────── */
-    const highlightGeo = new SphereGeometry(0.02, 4, 4);
-    const highlightMat = new MeshPhongMaterial({
+    /* ── Eye highlights (large = cuter) ──────────────── */
+    const hlMat = new MeshPhongMaterial({
       color: 0xffffff,
       emissive: 0xffffff,
-      emissiveIntensity: 0.3,
+      emissiveIntensity: 0.5,
     });
-    const leftHighlight = new Mesh(highlightGeo, highlightMat);
-    leftHighlight.position.set(-0.10, 0.07, 0.38);
-    this.headGroup.add(leftHighlight);
 
-    const rightHighlight = new Mesh(highlightGeo, highlightMat);
-    rightHighlight.position.set(0.16, 0.07, 0.38);
-    this.headGroup.add(rightHighlight);
+    const hl1Geo = new SphereGeometry(0.035, 6, 6);
+    const leftHl = new Mesh(hl1Geo, hlMat);
+    leftHl.position.set(-0.12, 0.01, 0.40);
+    this.headGroup.add(leftHl);
 
-    /* ── Nose ────────────────────────────────────────── */
-    const noseGeo = new SphereGeometry(0.04, 6, 5);
-    const nose = new Mesh(noseGeo, smooth(SKIN));
-    nose.position.set(0, -0.02, 0.38);
-    nose.scale.set(0.7, 0.6, 0.6);
+    const rightHl = new Mesh(hl1Geo, hlMat);
+    rightHl.position.set(0.18, 0.01, 0.40);
+    this.headGroup.add(rightHl);
+
+    const hl2Geo = new SphereGeometry(0.017, 4, 4);
+    const leftHl2 = new Mesh(hl2Geo, hlMat);
+    leftHl2.position.set(-0.17, -0.04, 0.39);
+    this.headGroup.add(leftHl2);
+
+    const rightHl2 = new Mesh(hl2Geo, hlMat);
+    rightHl2.position.set(0.13, -0.04, 0.39);
+    this.headGroup.add(rightHl2);
+
+    /* ── Tiny nose ────────────────────────────────────── */
+    const nose = new Mesh(
+      new SphereGeometry(0.025, 6, 5),
+      smooth(0xeec8a0),
+    );
+    nose.position.set(0, -0.1, 0.37);
     this.headGroup.add(nose);
 
-    /* ── Cheeks ──────────────────────────────────────── */
+    /* ── Rosy cheeks ──────────────────────────────────── */
     const cheekGeo = new SphereGeometry(0.065, 8, 6);
     const cheekMat = new MeshPhongMaterial({
       color: CHEEK,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.5,
     });
 
     const leftCheek = new Mesh(cheekGeo, cheekMat);
-    leftCheek.position.set(-0.22, -0.06, 0.28);
-    leftCheek.scale.set(1.1, 0.6, 0.4);
+    leftCheek.position.set(-0.25, -0.1, 0.24);
+    leftCheek.scale.set(1.0, 0.5, 0.4);
     this.headGroup.add(leftCheek);
 
     const rightCheek = new Mesh(cheekGeo, cheekMat);
-    rightCheek.position.set(0.22, -0.06, 0.28);
-    rightCheek.scale.set(1.1, 0.6, 0.4);
+    rightCheek.position.set(0.25, -0.1, 0.24);
+    rightCheek.scale.set(1.0, 0.5, 0.4);
     this.headGroup.add(rightCheek);
 
-    /* ── Aviator goggles ────────────────────────────── */
-    const strapGeo = new TorusGeometry(0.30, 0.025, 6, 14);
-    const strap = new Mesh(strapGeo, phong(GOGGLE_STRAP));
-    strap.position.y = 0.18;
-    strap.rotation.x = Math.PI / 2 - 0.3;
-    this.headGroup.add(strap);
+    this.headGroup.position.y = this.HEAD_Y;
+    this.pivot.add(this.headGroup);
 
-    const frameGeo = new TorusGeometry(0.095, 0.015, 6, 10);
-    const frameMat = phong(GOGGLE_FRAME);
-    const leftFrame = new Mesh(frameGeo, frameMat);
-    leftFrame.position.set(-0.15, 0.22, 0.22);
-    leftFrame.rotation.x = Math.PI / 2;
-    this.headGroup.add(leftFrame);
-
-    const rightFrame = new Mesh(frameGeo, frameMat);
-    rightFrame.position.set(0.15, 0.22, 0.22);
-    rightFrame.rotation.x = Math.PI / 2;
-    this.headGroup.add(rightFrame);
-
-    const lensGeo = new CylinderGeometry(0.08, 0.08, 0.03, 10);
-    const lensMat = new MeshPhongMaterial({
-      color: GOGGLE_LENS,
-      specular: 0xffffff,
-      shininess: 80,
-      transparent: true,
-      opacity: 0.85,
-    });
-    const leftLens = new Mesh(lensGeo, lensMat);
-    leftLens.position.set(-0.15, 0.22, 0.23);
-    leftLens.rotation.x = Math.PI / 2;
-    this.headGroup.add(leftLens);
-
-    const rightLens = new Mesh(lensGeo, lensMat);
-    rightLens.position.set(0.15, 0.22, 0.23);
-    rightLens.rotation.x = Math.PI / 2;
-    this.headGroup.add(rightLens);
-
-    const bridgeGeo = new BoxGeometry(0.04, 0.025, 0.02);
-    const bridge = new Mesh(bridgeGeo, frameMat);
-    bridge.position.set(0, 0.22, 0.28);
-    this.headGroup.add(bridge);
-
-    this.headGroup.position.y = 1.15;
-    this.group.add(this.headGroup);
-
-    /* ── Body ────────────────────────────────────────── */
-    const bodyGeo = new CapsuleGeometry(0.28, 0.35, 6, 8);
-    this.bodyMesh = new Mesh(bodyGeo, phong(OUTFIT));
-    this.bodyMesh.position.y = 0.65;
-    this.group.add(this.bodyMesh);
+    /* ── Body (small round capsule) ───────────────────── */
+    this.bodyMesh = new Mesh(
+      new CapsuleGeometry(0.2, 0.12, 8, 10),
+      phong(OUTFIT),
+    );
+    this.bodyMesh.position.y = this.BODY_Y;
+    this.pivot.add(this.bodyMesh);
 
     /* ── Scarf ───────────────────────────────────────── */
     const scarfMat = phong(this.scarfColor);
 
     const scarfRing = new Mesh(
-      new CylinderGeometry(0.3, 0.3, 0.08, 8),
+      new CylinderGeometry(0.22, 0.22, 0.055, 10),
       scarfMat,
     );
-    scarfRing.position.y = 0.92;
-    this.group.add(scarfRing);
+    scarfRing.position.y = 0.56;
+    this.pivot.add(scarfRing);
 
-    const scarfTailGeo = new CapsuleGeometry(0.04, 0.28, 4, 4);
-    this.scarfTail = new Mesh(scarfTailGeo, scarfMat);
-    this.scarfTail.position.set(0, 0.82, -0.25);
-    this.scarfTail.rotation.x = 0.3;
-    this.group.add(this.scarfTail);
+    this.scarfTail = new Mesh(
+      new CapsuleGeometry(0.032, 0.18, 4, 4),
+      scarfMat,
+    );
+    this.scarfTail.position.set(0, 0.50, -0.18);
+    this.scarfTail.rotation.x = 0.4;
+    this.pivot.add(this.scarfTail);
 
-    /* ── Arms ────────────────────────────────────────── */
-    const armGeo = new CapsuleGeometry(0.08, 0.2, 4, 6);
+    /* ── Arms (tiny nubs) ────────────────────────────── */
+    const armGeo = new CapsuleGeometry(0.055, 0.1, 4, 6);
     const armMat = phong(OUTFIT);
 
     const leftArmMesh = new Mesh(armGeo, armMat);
-    leftArmMesh.position.y = -0.12;
+    leftArmMesh.position.y = -0.06;
     this.leftArm.add(leftArmMesh);
-    this.leftArm.position.set(-0.36, 0.72, 0);
-    this.leftArm.rotation.z = 0.15;
-    this.group.add(this.leftArm);
+    this.leftArm.position.set(-0.26, this.ARM_Y, 0);
+    this.leftArm.rotation.z = 0.2;
+    this.pivot.add(this.leftArm);
 
     const rightArmMesh = new Mesh(armGeo, armMat);
-    rightArmMesh.position.y = -0.12;
+    rightArmMesh.position.y = -0.06;
     this.rightArm.add(rightArmMesh);
-    this.rightArm.position.set(0.36, 0.72, 0);
-    this.rightArm.rotation.z = -0.15;
-    this.group.add(this.rightArm);
+    this.rightArm.position.set(0.26, this.ARM_Y, 0);
+    this.rightArm.rotation.z = -0.2;
+    this.pivot.add(this.rightArm);
 
-    /* ── Legs ────────────────────────────────────────── */
-    const legGeo = new CapsuleGeometry(0.1, 0.18, 4, 6);
+    /* ── Legs (short stumps + rounded feet) ──────────── */
+    const legGeo = new CapsuleGeometry(0.075, 0.05, 4, 6);
     const legMat = phong(OUTFIT);
+    const bootMat = phong(BOOT);
+    const footGeo = new SphereGeometry(0.085, 6, 5);
 
     const leftLegMesh = new Mesh(legGeo, legMat);
-    leftLegMesh.position.y = -0.13;
+    leftLegMesh.position.y = -0.04;
     this.leftLeg.add(leftLegMesh);
 
-    const leftBoot = new Mesh(
-      new CylinderGeometry(0.11, 0.12, 0.1, 6),
-      phong(BOOT),
-    );
-    leftBoot.position.y = -0.26;
-    this.leftLeg.add(leftBoot);
+    const leftFoot = new Mesh(footGeo, bootMat);
+    leftFoot.position.set(0, -0.09, 0.015);
+    leftFoot.scale.set(0.85, 0.5, 1.1);
+    this.leftLeg.add(leftFoot);
 
-    this.leftLeg.position.set(-0.14, 0.38, 0);
-    this.group.add(this.leftLeg);
+    this.leftLeg.position.set(-0.11, 0.14, 0);
+    this.pivot.add(this.leftLeg);
 
     const rightLegMesh = new Mesh(legGeo, legMat);
-    rightLegMesh.position.y = -0.13;
+    rightLegMesh.position.y = -0.04;
     this.rightLeg.add(rightLegMesh);
 
-    const rightBoot = new Mesh(
-      new CylinderGeometry(0.11, 0.12, 0.1, 6),
-      phong(BOOT),
-    );
-    rightBoot.position.y = -0.26;
-    this.rightLeg.add(rightBoot);
+    const rightFoot = new Mesh(footGeo, bootMat);
+    rightFoot.position.set(0, -0.09, 0.015);
+    rightFoot.scale.set(0.85, 0.5, 1.1);
+    this.rightLeg.add(rightFoot);
 
-    this.rightLeg.position.set(0.14, 0.38, 0);
-    this.group.add(this.rightLeg);
+    this.rightLeg.position.set(0.11, 0.14, 0);
+    this.pivot.add(this.rightLeg);
 
-    this.group.scale.setScalar(0.55);
+    this.group.scale.setScalar(0.6);
   }
 
-  /* ── Update ────────────────────────────────────────────── */
+  /* ── Update ────────────────────────────────────────────────── */
 
   update(
     dt: number,
@@ -274,11 +281,11 @@ export class PilotAvatar {
       this.group.position.x = Math.max(-half, Math.min(half, this.group.position.x));
       this.group.position.z = Math.max(-half, Math.min(half, this.group.position.z));
 
-      this.walkTime += dt * 8;
+      this.walkTime += dt * 9;
+      this.idleTime = 0;
       this.animateWalk();
     } else {
       this.walkTime = 0;
-      this.resetLimbs();
       this.idleTime += dt;
       this.animateIdle(dt);
     }
@@ -287,65 +294,92 @@ export class PilotAvatar {
     this.animateBlink(dt);
   }
 
+  /* ── Walk: bouncy hop + waddle + squash-stretch ──────────── */
+
   private animateWalk() {
     const t = this.walkTime;
-    const legSwing = Math.sin(t) * 0.26;
-    const armSwing = Math.sin(t) * 0.17;
-    const bob = Math.abs(Math.sin(t)) * 0.03;
 
+    const bounce = Math.abs(Math.sin(t)) * 0.055;
+    this.pivot.position.y = bounce;
+
+    const squashAmt = Math.abs(Math.sin(t));
+    this.bodyMesh.scale.set(
+      1 + squashAmt * 0.03,
+      1 - squashAmt * 0.05,
+      1 + squashAmt * 0.03,
+    );
+
+    const waddle = Math.sin(t) * 0.045;
+    this.pivot.rotation.z = waddle;
+    this.headGroup.rotation.z = -waddle * 0.3;
+
+    const legSwing = Math.sin(t) * 0.22;
     this.leftLeg.rotation.x = legSwing;
     this.rightLeg.rotation.x = -legSwing;
+
+    const armSwing = Math.sin(t) * 0.14;
     this.leftArm.rotation.x = -armSwing;
     this.rightArm.rotation.x = armSwing;
-    this.bodyMesh.position.y = 0.65 + bob;
-    this.headGroup.position.y = 1.15 + bob;
-    this.headGroup.rotation.z = Math.sin(t) * 0.04;
+
+    this.headGroup.position.y = this.HEAD_Y;
   }
 
-  private resetLimbs() {
+  /* ── Idle: gentle breathing + sway ───────────────────────── */
+
+  private animateIdle(dt: number) {
+    this.pivot.position.y *= Math.max(0, 1 - dt * 10);
+    this.pivot.rotation.z *= Math.max(0, 1 - dt * 10);
+
     this.leftLeg.rotation.x = 0;
     this.rightLeg.rotation.x = 0;
     this.leftArm.rotation.x = 0;
     this.rightArm.rotation.x = 0;
-    this.bodyMesh.position.y = 0.65;
-    this.headGroup.position.y = 1.15;
-    this.headGroup.rotation.z = 0;
+
+    const breath = Math.sin(this.idleTime * 1.8) * 0.012;
+    this.bodyMesh.scale.set(
+      1 - breath * 0.4,
+      1 + breath,
+      1 - breath * 0.4,
+    );
+    this.headGroup.position.y = this.HEAD_Y + breath * 2.5;
+
+    const sway = Math.sin(this.idleTime * 0.7) * 0.012;
+    this.headGroup.rotation.z = sway;
   }
 
-  private animateIdle(dt: number) {
-    const breath = Math.sin(this.idleTime * 1.5) * 0.008;
-    this.bodyMesh.scale.y = 1 + breath;
-    this.headGroup.position.y = 1.15 + breath * 2;
-  }
+  /* ── Blink ────────────────────────────────────────────────── */
 
   private animateBlink(dt: number) {
     this.blinkTimer -= dt;
     if (this.blinkTimer <= 0 && this.blinkPhase === 0) {
-      this.blinkPhase = 0.12;
+      this.blinkPhase = 0.15;
     }
     if (this.blinkPhase > 0) {
       this.blinkPhase -= dt;
-      const shut = this.blinkPhase > 0.06;
-      const sy = shut ? 0.1 : 1;
+      const shut = this.blinkPhase > 0.075;
+      const sy = shut ? 0.08 : 1;
       this.leftEye.scale.y = sy;
       this.rightEye.scale.y = sy;
       if (this.blinkPhase <= 0) {
         this.blinkPhase = 0;
         this.leftEye.scale.y = 1;
         this.rightEye.scale.y = 1;
-        this.blinkTimer = 2.5 + Math.random() * 4;
+        this.blinkTimer = 2 + Math.random() * 3;
       }
     }
   }
 
+  /* ── Scarf flutter ────────────────────────────────────────── */
+
   private animateScarf(dt: number, moving: boolean) {
     const time = moving ? this.walkTime : this.idleTime;
     const freq = moving ? 6 : 1.5;
-    const amp = moving ? 0.25 : 0.08;
-    const wave = Math.sin(time * freq) * amp;
-    this.scarfTail.rotation.x = 0.3 + wave;
-    this.scarfTail.rotation.z = Math.sin(time * freq * 0.7 + 1.0) * amp * 0.3;
+    const amp = moving ? 0.3 : 0.08;
+    this.scarfTail.rotation.x = 0.4 + Math.sin(time * freq) * amp;
+    this.scarfTail.rotation.z = Math.sin(time * freq * 0.7 + 1.0) * amp * 0.4;
   }
+
+  /* ── Public API ───────────────────────────────────────────── */
 
   setPosition(x: number, z: number) {
     this.group.position.set(x, 0, z);
