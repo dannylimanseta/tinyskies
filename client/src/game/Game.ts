@@ -919,6 +919,7 @@ export class Game {
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
     if (this.introActive) {
       this.introTimer += dt;
@@ -1551,6 +1552,7 @@ export class Game {
   }
 
   private applyDayNightPreset() {
+    this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
     const p = this.dayNightCycle.getPreset();
     const fogScale = this.mobile ? 0.7 : 1;
 

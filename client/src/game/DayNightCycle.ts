@@ -112,6 +112,7 @@ function blendPresets(from: SkyPreset, to: SkyPreset, t: number): SkyPreset {
 
 export class DayNightCycle {
   private worldSeed: number;
+  moonProgress = 0;
 
   constructor(worldSeed: number) {
     this.worldSeed = worldSeed;
@@ -127,29 +128,43 @@ export class DayNightCycle {
   getPreset(): SkyPreset {
     const time = this.getCycleTime();
     let segStart = 0;
+    let base: SkyPreset = DAY;
     for (const seg of SEGMENTS) {
       if (time < seg.end) {
-        if (!seg.transition) return seg.from;
+        if (!seg.transition) { base = seg.from; break; }
         const duration = seg.end - segStart;
         const t = (time - segStart) / duration;
         const smooth = t * t * (3 - 2 * t);
-        return blendPresets(seg.from, seg.to, smooth);
+        base = blendPresets(seg.from, seg.to, smooth);
+        break;
       }
       segStart = seg.end;
     }
-    return DAY;
+
+    if (this.moonProgress >= 0.75) {
+      const t = Math.min(1, (this.moonProgress - 0.75) / 0.10);
+      const smooth = t * t * (3 - 2 * t);
+      return blendPresets(base, NIGHT, smooth);
+    }
+    return base;
   }
 
   /** Stars/aurora visibility weight: 0 during day, 1 during night, smooth in transitions. */
   getNightWeight(): number {
     const time = this.getCycleTime();
-    if (time < 60) return 0;
-    if (time < 75) { const t = (time - 60) / 15; return t * t * (3 - 2 * t) * 0.5; }
-    if (time < 105) return 0.5;
-    if (time < 120) { const t = (time - 105) / 15; return 0.5 + t * t * (3 - 2 * t) * 0.5; }
-    if (time < 180) return 1;
-    if (time < 195) { const t = (time - 180) / 15; return 1 - t * t * (3 - 2 * t); }
-    return 0;
+    let w = 0;
+    if (time < 60) w = 0;
+    else if (time < 75) { const t = (time - 60) / 15; w = t * t * (3 - 2 * t) * 0.5; }
+    else if (time < 105) w = 0.5;
+    else if (time < 120) { const t = (time - 105) / 15; w = 0.5 + t * t * (3 - 2 * t) * 0.5; }
+    else if (time < 180) w = 1;
+    else if (time < 195) { const t = (time - 180) / 15; w = 1 - t * t * (3 - 2 * t); }
+
+    if (this.moonProgress >= 0.75) {
+      const t = Math.min(1, (this.moonProgress - 0.75) / 0.10);
+      w = w + (1 - w) * t * t * (3 - 2 * t);
+    }
+    return w;
   }
 
   /** Lens flare visibility weight: 1 during day, 0 during night. */
@@ -189,24 +204,36 @@ export class DayNightCycle {
   getMusicWeights(): { day: number; evening: number; night: number } {
     const time = this.getCycleTime();
 
-    if (time < 60) return { day: 1, evening: 0, night: 0 };
-    if (time < 75) {
+    let mw: { day: number; evening: number; night: number };
+    if (time < 60) mw = { day: 1, evening: 0, night: 0 };
+    else if (time < 75) {
       const t = (time - 60) / 15;
       const s = t * t * (3 - 2 * t);
-      return { day: 1 - s, evening: s, night: 0 };
+      mw = { day: 1 - s, evening: s, night: 0 };
     }
-    if (time < 105) return { day: 0, evening: 1, night: 0 };
-    if (time < 120) {
+    else if (time < 105) mw = { day: 0, evening: 1, night: 0 };
+    else if (time < 120) {
       const t = (time - 105) / 15;
       const s = t * t * (3 - 2 * t);
-      return { day: 0, evening: 1 - s, night: s };
+      mw = { day: 0, evening: 1 - s, night: s };
     }
-    if (time < 180) return { day: 0, evening: 0, night: 1 };
-    if (time < 195) {
+    else if (time < 180) mw = { day: 0, evening: 0, night: 1 };
+    else if (time < 195) {
       const t = (time - 180) / 15;
       const s = t * t * (3 - 2 * t);
-      return { day: s, evening: 0, night: 1 - s };
+      mw = { day: s, evening: 0, night: 1 - s };
     }
-    return { day: 1, evening: 0, night: 0 };
+    else mw = { day: 1, evening: 0, night: 0 };
+
+    if (this.moonProgress >= 0.75) {
+      const blend = Math.min(1, (this.moonProgress - 0.75) / 0.10);
+      const s = blend * blend * (3 - 2 * blend);
+      mw = {
+        day: mw.day * (1 - s),
+        evening: mw.evening * (1 - s),
+        night: mw.night + (1 - mw.night) * s,
+      };
+    }
+    return mw;
   }
 }
