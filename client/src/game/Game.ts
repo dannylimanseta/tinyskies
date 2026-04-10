@@ -1608,6 +1608,11 @@ export class Game {
     this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, dayW * BIRDS_LOOP_MAX_VOL * rainDampen);
 
     const mw = this.dayNightCycle.getMusicWeights();
+    const moonProg = this.moonThreat?.progress ?? 0;
+    const endTimesBlend = moonProg >= 0.65
+      ? Math.min(1, (moonProg - 0.65) / 0.15)
+      : 0;
+    this.audioManager.setEndTimesWeight(endTimesBlend);
     this.audioManager.setWeights(mw.day, mw.evening, mw.night);
   }
 

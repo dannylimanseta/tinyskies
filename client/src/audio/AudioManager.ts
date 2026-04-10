@@ -13,6 +13,11 @@ const MUSIC_TRACKS: Record<TimePhase, string[]> = {
   night: ["/audio/music/night_1.mp3", "/audio/music/night_2.mp3"],
 };
 
+const END_TIMES_TRACKS = [
+  "/audio/music/end_times_1.mp3",
+  "/audio/music/end_times_2.mp3",
+];
+
 const FADE_SPEED = 2.0;
 const MASTER_MUSIC_VOLUME = 0.35;
 
@@ -20,6 +25,9 @@ export class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private layers: Record<TimePhase, MusicLayer> | null = null;
+  private endTimesLayers: MusicLayer[] = [];
+  private endTimesIndex = 0;
+  private endTimesWeight = 0;
   private started = false;
   private _muted = false;
   private sfxBuffers = new Map<string, AudioBuffer>();
@@ -48,6 +56,8 @@ export class AudioManager {
       evening: this.createLayer(),
       night: this.createLayer(),
     };
+    this.endTimesLayers = END_TIMES_TRACKS.map(() => this.createLayer());
+    this.endTimesIndex = Math.round(Math.random());
 
     await this.loadAllMusic();
   }
@@ -73,7 +83,19 @@ export class AudioManager {
         console.warn(`AudioManager: failed to load ${pick}`, e);
       }
     });
-    await Promise.all(promises);
+
+    const endPromises = END_TIMES_TRACKS.map(async (url, i) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arrayBuf = await res.arrayBuffer();
+        this.endTimesLayers[i]!.buffer = await this.ctx!.decodeAudioData(arrayBuf);
+      } catch (e) {
+        console.warn(`AudioManager: failed to load ${url}`, e);
+      }
+    });
+
+    await Promise.all([...promises, ...endPromises]);
   }
 
   /** Call after user gesture (e.g. lobby "Play" click) to start playback. */
@@ -87,6 +109,9 @@ export class AudioManager {
 
     for (const phase of ["day", "evening", "night"] as TimePhase[]) {
       this.startLayer(this.layers[phase]);
+    }
+    for (const layer of this.endTimesLayers) {
+      this.startLayer(layer);
     }
   }
 
@@ -103,12 +128,29 @@ export class AudioManager {
   /**
    * Set per-phase weights (0–1). Call every frame.
    * Weights are smoothed internally for crossfade.
+   * Normal music is attenuated when endTimesWeight > 0.
    */
   setWeights(day: number, evening: number, night: number) {
     if (!this.layers) return;
-    this.layers.day.targetVolume = day * MASTER_MUSIC_VOLUME;
-    this.layers.evening.targetVolume = evening * MASTER_MUSIC_VOLUME;
-    this.layers.night.targetVolume = night * MASTER_MUSIC_VOLUME;
+    const normal = 1 - this.endTimesWeight;
+    this.layers.day.targetVolume = day * MASTER_MUSIC_VOLUME * normal;
+    this.layers.evening.targetVolume = evening * MASTER_MUSIC_VOLUME * normal;
+    this.layers.night.targetVolume = night * MASTER_MUSIC_VOLUME * normal;
+  }
+
+  /**
+   * Blend in end-times music (0 = silent, 1 = full).
+   * Alternates between the two tracks each time weight rises from 0.
+   */
+  setEndTimesWeight(weight: number) {
+    if (this.endTimesWeight === 0 && weight > 0) {
+      this.endTimesIndex = (this.endTimesIndex + 1) % this.endTimesLayers.length;
+    }
+    this.endTimesWeight = weight;
+    for (let i = 0; i < this.endTimesLayers.length; i++) {
+      this.endTimesLayers[i]!.targetVolume =
+        i === this.endTimesIndex ? weight * MASTER_MUSIC_VOLUME : 0;
+    }
   }
 
   /** Smooth gain ramping — call every frame with dt. */
@@ -116,6 +158,17 @@ export class AudioManager {
     if (!this.layers) return;
     for (const phase of ["day", "evening", "night"] as TimePhase[]) {
       const layer = this.layers[phase];
+      const current = layer.gain.gain.value;
+      const target = layer.targetVolume;
+      const diff = target - current;
+      if (Math.abs(diff) < 0.001) {
+        layer.gain.gain.value = target;
+      } else {
+        layer.gain.gain.value = current + diff * Math.min(1, FADE_SPEED * dt);
+      }
+    }
+
+    for (const layer of this.endTimesLayers) {
       const current = layer.gain.gain.value;
       const target = layer.targetVolume;
       const diff = target - current;
@@ -262,6 +315,12 @@ export class AudioManager {
         this.layers[phase].gain.disconnect();
       }
     }
+    for (const layer of this.endTimesLayers) {
+      layer.source?.stop();
+      layer.source?.disconnect();
+      layer.gain.disconnect();
+    }
+    this.endTimesLayers = [];
     this.masterGain?.disconnect();
     this.ctx?.close();
     this.ctx = null;
