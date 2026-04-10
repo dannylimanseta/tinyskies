@@ -164,12 +164,22 @@ export class DayNightCycle {
    * Frequencies are scaled so typical rain-on windows are ~50% shorter than
    * the base sine period would give.
    */
-  getRainWeight(): number {
+  getRainWeight(moonProgress = 0): number {
     const now = Date.now() / 1000;
     const s = this.worldSeed;
     const a = Math.sin(now * 0.058 + s * 1.7) * 0.5 + 0.5;
     const b = Math.sin(now * 0.026 + s * 3.1) * 0.5 + 0.5;
     const raw = a * 0.65 + b * 0.35;
+
+    if (moonProgress >= 0.75) {
+      const urgency = Math.min(1, (moonProgress - 0.75) / 0.25);
+      const lo = 0.50 - urgency * 0.30;
+      const hi = 0.58 + urgency * 0.15;
+      const t = Math.max(0, Math.min(1, (raw - lo) / (hi - lo)));
+      const base = t * t * (3 - 2 * t);
+      return Math.min(1, base + urgency * 0.4);
+    }
+
     const lo = 0.50, hi = 0.58;
     const t = Math.max(0, Math.min(1, (raw - lo) / (hi - lo)));
     return t * t * (3 - 2 * t);

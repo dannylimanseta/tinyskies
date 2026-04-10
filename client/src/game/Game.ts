@@ -699,9 +699,14 @@ export class Game {
         }
         const id =
           DIALOGUE_LOOP_IDS[Math.floor(Math.random() * DIALOGUE_LOOP_IDS.length)]!;
-        const rate = isNpcMale(npcName)
+        let rate = isNpcMale(npcName)
           ? DIALOGUE_MALE_PLAYBACK_RATE
           : 1;
+        const mp = this.moonThreat?.progress ?? 0;
+        if (mp >= 0.50) {
+          const dread = Math.min(1, (mp - 0.50) / 0.50);
+          rate *= 1.0 - dread * 0.25;
+        }
         this.audioManager.startLoop(id, 0, rate);
         this.audioManager.setLoopVolume(id, DIALOGUE_LOOP_VOLUME);
       } else if (!visible) {
@@ -1278,7 +1283,7 @@ export class Game {
     this.audioManager.update(dt);
     this.lensFlare?.update(this.cameraRig.camera);
     this.aurora?.update(dt, this.cameraRig.camera);
-    this.rainOverlay?.update(dt, this.dayNightCycle.getRainWeight());
+    this.rainOverlay?.update(dt, this.dayNightCycle.getRainWeight(moonProg), moonProg);
 
     this.remotePlayerNameLabels.update(
       this.remotePlanes,
@@ -1601,14 +1606,14 @@ export class Game {
       p.flareColorScale[2] * dayW,
     ]);
 
-    const rainW = this.dayNightCycle.getRainWeight();
+    const moonProg = this.moonThreat?.progress ?? 0;
+    const rainW = this.dayNightCycle.getRainWeight(moonProg);
     const rainDampen = 1 - rainW;
     this.audioManager.setLoopVolume(RAIN_LOOP_NAME, rainW * RAIN_LOOP_MAX_VOL);
     this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL * rainDampen);
     this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, dayW * BIRDS_LOOP_MAX_VOL * rainDampen);
 
     const mw = this.dayNightCycle.getMusicWeights();
-    const moonProg = this.moonThreat?.progress ?? 0;
     const endTimesBlend = moonProg >= 0.65
       ? Math.min(1, (moonProg - 0.65) / 0.15)
       : 0;

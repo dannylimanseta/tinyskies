@@ -18,7 +18,7 @@ import {
 
 /* ── Config ─────────────────────────────────────────────────────────── */
 
-const STREAK_COUNT = 50;
+const STREAK_COUNT = 200;
 const WIND_ANGLE = 0.35;
 const ANGLE_JITTER = 0.09;
 const NOISE_SIZE = 256;
@@ -147,6 +147,12 @@ export class RainOverlay {
   private currentWeight = 0;
   private time = 0;
 
+  private lightningMesh: Mesh;
+  private lightningMat: ShaderMaterial;
+  private lightningAlpha = 0;
+  private lightningCooldown = 0;
+  private moonProgress = 0;
+
   constructor() {
     this.streakScene = new Scene();
     this.glassScene = new Scene();
@@ -197,6 +203,18 @@ export class RainOverlay {
     this.glassMesh = new Mesh(this.glassGeo, this.glassMat);
     this.glassMesh.visible = false;
     this.glassScene.add(this.glassMesh);
+
+    this.lightningMat = new ShaderMaterial({
+      vertexShader: `void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform float alpha; void main() { gl_FragColor = vec4(0.85, 0.88, 1.0, alpha); }`,
+      uniforms: { alpha: { value: 0 } },
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.lightningMesh = new Mesh(new PlaneGeometry(2, 2), this.lightningMat);
+    this.lightningMesh.visible = false;
+    this.glassScene.add(this.lightningMesh);
   }
 
   private ensureSize(renderer: WebGLRenderer) {
@@ -212,18 +230,51 @@ export class RainOverlay {
     this.glassMat.uniforms.resolution.value.set(this.bufW, this.bufH);
   }
 
-  private spawnStreak(idx: number) {
+  private spawnStreak(idx: number, heavy = false) {
     const s = this.streaks[idx];
     s.angle = -WIND_ANGLE + (Math.random() - 0.5) * 2 * ANGLE_JITTER;
-    s.length = 0.08 + Math.random() * 0.14;
-    s.width = 0.0015 + Math.random() * 0.0015;
-    s.speed = 1.8 + Math.random() * 1.4;
+    s.length = heavy ? 0.12 + Math.random() * 0.20 : 0.08 + Math.random() * 0.14;
+    s.width = heavy ? 0.002 + Math.random() * 0.002 : 0.0015 + Math.random() * 0.0015;
+    s.speed = heavy ? 2.4 + Math.random() * 1.8 : 1.8 + Math.random() * 1.4;
     s.x = (Math.random() - 0.5) * 2.6;
     s.y = 1.15 + Math.random() * 0.3;
     s.active = true;
   }
 
-  update(dt: number, rainWeight: number) {
+  private updateLightning(dt: number, rainWeight: number) {
+    if (this.moonProgress < 0.75 || rainWeight <= 0) {
+      this.lightningMesh.visible = false;
+      this.lightningAlpha = 0;
+      return;
+    }
+
+    if (this.lightningAlpha > 0) {
+      this.lightningAlpha = Math.max(0, this.lightningAlpha - dt * 4.0);
+      this.lightningMat.uniforms.alpha.value = this.lightningAlpha;
+      this.lightningMesh.visible = this.lightningAlpha > 0.01;
+      return;
+    }
+
+    this.lightningCooldown -= dt;
+    if (this.lightningCooldown <= 0) {
+      const urgency = Math.min(1, (this.moonProgress - 0.75) / 0.25);
+      this.lightningAlpha = 0.5 + Math.random() * 0.35;
+      this.lightningMat.uniforms.alpha.value = this.lightningAlpha;
+      this.lightningMesh.visible = true;
+      const minInterval = 2.0 - urgency * 1.2;
+      const maxInterval = 6.0 - urgency * 3.0;
+      this.lightningCooldown = minInterval + Math.random() * (maxInterval - minInterval);
+
+      if (Math.random() < 0.4) {
+        setTimeout(() => {
+          this.lightningAlpha = 0.3 + Math.random() * 0.2;
+        }, 80 + Math.random() * 120);
+      }
+    }
+  }
+
+  update(dt: number, rainWeight: number, moonProgress = 0) {
+    this.moonProgress = moonProgress;
     this.currentWeight = rainWeight;
     if (rainWeight <= 0) {
       for (let i = 0; i < STREAK_COUNT; i++) {
@@ -231,19 +282,26 @@ export class RainOverlay {
         this.streakMeshes[i].visible = false;
       }
       this.glassMesh.visible = false;
+      this.lightningMesh.visible = false;
+      this.lightningAlpha = 0;
       return;
     }
 
     this.time += dt;
     const intensity = rainWeight;
-    const spawnChance = intensity * 0.85;
+
+    const apocalypse = moonProgress >= 0.75;
+    const spawnChance = apocalypse ? 1.0 : intensity * 0.85;
+    const spawnRate = apocalypse ? 60 : 30;
+    const activeLimit = apocalypse ? STREAK_COUNT : Math.floor(STREAK_COUNT * 0.25);
+    const opacityMul = apocalypse ? 0.55 : 0.35;
 
     for (let i = 0; i < STREAK_COUNT; i++) {
       const s = this.streaks[i];
 
       if (!s.active) {
-        if (Math.random() < spawnChance * dt * 30) {
-          this.spawnStreak(i);
+        if (i < activeLimit && Math.random() < spawnChance * dt * spawnRate) {
+          this.spawnStreak(i, apocalypse);
         }
         continue;
       }
@@ -264,12 +322,14 @@ export class RainOverlay {
       mesh.rotation.z = s.angle;
       mesh.scale.set(s.width, s.length, 1);
       mesh.visible = true;
-      this.streakMats[i].uniforms.opacity.value = intensity * 0.35;
+      this.streakMats[i].uniforms.opacity.value = intensity * opacityMul;
     }
 
     this.glassMat.uniforms.time.value = this.time;
     this.glassMat.uniforms.opacity.value = intensity;
     this.glassMesh.visible = true;
+
+    this.updateLightning(dt, rainWeight);
   }
 
   render(renderer: WebGLRenderer) {
@@ -304,6 +364,8 @@ export class RainOverlay {
     this.glassMat.dispose();
     this.noiseTex.dispose();
     this.sceneTex.dispose();
+    this.lightningMat.dispose();
+    (this.lightningMesh.geometry as PlaneGeometry).dispose();
     for (const m of this.streakMats) m.dispose();
   }
 }
