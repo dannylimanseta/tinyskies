@@ -62,6 +62,32 @@ export function getNpcPortraitUrl(npcName: string): string {
   return file ? `/npc/${file}` : "";
 }
 
+const PICKUP_TEMPLATES_URGENT = [
+  "Please, get this to {dest} quickly. Something terrible is coming.",
+  "{receiver} in {dest} needs this. I have a bad feeling about tonight.",
+  "Hurry — take this to {dest} before the sky gets any stranger.",
+  "This package must reach {dest}. {receiver} is preparing for the worst.",
+  "I packed emergency supplies for {dest}. Please don't delay.",
+  "The moon is too close. {receiver} needs this — it might be our last chance.",
+  "Get this to {dest}, pilot. And if I were you, I wouldn't linger.",
+  "Something is very wrong. Take this to {receiver} in {dest}, quickly.",
+  "Don't ask what's inside. Just get it to {dest}. Time is running out.",
+  "I promised {receiver} I'd send help. You're all I've got, pilot.",
+];
+
+const PICKUP_TEMPLATES_FRANTIC = [
+  "PLEASE! Take this to {dest} before it's too late!",
+  "No time to explain — fly this to {dest} NOW!",
+  "Forget the small talk — {receiver} needs this or we're all done for!",
+  "{dest}! Go! GO! {receiver} is counting on you!",
+  "I can see it coming. Just take this and fly to {dest} — FAST!",
+  "This might be the last delivery anyone ever makes. Get it to {dest}!",
+  "My hands are shaking. Please — {receiver} in {dest} — hurry!",
+  "If {dest} doesn't get this, nothing else matters anyway.",
+  "Take it! Take it and fly! Don't look up, just fly to {dest}!",
+  "There's no time! {receiver} needs this NOW — the sky is falling!",
+];
+
 const PICKUP_TEMPLATES = [
   "Could you take this to {dest}? {receiver} has been waiting for days!",
   "A parcel for {dest}! Handle with care, it's full of jam.",
@@ -93,6 +119,32 @@ const PICKUP_TEMPLATES = [
   "This lantern was crafted for {receiver}. It glows in seven colors!",
   "Fly this kite to {dest} — it's for the children's festival.",
   "One barrel of apple cider for {dest}. Don't let it slosh!",
+];
+
+const DELIVERY_TEMPLATES_URGENT = [
+  "Thank goodness. Have you seen the moon? I'm scared, pilot.",
+  "You made it. I wasn't sure anyone would, with the sky like that.",
+  "This might help us prepare. Thank you — and be careful out there.",
+  "I owe you. Now get somewhere safe. I don't trust that moon.",
+  "Finally! Tell {sender} to get underground. Something is coming.",
+  "Thank you. I hope this isn't the last delivery I ever receive.",
+  "You're braver than most. The others have stopped flying entirely.",
+  "{sender} always keeps their promises. Even now. Bless them.",
+  "We needed this. The village is frightened. Stay safe, pilot.",
+  "I almost didn't expect you'd come. The world feels like it's ending.",
+];
+
+const DELIVERY_TEMPLATES_FRANTIC = [
+  "FINALLY! Now get out of here — there's no time!",
+  "You're insane for still flying! Thank you — now LEAVE!",
+  "It doesn't matter anymore. Nothing matters. But... thank you.",
+  "I can't believe you made it. The sky is falling apart!",
+  "Take shelter! Forget more deliveries — save yourself!",
+  "Tell {sender} I said goodbye. And thank you. Now GO!",
+  "You beautiful, crazy pilot. Now run. RUN!",
+  "The ground is shaking. Thank you — now please, get somewhere safe!",
+  "I thought I'd die waiting. Thank you. I think we're all going to die anyway.",
+  "Bless you, pilot. If we survive this, I owe you everything.",
 ];
 
 const DELIVERY_TEMPLATES = [
@@ -139,6 +191,7 @@ export function generateQuestDialogue(
   seed: number,
   questIndex: number,
   destName: string,
+  moonProgress = 0,
 ): QuestDialogue {
   const rand = seededRandom(seed * 3571 + questIndex * 113);
 
@@ -150,12 +203,25 @@ export function generateQuestDialogue(
   const senderName = NPC_NAMES[senderIdx];
   const receiverName = NPC_NAMES[receiverIdx];
 
-  let pickupLine = PICKUP_TEMPLATES[Math.floor(rand() * PICKUP_TEMPLATES.length)];
+  let pickupPool: string[];
+  let deliveryPool: string[];
+  if (moonProgress >= 0.75) {
+    pickupPool = PICKUP_TEMPLATES_FRANTIC;
+    deliveryPool = DELIVERY_TEMPLATES_FRANTIC;
+  } else if (moonProgress >= 0.5) {
+    pickupPool = PICKUP_TEMPLATES_URGENT;
+    deliveryPool = DELIVERY_TEMPLATES_URGENT;
+  } else {
+    pickupPool = PICKUP_TEMPLATES;
+    deliveryPool = DELIVERY_TEMPLATES;
+  }
+
+  let pickupLine = pickupPool[Math.floor(rand() * pickupPool.length)];
   pickupLine = pickupLine
     .replace(/\{dest\}/g, destName)
     .replace(/\{receiver\}/g, receiverName);
 
-  let deliveryLine = DELIVERY_TEMPLATES[Math.floor(rand() * DELIVERY_TEMPLATES.length)];
+  let deliveryLine = deliveryPool[Math.floor(rand() * deliveryPool.length)];
   deliveryLine = deliveryLine.replace(/\{sender\}/g, senderName);
 
   return { senderName, receiverName, pickupLine, deliveryLine };
@@ -185,6 +251,68 @@ const BALLOON_GREETINGS = [
   "May your tailwinds be kind and your landings soft!",
 ];
 
+const BALLOON_GREETINGS_UNEASY_DAY = [
+  "Is it just me, or can you see the moon? It's the middle of the day...",
+  "The moon shouldn't be out right now. That's... not normal, is it?",
+  "I've never seen the moon that big during the day. Have you?",
+  "Something about the sky feels wrong today. Can you see it too?",
+  "My grandmother told stories about the moon showing its face by day. None of them ended well.",
+  "The birds have gone quiet. And the moon... why is it so close?",
+  "I don't want to alarm you, but look up. Does that seem right to you?",
+  "The clouds are thin and the moon is fat. I don't like it one bit.",
+  "I've been up in this balloon forty years. Never seen the moon like that in daylight.",
+  "Don't stare at it too long. It almost looks like it's... moving.",
+];
+
+const BALLOON_GREETINGS_UNEASY_NIGHT = [
+  "Is it just me, or is the moon awfully close tonight?",
+  "I've been watching the moon all evening. It's getting bigger. I'm sure of it.",
+  "The stars look dimmer than usual. The moon is drowning them out.",
+  "Beautiful night, isn't it? Almost too beautiful. The moon is enormous.",
+  "My old bones are aching. They always do when the moon gets strange.",
+  "That moon... it was half this size last night. I'd swear on my balloon.",
+  "The tides will be wild tonight. Look at the size of that thing.",
+  "Something's not right up there. The moon doesn't just grow like that.",
+  "I used to love full moons. This one gives me the shivers.",
+  "Have you noticed? The moonlight is so bright it's casting double shadows.",
+];
+
+const BALLOON_GREETINGS_PANIC = [
+  "We need to land — RIGHT NOW!",
+  "It's heading straight for us! Can't you see it?!",
+  "This is the end, isn't it? Tell me it isn't.",
+  "LOOK AT THE SKY! Why is nobody doing anything?!",
+  "I can't breathe. The moon — it's so close I can see the craters.",
+  "We're all going to... no. No no no no no.",
+  "Get away from here! Fly as far as you can!",
+  "My balloon can't go fast enough. Nothing can.",
+  "I always thought I'd go peacefully. Not like this.",
+  "Someone PLEASE do something! It's almost here!",
+  "The whole world is shaking! Can you feel it?!",
+  "I can hear it. The sky is groaning. We're out of time.",
+  "Forget the deliveries, forget everything — just RUN!",
+  "Hold your loved ones close, pilot. There's no time left.",
+  "If this is our last flight... it was nice meeting you.",
+];
+
+const PANIC_LINES = [
+  "Did you see the size of that thing?! It's ENORMOUS!",
+  "The moon! THE MOON! It's going to crush us all!",
+  "I can't stop shaking. Look at the sky. LOOK AT IT!",
+  "We're all doomed. Every last one of us.",
+  "Someone do something! Anyone! PLEASE!",
+  "I told them this would happen! Nobody listened!",
+  "The animals are fleeing. Even they know.",
+  "My house is crumbling from the tremors!",
+  "Has anyone seen my children? Where are my children?!",
+  "Pray. Just pray. There's nothing else we can do.",
+  "It's so close I can feel the heat. Is that possible?!",
+  "This is a nightmare. Please let this be a nightmare.",
+  "I should have told them I loved them more often.",
+  "The ocean is pulling back from the shore. It's really happening.",
+  "If any pilot can hear me — is there any hope left?",
+];
+
 /**
  * Random NPC + greeting line for balloon proximity (same portrait pool as package quests).
  * Uses Math.random() — the old seeded LCG often produced the same first draw (e.g. Old Barnaby)
@@ -194,8 +322,24 @@ export function pickBalloonGreeting(
   _seed: number,
   _balloonIndex: number,
   _salt: number,
+  moonProgress: number,
+  isDay: boolean,
 ): { npcName: string; line: string } {
   const npcName = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)]!;
-  const line = BALLOON_GREETINGS[Math.floor(Math.random() * BALLOON_GREETINGS.length)]!;
+  let pool: string[];
+  if (moonProgress >= 0.75) {
+    pool = BALLOON_GREETINGS_PANIC;
+  } else if (moonProgress >= 0.5) {
+    pool = isDay ? BALLOON_GREETINGS_UNEASY_DAY : BALLOON_GREETINGS_UNEASY_NIGHT;
+  } else {
+    pool = BALLOON_GREETINGS;
+  }
+  const line = pool[Math.floor(Math.random() * pool.length)]!;
+  return { npcName, line };
+}
+
+export function pickPanicLine(): { npcName: string; line: string } {
+  const npcName = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)]!;
+  const line = PANIC_LINES[Math.floor(Math.random() * PANIC_LINES.length)]!;
   return { npcName, line };
 }

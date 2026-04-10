@@ -159,6 +159,7 @@ function createBeamGroup(color: number): Group {
 
 export class PackageQuestManager {
   readonly group = new Group();
+  moonProgress = 0;
 
   get isCarrying(): boolean {
     return this.state === QuestState.Carrying || this.state === QuestState.Delivering;
@@ -317,7 +318,7 @@ export class PackageQuestManager {
       this.progress = 0;
       this.onProgressChange?.(0, "pickup");
 
-      const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name);
+      const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name, this.moonProgress);
       this.onPickup?.(this.origin!.name, this.destination!.name, dialogue.senderName, dialogue.pickupLine);
     } else if (this.progress <= 0) {
       this.state = QuestState.Available;
@@ -347,7 +348,7 @@ export class PackageQuestManager {
       this.progress = 0;
       this.onProgressChange?.(0, "deliver");
 
-      const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name);
+      const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name, this.moonProgress);
       this.onDelivered?.(this.destination!.name, dialogue.receiverName, dialogue.deliveryLine, DELIVERY_XP);
 
       this.lastDestination = this.destination;

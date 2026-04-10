@@ -110,6 +110,7 @@ export class MoonThreat {
       const mat = child.material;
 
       if (mat instanceof MeshStandardMaterial) {
+        mat.color.multiplyScalar(0.35);
         mat.onBeforeCompile = (shader) => {
           shader.uniforms.rimIntensity = { value: 0.55 };
           shader.uniforms.rimPower = { value: 2.5 };
@@ -128,6 +129,7 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
         };
         mat.needsUpdate = true;
       } else if (mat instanceof MeshPhongMaterial) {
+        mat.color.multiplyScalar(0.35);
         mat.onBeforeCompile = (shader) => {
           shader.uniforms.rimIntensity = { value: 0.55 };
           shader.uniforms.rimPower = { value: 2.5 };

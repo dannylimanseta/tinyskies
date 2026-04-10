@@ -58,7 +58,7 @@ import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyClus
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
-import { isNpcMale, pickBalloonGreeting } from "./PackageDialogue";
+import { isNpcMale, pickBalloonGreeting, pickPanicLine } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
@@ -172,6 +172,7 @@ export class Game {
   private balloonGreetCooldown: number[] = [];
   private balloonGreetSalt = 0;
   private balloonPosScratch = new Vector3();
+  private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
   private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" = "flying";
@@ -1237,6 +1238,9 @@ export class Game {
 
     this.landmarkDetector.update(this.localPlayer.qPosition);
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+    if (this.packageQuest && this.moonThreat) {
+      this.packageQuest.moonProgress = this.moonThreat.progress;
+    }
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
     if (this.packageQuest?.isCarrying) {
@@ -1256,6 +1260,17 @@ export class Game {
       this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
       if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
         this.startMoonImpactCinematic();
+      }
+    }
+
+    const moonProg = this.moonThreat?.progress ?? 0;
+    if (moonProg >= 0.75) {
+      this.panicDialogueCooldown -= dt;
+      if (this.panicDialogueCooldown <= 0 && !this.packageQuestHUD.isBubbleShowing) {
+        const { npcName, line } = pickPanicLine();
+        this.packageQuestHUD.showBubble(npcName, line);
+        const urgency = (moonProg - 0.75) / 0.25;
+        this.panicDialogueCooldown = 12 - urgency * 8;
       }
     }
 
@@ -1613,13 +1628,17 @@ export class Game {
       if (dist < BALLOON_GREET_DIST) {
         if (!this.balloonInRange[i]) {
           if (this.balloonGreetCooldown[i] <= 0) {
+            const moonProg = this.moonThreat?.progress ?? 0;
+            const isDay = this.dayNightCycle.getDayWeight() > 0.5;
             const { npcName, line } = pickBalloonGreeting(
               this.gameSeed,
               i,
               this.balloonGreetSalt++,
+              moonProg,
+              isDay,
             );
             this.packageQuestHUD.showBubble(npcName, line);
-            this.balloonGreetCooldown[i] = BALLOON_GREET_COOLDOWN;
+            this.balloonGreetCooldown[i] = moonProg >= 0.75 ? 10 : BALLOON_GREET_COOLDOWN;
           }
           this.balloonInRange[i] = true;
         }
