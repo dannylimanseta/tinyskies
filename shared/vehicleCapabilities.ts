@@ -74,8 +74,10 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     barrelRollBonus: false,
     cameraFollowDistance: 0.32,
     cameraFollowHeight: 0.16,
-    cameraSpeedZoom: -0.4,
-    cameraFovBoost: 50,
+    /** Negative = pull in slightly at speed; keep mild so chase distance stays above CameraRig floor. */
+    cameraSpeedZoom: -0.22,
+    /** Was 50° — wide FOV + tight chase made motion feel like violent spins when zoomed in. */
+    cameraFovBoost: 26,
     packageQuests: false,
   },
 };

@@ -1,12 +1,14 @@
-import { PerspectiveCamera, Vector3, Quaternion } from "three";
+import { MathUtils, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 
 const FOLLOW_DISTANCE = 1.2;
 const FOLLOW_DISTANCE_BOOST = 0.6;
 const FOLLOW_HEIGHT = 0.7;
 const FOLLOW_HEIGHT_BOOST = 0.15;
+/** Below this chase distance, small heading changes swing the camera wildly; keep a sane floor. */
+const MIN_CHASE_DISTANCE = 0.42;
 const POSITION_SMOOTH = 10.0;
-const LOOKAT_SMOOTH = 12.0;
+const LOOKAT_SMOOTH = 9.0;
 const MAX_TILT = 0.06;
 const TILT_SMOOTH = 5.0;
 const ZOOM_SMOOTH = 3.0;
@@ -61,7 +63,8 @@ export class CameraRig {
     );
 
     this.currentZoom += (speedRatio - this.currentZoom) * Math.min(1, ZOOM_SMOOTH * dt);
-    const dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom * speedZoom;
+    let dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom * speedZoom;
+    dist = Math.max(MIN_CHASE_DISTANCE, dist);
     const height = followHeight + FOLLOW_HEIGHT_BOOST * this.currentZoom * speedZoom;
 
     const targetFov = BASE_FOV + fovBoost * this.currentZoom;
@@ -82,9 +85,11 @@ export class CameraRig {
 
     this.targetLookAt.copy(planeWorldPos).addScaledVector(forward, 0.5);
 
-    // Smooth follow via exponential decay
-    const posFactor = 1 - Math.exp(-POSITION_SMOOTH * dt);
-    const lookFactor = 1 - Math.exp(-LOOKAT_SMOOTH * dt);
+    /* Tight chase cams: slow smoothing so look-at does not outrun position (reduces dizzy spins). */
+    const closeDamp = MathUtils.clamp(dist / 0.95, 0.36, 1.0);
+    const posFactor = 1 - Math.exp(-POSITION_SMOOTH * closeDamp * dt);
+    const lookFactor =
+      1 - Math.exp(-LOOKAT_SMOOTH * closeDamp * 0.78 * dt);
 
     this.currentPos.lerp(this.targetPos, posFactor);
     this.currentLookAt.lerp(this.targetLookAt, lookFactor);
@@ -104,7 +109,8 @@ export class CameraRig {
     this.camera.up.copy(camUp);
     this.camera.lookAt(this.currentLookAt);
 
-    const targetTilt = -turnRate * MAX_TILT * tiltScale;
+    const tiltDamp = MathUtils.clamp(0.45 + 0.55 * closeDamp, 0, 1);
+    const targetTilt = -turnRate * MAX_TILT * tiltScale * tiltDamp;
     this.currentTilt += (targetTilt - this.currentTilt) * Math.min(1, TILT_SMOOTH * dt);
     if (Math.abs(this.currentTilt) > 0.0001) {
       this.camera.rotateZ(this.currentTilt);
@@ -148,9 +154,10 @@ export class CameraRig {
       .addScaledVector(frame.east, Math.sin(planeHeading))
       .normalize();
 
+    const dist = Math.max(MIN_CHASE_DISTANCE, followDist);
     this.currentPos
       .copy(planeWorldPos)
-      .addScaledVector(forward, -followDist)
+      .addScaledVector(forward, -dist)
       .addScaledVector(frame.up, followHeight);
 
     this.currentLookAt.copy(planeWorldPos).addScaledVector(forward, 0.5);

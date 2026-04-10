@@ -129,6 +129,33 @@ void main() {
 }
 `;
 
+/* ── Campfire glow-halo shaders ──────────────────────────── */
+
+const glowVert = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+/** Radial warm-orange gradient disc rendered additively on the ground. */
+const glowFrag = /* glsl */ `
+uniform float uIntensity;
+varying vec2 vUv;
+void main() {
+  float d = length(vUv - 0.5) * 2.0;           // 0 at centre, 1 at rim
+  float a = (1.0 - smoothstep(0.0, 1.0, d));
+  a = pow(a, 1.6) * uIntensity;
+
+  vec3 innerCol = vec3(1.0, 0.82, 0.28);        // warm yellow-white core
+  vec3 outerCol = vec3(1.0, 0.22, 0.02);        // deep ember red rim
+  vec3 col = mix(innerCol, outerCol, smoothstep(0.05, 0.72, d));
+
+  gl_FragColor = vec4(col, a);
+}
+`;
+
 /* ── Grass shaders ───────────────────────────────────────── */
 
 const grassVert = /* glsl */ `
@@ -267,6 +294,7 @@ export class CampsiteScene {
 
   private flameMat: ShaderMaterial;
   private emberMat: ShaderMaterial;
+  private glowMat: ShaderMaterial;
   private grassWindTime = { value: 0 };
   /** Shared clock for campsite canopy sway (vertex shader). */
   private treeSwayTime = { value: 0 };
@@ -393,7 +421,30 @@ export class CampsiteScene {
 
     this.fireLight = new PointLight(0xff5511, 1.6, 12);
     this.fireLight.position.set(0, 0.5, 0);
+    if (!mobile) {
+      this.fireLight.castShadow = true;
+      this.fireLight.shadow.mapSize.set(512, 512);
+      this.fireLight.shadow.camera.near = 0.15;
+      this.fireLight.shadow.camera.far = 14;
+      this.fireLight.shadow.bias = -0.004;
+    }
     this.scene.add(this.fireLight);
+
+    /* ── Campfire glow halo (additive radial disc on ground) ─ */
+    const glowGeo = new PlaneGeometry(11, 11);
+    glowGeo.rotateX(-Math.PI / 2);
+    this.glowMat = new ShaderMaterial({
+      vertexShader: glowVert,
+      fragmentShader: glowFrag,
+      uniforms: { uIntensity: { value: 0.5 } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+    const glowMesh = new Mesh(glowGeo, this.glowMat);
+    glowMesh.position.set(0, 0.02, 0);
+    glowMesh.renderOrder = 1;
+    this.scene.add(glowMesh);
 
     /* ── Flame billboards ────────────────────────────── */
     this.flameMat = new ShaderMaterial({
@@ -488,7 +539,10 @@ export class CampsiteScene {
     this.grassWindTime.value = this.time;
     this.treeSwayTime.value = this.time;
 
-    this.fireLight.intensity = 1.6 + Math.sin(this.time * 5.0) * 0.28 + Math.sin(this.time * 8.3) * 0.16;
+    const firePulse = Math.sin(this.time * 5.0) * 0.28 + Math.sin(this.time * 8.3) * 0.16;
+    this.fireLight.intensity = 1.6 + firePulse;
+    // Glow halo breathes with the fire: ranges roughly 0.42 – 0.62
+    this.glowMat.uniforms.uIntensity.value = 0.52 + firePulse * 0.22;
 
     const state = this.controls.getState();
     this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2, state.jump);
@@ -961,6 +1015,9 @@ transformed.z += sway2;`,
     this.scene.traverse((o) => {
       if (o instanceof Mesh && o.material instanceof MeshPhongMaterial) {
         o.castShadow = true;
+        // Allow fire point-light shadows to fall on all Phong surfaces
+        // (avatar, trees, logs) as well as the ground plane.
+        o.receiveShadow = true;
       }
     });
   }
