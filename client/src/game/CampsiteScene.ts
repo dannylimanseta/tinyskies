@@ -1,9 +1,13 @@
 import {
   AdditiveBlending,
   AmbientLight,
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   CanvasTexture,
   CircleGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
@@ -29,7 +33,6 @@ import {
   SRGBColorSpace,
   Vector2,
   Vector3,
-  BufferGeometry,
   Points,
   MathUtils,
 } from "three";
@@ -365,6 +368,12 @@ export class CampsiteScene {
 
     /* ── Sitting log ─────────────────────────────────── */
     this.addSittingLog();
+
+    /* ── Tent (left of campfire, door faces camera / +Z) ── */
+    const tentGroup = buildTent();
+    tentGroup.position.set(-4.0, 0, -2.2);
+    tentGroup.rotation.y = Math.PI * 0.58;
+    this.scene.add(tentGroup);
 
     /* ── Trees (teardrop — matches globe style) ──────── */
     this.addTrees();
@@ -1153,6 +1162,82 @@ transformed.z += sway2;`,
       }
     });
   }
+}
+
+/* ── Stylised A-frame tent (hand-built vertices, no gaps) ── */
+
+function buildTent(): Group {
+  const tent = new Group();
+
+  const halfLen = 1.0;
+  const peakY = 1.25;
+  const baseHZ = 0.92;
+
+  /*
+   *  Vertex layout (looking from +X toward −X):
+   *
+   *         peak (y=peakY, z=0)
+   *        / \
+   *       /   \
+   *      /     \
+   *     BL-----BR   (y=0, z=±baseHZ)
+   *
+   *  Front = +X end, Back = −X end.
+   *  Ridge runs along X at y=peakY, z=0.
+   */
+
+  /* ── Roof + back wall as one watertight mesh ─────────────── */
+  const verts = new Float32Array([
+    /* Left roof (2 tris): BL_back → BL_front → peak_front, BL_back → peak_front → peak_back */
+    -halfLen, 0, -baseHZ,   halfLen, 0, -baseHZ,   halfLen, peakY, 0,
+    -halfLen, 0, -baseHZ,   halfLen, peakY, 0,     -halfLen, peakY, 0,
+    /* Right roof (2 tris) */
+     halfLen, 0,  baseHZ,  -halfLen, 0,  baseHZ,  -halfLen, peakY, 0,
+     halfLen, 0,  baseHZ,  -halfLen, peakY, 0,      halfLen, peakY, 0,
+    /* Back wall triangle (closed) */
+    -halfLen, 0, -baseHZ,  -halfLen, peakY, 0,     -halfLen, 0, baseHZ,
+  ]);
+  const roofGeo = new BufferGeometry();
+  roofGeo.setAttribute("position", new BufferAttribute(verts, 3));
+  roofGeo.computeVertexNormals();
+
+  const canvasMat = new MeshPhongMaterial({
+    color: 0xe8d5b8,
+    flatShading: true,
+    side: DoubleSide,
+  });
+  tent.add(new Mesh(roofGeo, canvasMat));
+
+  /* ── Ridge pole ────────────────────────────────────────── */
+  const poleLen = halfLen * 2 + 0.3;
+  const poleGeo = new CylinderGeometry(0.028, 0.028, poleLen, 4);
+  const woodMat = new MeshPhongMaterial({ color: 0x6b4c30, flatShading: true });
+  const pole = new Mesh(poleGeo, woodMat);
+  pole.rotation.z = Math.PI / 2;
+  pole.position.y = peakY + 0.02;
+  tent.add(pole);
+
+  /* ── Support sticks (X-frame at each end) ──────────────── */
+  const stickLen = peakY + 0.35;
+  const stickGeo = new CylinderGeometry(0.02, 0.016, stickLen, 4);
+  for (const xSign of [-1, 1] as const) {
+    for (const zLean of [-0.22, 0.22]) {
+      const stick = new Mesh(stickGeo, woodMat);
+      stick.position.set(xSign * halfLen, stickLen * 0.42, 0);
+      stick.rotation.x = zLean;
+      stick.rotation.z = xSign * zLean * 0.35;
+      tent.add(stick);
+    }
+  }
+
+  /* ── Ground blanket spilling out the front ─────────────── */
+  const blanketGeo = new BoxGeometry(1.2, 0.018, baseHZ * 1.25);
+  const blanketMat = new MeshPhongMaterial({ color: 0x7a9cc6, flatShading: true });
+  const blanket = new Mesh(blanketGeo, blanketMat);
+  blanket.position.set(halfLen * 0.45, 0.009, 0);
+  tent.add(blanket);
+
+  return tent;
 }
 
 /* ── Campfire builder (level 0) ──────────────────────────── */
