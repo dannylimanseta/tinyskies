@@ -219,6 +219,7 @@ void main() {
   float radial = length(vWorldPos.xz) / max(uCampHalf, 0.001);
   float edgeFade = 1.0 - smoothstep(0.68, 0.98, radial);
   alpha *= edgeFade;
+  alpha *= 0.5;
   gl_FragColor = vec4(col, alpha);
 }
 `;
