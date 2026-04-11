@@ -1689,7 +1689,9 @@ transformed.z += sway2;`,
       this.observatoryCenters.push({ normal: normal.clone() });
 
       const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
-      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+      // Sink observatories deeper than other props so the foundation fills terrain gaps.
+      const OBS_EXTRA_SINK = 0.045;
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK - OBS_EXTRA_SINK;
 
       const observatory = this.buildObservatory(rand);
       observatory.position.copy(normal.clone().multiplyScalar(surfaceR));
@@ -1730,15 +1732,27 @@ transformed.z += sway2;`,
 
     const S = 2.5;
 
+    // ── Buried foundation — extends below terrain contact (y < 0) ──
+    // Wider and taller than the upper base so it fills gaps on slopes.
+    const foundW = 0.115 * S, foundD = 0.095 * S, foundH = 0.05 * S;
+    const foundGeo = new BoxGeometry(foundW, foundH, foundD);
+    foundGeo.translate(0, -foundH / 2, 0);          // sits below y = 0
+    add(foundGeo, "stone");
+
+    // Cornice trim at the top of the foundation (just above grade)
+    const corniceGeo = new BoxGeometry(foundW + 0.005 * S, 0.004 * S, foundD + 0.005 * S);
+    corniceGeo.translate(0, 0.002 * S, 0);
+    add(corniceGeo, "stoneDk");
+
     // ── Wide 1-storey base ──
     const baseW = 0.10 * S, baseD = 0.08 * S, baseH = 0.025 * S;
     const baseGeo = new BoxGeometry(baseW, baseH, baseD);
     baseGeo.translate(0, baseH / 2, 0);
     add(baseGeo, "stone");
 
-    // Stone plinth
-    const plinthGeo = new BoxGeometry(baseW + 0.01 * S, 0.004 * S, baseD + 0.01 * S);
-    plinthGeo.translate(0, 0.002 * S, 0);
+    // Stone step at the entrance
+    const plinthGeo = new BoxGeometry(0.028 * S, 0.004 * S, 0.012 * S);
+    plinthGeo.translate(0, 0.002 * S, baseD / 2 + 0.006 * S);
     add(plinthGeo, "step");
 
     // Flat roof slab
