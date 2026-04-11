@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from "three";
 
-export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill";
+export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill" | "observatory";
 
 export interface Landmark {
   type: LandmarkType;
@@ -58,14 +58,24 @@ const WINDMILL_SUFFIXES = [
   " Mill", " Wind", " Farm", " Rise", " Knoll", " Hollow", " Wheel", " Grist",
 ];
 
+const OBSERVATORY_PREFIXES = [
+  "Star", "Sky", "Luna", "Astral", "Zenith", "Polar", "Crescent", "Eclipse",
+  "Comet", "Solar", "Nebula", "Cosmos", "Aurora", "Meridian", "Apex", "Summit",
+];
+
+const OBSERVATORY_SUFFIXES = [
+  " Observatory", " Dome", " Watch", " Peak", " Lookout", " Station", " Spire", " Summit",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
-  village:    { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  peak:       { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  forest:     { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  coast:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  island:     { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
-  lighthouse: { prefixes: LIGHTHOUSE_PREFIXES, suffixes: LIGHTHOUSE_SUFFIXES },
-  windmill:   { prefixes: WINDMILL_PREFIXES, suffixes: WINDMILL_SUFFIXES },
+  village:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  peak:         { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  forest:       { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  coast:        { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  island:       { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
+  lighthouse:   { prefixes: LIGHTHOUSE_PREFIXES, suffixes: LIGHTHOUSE_SUFFIXES },
+  windmill:     { prefixes: WINDMILL_PREFIXES, suffixes: WINDMILL_SUFFIXES },
+  observatory:  { prefixes: OBSERVATORY_PREFIXES, suffixes: OBSERVATORY_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -146,6 +156,22 @@ export class LandmarkRegistry {
         type: "windmill",
         name: names[i],
         normal: windmills[i].normal.clone().normalize(),
+        enterDot: 0.996,
+        exitDot: 0.992,
+      });
+    }
+  }
+
+  registerObservatories(
+    observatories: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, observatories.length, "observatory");
+    for (let i = 0; i < observatories.length; i++) {
+      this.landmarks.push({
+        type: "observatory",
+        name: names[i],
+        normal: observatories[i].normal.clone().normalize(),
         enterDot: 0.996,
         exitDot: 0.992,
       });

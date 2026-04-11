@@ -102,6 +102,7 @@ export class Globe {
   private balloonTime = 0;
   readonly windmillCenters: { normal: Vector3 }[] = [];
   private windmillBlades: { pivot: Group; speed: number }[] = [];
+  readonly observatoryCenters: { normal: Vector3 }[] = [];
 
   private segments: number;
 
@@ -123,6 +124,7 @@ export class Globe {
     this.createVillages();
     this.createLighthouses();
     this.createWindmills();
+    this.createObservatories();
     this.createBalloons();
     this.createClouds();
     this.createAtmosphere();
@@ -1618,6 +1620,220 @@ transformed.z += sway2;`,
         this.group.add(windmill);
       }
     }
+  }
+
+  /* ── Observatories ──────────────────────────────────────────────── */
+
+  private createObservatories() {
+    const OBSERVATORY_COUNT = 3;
+    const MIN_ELEVATION = 0.22;
+    const MAX_ELEVATION = 0.60;
+    const MIN_SEPARATION_DOT = 0.90;
+
+    const rand = seededRandom(4321 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 2000 && candidates.length < 40) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      // Keep away from villages, lighthouses, windmills.
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    // Prefer higher elevations — hilltops.
+    candidates.sort((a, b) => b.elevation - a.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= OBSERVATORY_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+
+    for (const normal of chosen) {
+      this.observatoryCenters.push({ normal: normal.clone() });
+
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+      const observatory = this.buildObservatory(rand);
+      observatory.position.copy(normal.clone().multiplyScalar(surfaceR));
+      observatory.quaternion.setFromUnitVectors(REF_UP, normal);
+      observatory.castShadow = true;
+      this.group.add(observatory);
+    }
+  }
+
+  /**
+   * Build a low-poly stylised observatory inspired by real domed observatories:
+   * - Rectangular stone base building with a flat roof
+   * - Cylindrical tower rising from it
+   * - Hemispherical slit dome on top (rotatable look via the slit)
+   * - Flat observation platform with railing
+   * - Small secondary finder scope on the dome
+   * - Subtle window details and a door
+   */
+  private buildObservatory(rand: () => number): Group {
+    const g = new Group();
+
+    // ── Colour palette ──
+    const COL_STONE    = new Color(0xd0c8b8);
+    const COL_STONE_DK = new Color(0xa89880);
+    const COL_DOME     = new Color(0xc0c8d0);
+    const COL_DOME_SLIT = new Color(0x1a1a28);
+    const COL_WINDOW   = new Color(0x5a90b8);
+    const COL_FRAME    = new Color(0x555555);
+    const COL_DOOR     = new Color(0x5a4030);
+    const COL_RAIL     = new Color(0x555555);
+    const COL_FINDER   = new Color(0x888888);
+    const COL_STEP     = new Color(0xb8b0a0);
+
+    // ── Base building (wider rectangular block) ──
+    const baseW = 0.065;
+    const baseD = 0.055;
+    const baseH = 0.04;
+    const baseGeo = new BoxGeometry(baseW, baseH, baseD);
+    baseGeo.translate(0, baseH / 2, 0);
+    g.add(new Mesh(baseGeo, new MeshPhongMaterial({ color: COL_STONE })));
+
+    // Stone step/plinth
+    const plinthGeo = new BoxGeometry(baseW + 0.008, 0.005, baseD + 0.008);
+    plinthGeo.translate(0, 0.0025, 0);
+    g.add(new Mesh(plinthGeo, new MeshPhongMaterial({ color: COL_STEP })));
+
+    // Base roof (flat slab slightly larger)
+    const roofSlabGeo = new BoxGeometry(baseW + 0.004, 0.004, baseD + 0.004);
+    roofSlabGeo.translate(0, baseH + 0.002, 0);
+    g.add(new Mesh(roofSlabGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+
+    // Door on front face
+    const doorW = 0.014;
+    const doorH = 0.022;
+    const doorGeo = new BoxGeometry(doorW, doorH, 0.003);
+    doorGeo.translate(0, doorH / 2 + 0.002, baseD / 2 + 0.001);
+    g.add(new Mesh(doorGeo, new MeshPhongMaterial({ color: COL_DOOR })));
+
+    // Windows — two on each long side
+    const winSize = 0.008;
+    for (const side of [-1, 1]) {
+      for (const xOff of [-0.015, 0.015]) {
+        const winGeo = new BoxGeometry(winSize, winSize, 0.003);
+        winGeo.translate(xOff, baseH * 0.55, (baseD / 2 + 0.001) * side);
+        g.add(new Mesh(winGeo, new MeshPhongMaterial({ color: COL_WINDOW })));
+        const frameGeo = new BoxGeometry(winSize + 0.003, winSize + 0.003, 0.002);
+        frameGeo.translate(xOff, baseH * 0.55, (baseD / 2 + 0.0015) * side);
+        g.add(new Mesh(frameGeo, new MeshPhongMaterial({ color: COL_FRAME })));
+      }
+    }
+
+    // ── Cylindrical tower ──
+    const towerR = 0.022;
+    const towerH = 0.07;
+    const towerGeo = new CylinderGeometry(towerR, towerR + 0.002, towerH, 12);
+    towerGeo.translate(0, baseH + towerH / 2, 0);
+    g.add(new Mesh(towerGeo, new MeshPhongMaterial({ color: COL_STONE })));
+
+    // Decorative band around tower mid-section
+    const bandGeo = new CylinderGeometry(towerR + 0.003, towerR + 0.003, 0.004, 12);
+    bandGeo.translate(0, baseH + towerH * 0.5, 0);
+    g.add(new Mesh(bandGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+
+    // Band at tower top (transition to dome)
+    const topBandGeo = new CylinderGeometry(towerR + 0.003, towerR + 0.003, 0.003, 12);
+    topBandGeo.translate(0, baseH + towerH - 0.001, 0);
+    g.add(new Mesh(topBandGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+
+    // ── Observation platform with railing ──
+    const platR = towerR + 0.008;
+    const platY = baseH + towerH;
+    const platGeo = new CylinderGeometry(platR, platR, 0.003, 12);
+    platGeo.translate(0, platY, 0);
+    g.add(new Mesh(platGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+
+    // Railing posts around platform edge
+    const RAIL_POSTS = 10;
+    for (let i = 0; i < RAIL_POSTS; i++) {
+      const a = (i / RAIL_POSTS) * Math.PI * 2;
+      const px = Math.cos(a) * (platR - 0.001);
+      const pz = Math.sin(a) * (platR - 0.001);
+      const postGeo = new CylinderGeometry(0.001, 0.001, 0.008, 4);
+      postGeo.translate(px, platY + 0.005, pz);
+      g.add(new Mesh(postGeo, new MeshPhongMaterial({ color: COL_RAIL })));
+    }
+    // Railing ring
+    const railRingGeo = new CylinderGeometry(platR - 0.001, platR - 0.001, 0.002, 12, 1, true);
+    railRingGeo.translate(0, platY + 0.009, 0);
+    g.add(new Mesh(railRingGeo, new MeshPhongMaterial({ color: COL_RAIL })));
+
+    // ── Dome (hemisphere via LatheGeometry) ──
+    const domeR = towerR + 0.001;
+    const domeY = platY + 0.002;
+    const DOME_SEGS = 12;
+    const profilePoints: Vector2[] = [];
+    for (let i = 0; i <= DOME_SEGS; i++) {
+      const t = i / DOME_SEGS;
+      const angle = t * Math.PI * 0.5;
+      profilePoints.push(new Vector2(Math.cos(angle) * domeR, Math.sin(angle) * domeR));
+    }
+    const domeGeo = new LatheGeometry(profilePoints, 16);
+    domeGeo.translate(0, domeY, 0);
+    g.add(new Mesh(domeGeo, new MeshPhongMaterial({ color: COL_DOME })));
+
+    // Dome slit (the opening for the telescope) — narrow box cut into the dome
+    const slitW = 0.006;
+    const slitH = domeR;
+    const slitAngle = rand() * Math.PI * 2;
+    const slitGeo = new BoxGeometry(slitW, slitH, domeR * 0.8);
+    slitGeo.translate(0, domeY + slitH * 0.45, 0);
+    slitGeo.rotateY(slitAngle);
+    g.add(new Mesh(slitGeo, new MeshPhongMaterial({ color: COL_DOME_SLIT })));
+
+    // ── Finder scope — small cylinder on the dome exterior ──
+    const finderLen = 0.018;
+    const finderR = 0.0025;
+    const finderAngle = slitAngle + 0.3;
+    const finderGeo = new CylinderGeometry(finderR, finderR * 0.8, finderLen, 6);
+    finderGeo.rotateZ(-Math.PI / 4);
+    finderGeo.translate(
+      Math.cos(finderAngle) * (domeR * 0.5),
+      domeY + domeR * 0.65,
+      Math.sin(finderAngle) * (domeR * 0.5),
+    );
+    g.add(new Mesh(finderGeo, new MeshPhongMaterial({ color: COL_FINDER })));
+
+    // ── Small chimney / vent on the base building ──
+    const ventGeo = new CylinderGeometry(0.003, 0.004, 0.012, 6);
+    ventGeo.translate(baseW * 0.3, baseH + 0.006, -baseD * 0.25);
+    g.add(new Mesh(ventGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+
+    return g;
   }
 
   private createBalloons() {
