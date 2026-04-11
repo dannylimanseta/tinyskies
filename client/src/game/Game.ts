@@ -902,8 +902,68 @@ export class Game {
   private static readonly MOON_CREDITS_FADE_IN_MS = 4000;
   private static readonly MOON_CREDITS_HOLD_MS = 2500;
   private static readonly MOON_CREDITS_FADE_OUT_MS = 4000;
+
+  private static readonly MOON_EPITAPH_LINES = [
+    "You flew until the end. So did everyone else.",
+    "The moon has landed. There is nothing left.",
+    "The world is gone. Everyone perished.",
+  ] as const;
+
+  private static readonly MOON_EPITAPH_FADE_IN_MS = 2500;
+  private static readonly MOON_EPITAPH_HOLD_MS = 2000;
+  private static readonly MOON_EPITAPH_FADE_OUT_MS = 2000;
   /** Matches fadeOut1 so other players see us fade out instead of freezing in place. */
   private static readonly MOON_NETWORK_VISIBILITY_FADE_SEC = 0.7;
+
+  /** Epitaph line shown on black before the credits. */
+  private async showMoonEpitaphOverlay(): Promise<void> {
+    const lines = Game.MOON_EPITAPH_LINES;
+    const text = lines[Math.floor(Math.random() * lines.length)]!;
+
+    const el = document.createElement("p");
+    el.textContent = text;
+    Object.assign(el.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "10000",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      margin: "0",
+      padding: "0 2rem",
+      fontFamily: "'Inter', system-ui, sans-serif",
+      fontSize: "clamp(1rem, 3vw, 1.4rem)",
+      fontWeight: "400",
+      fontStyle: "italic",
+      color: "rgba(255, 255, 255, 0.75)",
+      textAlign: "center",
+      lineHeight: "1.6",
+      letterSpacing: "0.02em",
+      pointerEvents: "none",
+      opacity: "0",
+      transition: `opacity ${Game.MOON_EPITAPH_FADE_IN_MS}ms ease`,
+    });
+
+    this.container.appendChild(el);
+
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    el.style.opacity = "1";
+    await new Promise<void>((resolve) => {
+      el.addEventListener("transitionend", () => resolve(), { once: true });
+      setTimeout(resolve, Game.MOON_EPITAPH_FADE_IN_MS + 200);
+    });
+
+    await new Promise<void>((r) => setTimeout(r, Game.MOON_EPITAPH_HOLD_MS));
+
+    el.style.transition = `opacity ${Game.MOON_EPITAPH_FADE_OUT_MS}ms ease`;
+    el.style.opacity = "0";
+    await new Promise<void>((resolve) => {
+      el.addEventListener("transitionend", () => resolve(), { once: true });
+      setTimeout(resolve, Game.MOON_EPITAPH_FADE_OUT_MS + 200);
+    });
+
+    el.remove();
+  }
 
   /** Full-screen credits on black after moon ending, before teardown and lobby. */
   private async showMoonCreditsOverlay(): Promise<void> {
@@ -974,6 +1034,7 @@ export class Game {
     this.running = false;
     window.removeEventListener("keydown", this.onDebugKey);
 
+    await this.showMoonEpitaphOverlay();
     await this.showMoonCreditsOverlay();
 
     this.teardownGameplaySession();
