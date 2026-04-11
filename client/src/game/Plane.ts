@@ -16,6 +16,8 @@ const MAX_SPEED = 0.8;
 const BOOST_SPEED = 1.3;
 /** Ring / collect speed boost duration. */
 const BOOST_DURATION_SEC = 1.7;
+/** Hard ceiling: arc-step = 2.0*0.05/5 = 0.02 rad/frame — well within safe limits. */
+const ABSOLUTE_MAX_SPEED = 2.0;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 /** Minimum clearance above terrain when descending. */
@@ -55,6 +57,19 @@ export class Plane {
   private boostTimer = 0;
   /** Network fade 0–1 (moon cutscene); read by StateSync. */
   visibility?: number;
+
+  /** Active upgrade multipliers; updated by Game.propagateUpgrades() after each pick. */
+  upgrades = {
+    maxSpeedMult: 1,
+    boostSpeedMult: 1,
+    boostDurationMult: 1,
+    altSpeedMult: 1,
+    bankMult: 1,
+    rollSpeedMult: 1,
+    brakeDecelMult: 1,
+    rollBoostEnabled: false,
+  };
+
   /** Smoothed yaw command (matches keyboard / stick after lag). */
   private turnInputSmoothed = 0;
   /** -1 = descend, 0 = cruise, 1 = climb — smoothed so pitch/height ease in. */
@@ -88,20 +103,28 @@ export class Plane {
     barrelRoll: boolean = false,
     descend: boolean = false,
   ) {
+    // Compute effective values once so all references below stay consistent.
+    const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult;
+    const effBoostSpeed = Math.min(BOOST_SPEED * this.upgrades.boostSpeedMult, ABSOLUTE_MAX_SPEED);
+    const effBrakeDecel = BRAKE_DECEL * this.upgrades.brakeDecelMult;
+    const effAltSpeed = ALTITUDE_SPEED * this.upgrades.altSpeedMult;
+    const effBankResp = BANK_RESPONSIVENESS * this.upgrades.bankMult;
+    const effRollSpeed = ROLL_SPEED * this.upgrades.rollSpeedMult;
+
     if (this.boostTimer > 0) {
       this.boostTimer = Math.max(0, this.boostTimer - dt);
     }
 
     if (this.boostTimer > 0) {
-      this.speed = BOOST_SPEED;
+      this.speed = effBoostSpeed;
     } else if (forward) {
-      if (this.speed < MAX_SPEED) {
-        this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
+      if (this.speed < effMaxSpeed) {
+        this.speed = Math.min(effMaxSpeed, this.speed + ACCEL * dt);
       } else {
-        this.speed = Math.max(MAX_SPEED, this.speed - 0.13 * dt);
+        this.speed = Math.max(effMaxSpeed, this.speed - 0.13 * dt);
       }
     } else if (brake) {
-      this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
+      this.speed = Math.max(MIN_SPEED, this.speed - effBrakeDecel * dt);
     } else {
       this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
     }
@@ -132,7 +155,7 @@ export class Plane {
     } else {
       targetAlt = ALTITUDE + (ALTITUDE - lowAlt) * this.elevateBlend;
     }
-    this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_SPEED * dt);
+    this.altitude += (targetAlt - this.altitude) * Math.min(1, effAltSpeed * dt);
 
     const hardFloor = surfaceAlt + LOW_HOVER_HEIGHT;
     if (this.altitude < hardFloor) this.altitude = hardFloor;
@@ -147,7 +170,7 @@ export class Plane {
     this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
 
     const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
-    this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * dt);
+    this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, effBankResp * dt);
 
     if (barrelRoll && !this.isRolling) {
       this.isRolling = true;
@@ -155,13 +178,16 @@ export class Plane {
     }
 
     if (this.isRolling) {
-      this.rollProgress += ROLL_SPEED / TWO_PI * dt;
+      this.rollProgress += effRollSpeed / TWO_PI * dt;
       if (this.rollProgress >= 1) {
         this.rollProgress = 0;
         this.rollAngle = 0;
         this.isRolling = false;
         this.rollAltOffset = 0;
         this.rollPitchOffset = 0;
+        if (this.upgrades.rollBoostEnabled) {
+          this.speed = Math.min(this.speed * 1.10, effBoostSpeed);
+        }
       } else {
         const t = this.rollProgress;
         const eased = t < 0.5
@@ -176,12 +202,16 @@ export class Plane {
       this.rollPitchOffset += (0 - this.rollPitchOffset) * Math.min(1, 8 * dt);
     }
 
+    // Hard speed ceiling — prevents physics/NaN issues from stacked upgrades.
+    this.speed = Math.min(this.speed, ABSOLUTE_MAX_SPEED);
+
     this.applyMatrix();
   }
 
   speedBoost() {
-    this.boostTimer = BOOST_DURATION_SEC;
-    this.speed = BOOST_SPEED;
+    const effBoost = Math.min(BOOST_SPEED * this.upgrades.boostSpeedMult, ABSOLUTE_MAX_SPEED);
+    this.boostTimer = BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
+    this.speed = effBoost;
   }
 
   applyMatrix() {
@@ -198,11 +228,13 @@ export class Plane {
   }
 
   get speedRatio(): number {
+    const ms = MAX_SPEED * this.upgrades.maxSpeedMult;
+    const bs = Math.min(BOOST_SPEED * this.upgrades.boostSpeedMult, ABSOLUTE_MAX_SPEED);
     if (this.speed <= MIN_SPEED) return 0;
-    if (this.speed <= MAX_SPEED) {
-      return CRUISE_SPEED_RATIO_MAX * ((this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
+    if (this.speed <= ms) {
+      return CRUISE_SPEED_RATIO_MAX * ((this.speed - MIN_SPEED) / (ms - MIN_SPEED));
     }
-    const t = Math.min(1, (this.speed - MAX_SPEED) / (BOOST_SPEED - MAX_SPEED));
+    const t = Math.min(1, (this.speed - ms) / (bs - ms));
     const eased = t * (2 - t);
     return CRUISE_SPEED_RATIO_MAX + (1.0 - CRUISE_SPEED_RATIO_MAX) * eased;
   }

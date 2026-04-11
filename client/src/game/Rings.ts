@@ -146,6 +146,12 @@ export class RingManager {
   onCollect: CollectCallback | null = null;
   onLevelUp: ((level: number) => void) | null = null;
 
+  /** Upgrade multipliers pushed by Game.propagateUpgrades(). */
+  upgrades = {
+    diamondXpMult: 1,
+    deliveryXpMult: 1,
+  };
+
   setConsumerActive(active: boolean) {
     this.consumerActive = active;
     this.group.visible = active;
@@ -402,11 +408,12 @@ export class RingManager {
     d.mesh.visible = false;
 
     const prevLevel = this.level;
-    this.sessionXP += DIAMOND_XP;
+    const xp = Math.round(DIAMOND_XP * this.upgrades.diamondXpMult);
+    this.sessionXP += xp;
     this.level = this.computeLevel();
 
     if (this.onCollect) {
-      this.onCollect(DIAMOND_XP, worldPos, 0);
+      this.onCollect(xp, worldPos, 0);
     }
 
     if (this.level > prevLevel && this.onLevelUp) {
@@ -477,6 +484,13 @@ export class RingManager {
     this.level = this.computeLevel();
     if (this.level > prevLevel && this.onLevelUp) {
       this.onLevelUp(this.level);
+    }
+  }
+
+  /** Spawn `count` additional bonus diamonds into the scene immediately. */
+  spawnBonusDiamonds(count: number) {
+    for (let i = 0; i < count; i++) {
+      this.diamonds.push(this.createDiamond());
     }
   }
 

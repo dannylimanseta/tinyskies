@@ -64,6 +64,8 @@ import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
+import { UpgradeManager } from "./UpgradeManager";
+import { LevelUpCards } from "../ui/LevelUpCards";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -205,6 +207,13 @@ export class Game {
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
   private moonThreat: MoonThreat | null = null;
+  private upgradeManager!: UpgradeManager;
+  private levelUpCards!: LevelUpCards;
+  /** Count of previously spawned bonus collectibles so we only spawn the delta. */
+  private prevDiamondCountBonus = 0;
+  private prevExtraRainbows = 0;
+  private prevExtraFireflies = 0;
+  private prevExtraLanterns = 0;
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -582,6 +591,13 @@ export class Game {
       : null;
     this.transitionOverlay = new TransitionOverlay(this.container);
 
+    this.upgradeManager = new UpgradeManager();
+    this.levelUpCards = new LevelUpCards();
+    this.prevDiamondCountBonus = 0;
+    this.prevExtraRainbows = 0;
+    this.prevExtraFireflies = 0;
+    this.prevExtraLanterns = 0;
+
     if (vehicle === "boat") {
       this.localPlayer = new Boat(globeRadius, seed, terrainType, hullColor, spawnSessionSalt);
     } else if (vehicle === "carpet") {
@@ -691,8 +707,7 @@ export class Game {
       );
     };
     this.ringManager.onLevelUp = (level) => {
-      this.playLevelUpSfx();
-      this.hud.showLevelUp(level);
+      this.handleLevelUp(level);
     };
 
     this.hud = new HUD(this.container);
@@ -788,20 +803,16 @@ export class Game {
         this.packageQuestHUD.showBubble(npcName, dialogue);
         this.packageQuestHUD.hideDeliveryTarget();
 
-        const prevLevel = this.ringManager.level;
-        this.ringManager.sessionXP += xp;
-        this.ringManager.level = this.ringManager.getLevel();
-        this.hud.showXPGain(xp);
+        const scaledXp = Math.round(xp * this.ringManager.upgrades.deliveryXpMult);
+        this.hud.showXPGain(scaledXp);
+        // applyBonusXP updates level and fires onLevelUp → handleLevelUp if threshold crossed.
+        this.ringManager.applyBonusXP(scaledXp);
         this.hud.setXP(
           this.ringManager.getXP(),
           this.ringManager.getXPForNextLevel(),
           this.ringManager.getXPForCurrentLevel(),
           this.ringManager.getLevel(),
         );
-        if (this.ringManager.level > prevLevel) {
-          this.playLevelUpSfx();
-          this.hud.showLevelUp(this.ringManager.level);
-        }
       };
 
       this.packageQuest.onProgressChange = (progress) => {
@@ -879,6 +890,9 @@ export class Game {
     }
     this.audioManager.setEndTimesWeight(0);
     this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
+
+    this.upgradeManager?.reset();
+    this.levelUpCards?.dispose();
 
     window.removeEventListener("resize", this.onResize);
   }
@@ -1919,6 +1933,93 @@ export class Game {
     const pick =
       LEVELUP_SFX_IDS[Math.floor(Math.random() * LEVELUP_SFX_IDS.length)]!;
     this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
+  }
+
+  private handleLevelUp(level: number) {
+    this.playLevelUpSfx();
+    this.hud.showLevelUp(level);
+
+    const cards = this.upgradeManager.drawCards(3);
+    if (cards.length === 0) return; // pool exhausted
+
+    this.controls.enabled = false;
+    if (this.touchControls) this.touchControls.enabled = false;
+
+    setTimeout(() => {
+      // Guard: don't show cards if we've left the flying phase (e.g. moon impact).
+      if (this.gamePhase !== "flying") {
+        this.controls.enabled = true;
+        if (this.touchControls) this.touchControls.enabled = true;
+        return;
+      }
+      this.levelUpCards.show(cards, (id) => {
+        this.upgradeManager.apply(id);
+        this.propagateUpgrades();
+        this.controls.enabled = true;
+        if (this.touchControls) this.touchControls.enabled = true;
+      });
+    }, 2000); // wait for LEVEL banner animation to finish
+  }
+
+  private propagateUpgrades() {
+    const s = this.upgradeManager.state;
+
+    if (this.localPlayer instanceof Plane) {
+      Object.assign(this.localPlayer.upgrades, {
+        maxSpeedMult: s.maxSpeedMult,
+        boostSpeedMult: s.boostSpeedMult,
+        boostDurationMult: s.boostDurationMult,
+        altSpeedMult: s.altSpeedMult,
+        bankMult: s.bankMult,
+        rollSpeedMult: s.rollSpeedMult,
+        brakeDecelMult: s.brakeDecelMult,
+        rollBoostEnabled: s.rollBoostEnabled,
+      });
+    }
+
+    this.ringManager.upgrades.diamondXpMult = s.diamondXpMult;
+    this.ringManager.upgrades.deliveryXpMult = s.deliveryXpMult;
+
+    this.spawnExtraCollectibles(s);
+  }
+
+  private spawnExtraCollectibles(s: import("./UpgradeManager").UpgradeState) {
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    const seed = this.gameSeed;
+
+    // Diamond Magnet
+    const diamondDelta = s.diamondCountBonus - this.prevDiamondCountBonus;
+    if (diamondDelta > 0) {
+      this.ringManager.spawnBonusDiamonds(diamondDelta);
+      this.prevDiamondCountBonus = s.diamondCountBonus;
+    }
+
+    // Rainbow Finder
+    const rainbowDelta = s.extraRainbows - this.prevExtraRainbows;
+    for (let i = 0; i < rainbowDelta; i++) {
+      const idx = this.rainbowArches.length;
+      const arch = new RainbowArch(this.scene, globeRadius, seed, idx);
+      this.rainbowArches.push(arch);
+    }
+    this.prevExtraRainbows = s.extraRainbows;
+
+    // Firefly Season
+    const fireflyDelta = s.extraFireflies - this.prevExtraFireflies;
+    for (let i = 0; i < fireflyDelta; i++) {
+      const idx = this.fireflyClusters.length;
+      const cluster = new FireflyCluster(this.scene, globeRadius, seed, this.gameTerrainType, idx);
+      this.fireflyClusters.push(cluster);
+    }
+    this.prevExtraFireflies = s.extraFireflies;
+
+    // Lantern Festival
+    const lanternDelta = s.extraLanterns - this.prevExtraLanterns;
+    for (let i = 0; i < lanternDelta; i++) {
+      const idx = this.lanternClusters.length;
+      const cluster = new FloatingLanterns(this.scene, globeRadius, seed, idx);
+      this.lanternClusters.push(cluster);
+    }
+    this.prevExtraLanterns = s.extraLanterns;
   }
 
   private updateBalloonGreetings(dt: number, playerWorld: Vector3) {
