@@ -71,6 +71,9 @@ export class MoonThreat {
   private emberPositions: Float32Array | null = null;
   private emberAlphas: Float32Array | null = null;
   private emberSizes: Float32Array | null = null;
+  private trailMesh: Mesh | null = null;
+  private trailPositions: Float32Array | null = null;
+  private trailAlphas: Float32Array | null = null;
 
   /* ── Impact VFX objects ─────────────────────────────────── */
   private shockwaveWaves: Mesh[] = [];
@@ -307,6 +310,55 @@ if (uMolten > 0.01) {
     this.emberPoints = new Points(geo, this.emberMat);
     this.emberPoints.frustumCulled = false;
     this.emberPoints.visible = false;
+
+    const trailVerts = EMBER_COUNT * 4;
+    const trailPos = new Float32Array(trailVerts * 3);
+    const trailAlpha = new Float32Array(trailVerts);
+    this.trailPositions = trailPos;
+    this.trailAlphas = trailAlpha;
+
+    const indices = new Uint32Array(EMBER_COUNT * 6);
+    for (let i = 0; i < EMBER_COUNT; i++) {
+      const v = i * 4;
+      const idx = i * 6;
+      indices[idx]     = v;
+      indices[idx + 1] = v + 2;
+      indices[idx + 2] = v + 1;
+      indices[idx + 3] = v + 1;
+      indices[idx + 4] = v + 2;
+      indices[idx + 5] = v + 3;
+    }
+
+    const trailGeo = new BufferGeometry();
+    trailGeo.setAttribute("position", new BufferAttribute(trailPos, 3));
+    trailGeo.setAttribute("alpha", new BufferAttribute(trailAlpha, 1));
+    trailGeo.setIndex(new BufferAttribute(indices, 1));
+
+    const trailMat = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      vertexShader: /* glsl */ `
+        attribute float alpha;
+        varying float vAlpha;
+        void main() {
+          vAlpha = alpha;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying float vAlpha;
+        void main() {
+          vec3 col = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 0.7, 0.2), vAlpha);
+          gl_FragColor = vec4(col, vAlpha);
+        }
+      `,
+    });
+
+    this.trailMesh = new Mesh(trailGeo, trailMat);
+    this.trailMesh.frustumCulled = false;
+    this.trailMesh.visible = false;
   }
 
   private spawnEmber(idx: number, moonWorldPos: Vector3, moonRadius: number) {
@@ -345,10 +397,13 @@ if (uMolten > 0.01) {
     if (!this.emberPoints) {
       this.initEmbers();
       this.group.parent?.add(this.emberPoints!);
+      this.group.parent?.add(this.trailMesh!);
     }
 
-    this.emberPoints!.visible = molten > 0.01;
-    if (molten <= 0.01) return;
+    const vis = molten > 0.01;
+    this.emberPoints!.visible = vis;
+    if (this.trailMesh) this.trailMesh.visible = vis;
+    if (!vis) return;
 
     const moonWorldPos = this.group.position;
     const currentScale = this.loaded && this.group.children[0]
@@ -368,6 +423,13 @@ if (uMolten > 0.01) {
         } else {
           this.emberAlphas![i] = 0;
           this.emberSizes![i] = 0;
+          const v0 = i * 4;
+          for (let vi = 0; vi < 4; vi++) {
+            this.trailAlphas![v0 + vi] = 0;
+            this.trailPositions![(v0 + vi) * 3] = 0;
+            this.trailPositions![(v0 + vi) * 3 + 1] = 0;
+            this.trailPositions![(v0 + vi) * 3 + 2] = 0;
+          }
           continue;
         }
       }
@@ -395,12 +457,57 @@ if (uMolten > 0.01) {
       this.emberPositions![i * 3] = e.pos.x;
       this.emberPositions![i * 3 + 1] = e.pos.y;
       this.emberPositions![i * 3 + 2] = e.pos.z;
+
+      const speed = e.vel.length();
+      const trailLen = 0.15 + speed * 0.12;
+      const dir = speed > 0.001
+        ? _trailDir.copy(e.vel).divideScalar(speed)
+        : _trailDir.set(0, 1, 0);
+      const tailX = e.pos.x - dir.x * trailLen;
+      const tailY = e.pos.y - dir.y * trailLen;
+      const tailZ = e.pos.z - dir.z * trailLen;
+
+      _trailPerp.copy(dir).cross(MOON_APPROACH_DIR);
+      if (_trailPerp.lengthSq() < 0.001) _trailPerp.set(0, 0, 1).cross(dir);
+      _trailPerp.normalize();
+
+      const hw = 0.04 + baseSize * 0.06;
+      const v0 = i * 4;
+      const headAlpha = frac * molten * 0.8;
+
+      this.trailPositions![v0 * 3]     = e.pos.x + _trailPerp.x * hw;
+      this.trailPositions![v0 * 3 + 1] = e.pos.y + _trailPerp.y * hw;
+      this.trailPositions![v0 * 3 + 2] = e.pos.z + _trailPerp.z * hw;
+
+      this.trailPositions![(v0 + 1) * 3]     = e.pos.x - _trailPerp.x * hw;
+      this.trailPositions![(v0 + 1) * 3 + 1] = e.pos.y - _trailPerp.y * hw;
+      this.trailPositions![(v0 + 1) * 3 + 2] = e.pos.z - _trailPerp.z * hw;
+
+      const tw = hw * 0.3;
+      this.trailPositions![(v0 + 2) * 3]     = tailX + _trailPerp.x * tw;
+      this.trailPositions![(v0 + 2) * 3 + 1] = tailY + _trailPerp.y * tw;
+      this.trailPositions![(v0 + 2) * 3 + 2] = tailZ + _trailPerp.z * tw;
+
+      this.trailPositions![(v0 + 3) * 3]     = tailX - _trailPerp.x * tw;
+      this.trailPositions![(v0 + 3) * 3 + 1] = tailY - _trailPerp.y * tw;
+      this.trailPositions![(v0 + 3) * 3 + 2] = tailZ - _trailPerp.z * tw;
+
+      this.trailAlphas![v0]     = headAlpha;
+      this.trailAlphas![v0 + 1] = headAlpha;
+      this.trailAlphas![v0 + 2] = 0;
+      this.trailAlphas![v0 + 3] = 0;
     }
 
     const geo = this.emberPoints!.geometry;
     geo.attributes.position!.needsUpdate = true;
     (geo.attributes.alpha as BufferAttribute).needsUpdate = true;
     (geo.attributes.size as BufferAttribute).needsUpdate = true;
+
+    if (this.trailMesh) {
+      const tGeo = this.trailMesh.geometry;
+      tGeo.attributes.position!.needsUpdate = true;
+      (tGeo.attributes.alpha as BufferAttribute).needsUpdate = true;
+    }
   }
 
   /* ── Per-frame update ───────────────────────────────────── */
@@ -677,6 +784,12 @@ if (uMolten > 0.01) {
       this.emberPoints = null;
       this.emberMat = null;
     }
+    if (this.trailMesh) {
+      this.trailMesh.parent?.remove(this.trailMesh);
+      this.trailMesh.geometry.dispose();
+      (this.trailMesh.material as ShaderMaterial).dispose();
+      this.trailMesh = null;
+    }
   }
 
   dispose() {
@@ -689,3 +802,5 @@ if (uMolten > 0.01) {
 const _negApproach = MOON_APPROACH_DIR.clone().negate();
 const _zAxis = new Vector3(0, 0, 1);
 const _emberScratch = new Vector3();
+const _trailDir = new Vector3();
+const _trailPerp = new Vector3();
