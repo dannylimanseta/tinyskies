@@ -928,9 +928,9 @@ export class Game {
   private static readonly MOON_CREDITS_FADE_OUT_MS = 4000;
 
   private static readonly MOON_EPITAPH_LINES = [
-    "You flew until the end. So did everyone else.",
-    "The moon has landed. There is nothing left.",
-    "The world is gone. Everyone perished.",
+    "You tried. You flew. It wasn't enough.",
+    "No one could stop it. Not even you.",
+    "The moon fell. You couldn't stop it.",
   ] as const;
 
   private static readonly MOON_EPITAPH_FADE_IN_MS = 2500;
