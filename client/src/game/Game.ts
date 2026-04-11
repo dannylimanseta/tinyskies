@@ -1610,6 +1610,10 @@ export class Game {
     this.moonCinematicStep = "fadeOut1";
     this.moonCinematicTimer = 0;
     this.hud.root.style.display = "none";
+
+    // Dismiss any open level-up card overlay so it doesn't block the cutscene.
+    this.levelUpCards.dispose();
+
     this.controls.enabled = false;
     if (this.touchControls) this.touchControls.enabled = false;
 
@@ -1954,11 +1958,8 @@ export class Game {
 
     setTimeout(() => {
       // Guard: don't show cards if we've left the flying phase (e.g. moon impact).
-      if (this.gamePhase !== "flying") {
-        this.controls.enabled = true;
-        if (this.touchControls) this.touchControls.enabled = true;
-        return;
-      }
+      // Do NOT re-enable controls here — the cinematic owns them in that case.
+      if (this.gamePhase !== "flying") return;
       this.levelUpCards.show(cards, (id) => {
         this.upgradeManager.apply(id);
         this.propagateUpgrades();
