@@ -5,11 +5,10 @@ type Row = { keys: string[]; label: string };
 function rowsForVehicle(vehicle: Vehicle): Row[] {
   if (vehicle === "plane") {
     return [
-      { keys: ["↑"], label: "Throttle" },
-      { keys: ["↓"], label: "Slow" },
-      { keys: ["←", "→"], label: "Turn" },
-      { keys: ["W"], label: "Climb" },
-      { keys: ["S"], label: "Descend" },
+      { keys: ["W", "↑"], label: "Throttle" },
+      { keys: ["S", "↓"], label: "Slow" },
+      { keys: ["A", "D", "←", "→"], label: "Turn" },
+      { keys: ["Space"], label: "Climb" },
       { keys: ["E"], label: "Barrel roll" },
     ];
   }

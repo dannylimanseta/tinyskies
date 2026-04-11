@@ -37,14 +37,13 @@ export class FlightControls {
     }
 
     let turnRate = 0;
+    if (this.keys.has("arrowleft") || this.keys.has("a")) turnRate += TURN_SPEED;
+    if (this.keys.has("arrowright") || this.keys.has("d")) turnRate -= TURN_SPEED;
 
-    if (this.keys.has("arrowleft")) turnRate += TURN_SPEED;
-    if (this.keys.has("arrowright")) turnRate -= TURN_SPEED;
-
-    const forward = this.keys.has("arrowup");
-    const brake = this.keys.has("arrowdown");
-    const elevate = this.keys.has("w");
-    const descend = this.keys.has("s");
+    const forward = this.keys.has("arrowup") || this.keys.has("w");
+    const brake = this.keys.has("arrowdown") || this.keys.has("s");
+    const elevate = this.keys.has(" ");
+    const descend = false;
     const barrelRoll = this.barrelRollQueued;
     this.barrelRollQueued = false;
     const interact = this.interactQueued;
@@ -61,6 +60,9 @@ export class FlightControls {
     }
     if (key === "f" && !e.repeat) {
       this.interactQueued = true;
+    }
+    if (key === " ") {
+      e.preventDefault();
     }
     this.keys.add(key);
   };

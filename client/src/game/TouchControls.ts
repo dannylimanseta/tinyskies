@@ -92,7 +92,7 @@ export class TouchControls {
     if (vehicle === "plane") {
       this.actionBtn.textContent = "⟳";
       this.actionBtn.style.display = "";
-      this.descendBtn.style.display = "";
+      this.descendBtn.style.display = "none";
     } else if (vehicle === "carpet") {
       this.actionBtn.textContent = "⟳";
       this.actionBtn.style.display = "none";
