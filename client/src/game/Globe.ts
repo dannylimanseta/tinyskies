@@ -22,6 +22,7 @@ import {
   BufferGeometry,
   type Scene,
 } from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { addRimLight } from "./RimLight";
 import { createNoise3D, terrainNoise, isLand } from "./SimplexNoise";
 import { getTerrainParams } from "./TerrainPresets";
@@ -103,6 +104,13 @@ export class Globe {
   readonly windmillCenters: { normal: Vector3 }[] = [];
   private windmillBlades: { pivot: Group; speed: number }[] = [];
   readonly observatoryCenters: { normal: Vector3 }[] = [];
+
+  /** Shared material palette for all observatories (created once, reused across 3 instances). */
+  private obsMaterials: {
+    stone: MeshPhongMaterial; stoneDk: MeshPhongMaterial; dome: MeshPhongMaterial;
+    slit: MeshPhongMaterial; window: MeshPhongMaterial; frame: MeshPhongMaterial;
+    door: MeshPhongMaterial; step: MeshPhongMaterial; finder: MeshPhongMaterial;
+  } | null = null;
 
   private segments: number;
 
@@ -1697,137 +1705,134 @@ transformed.z += sway2;`,
    * running from the base of the dome up and over the top.
    */
   private buildObservatory(rand: () => number): Group {
-    const g = new Group();
+    // Lazily create shared materials (9 objects reused across all 3 observatories).
+    if (!this.obsMaterials) {
+      this.obsMaterials = {
+        stone:   new MeshPhongMaterial({ color: 0xd0c8b8 }),
+        stoneDk: new MeshPhongMaterial({ color: 0xa89880 }),
+        dome:    new MeshPhongMaterial({ color: 0xb0b8c4 }),
+        slit:    new MeshPhongMaterial({ color: 0x333340 }),
+        window:  new MeshPhongMaterial({ color: 0x5a90b8 }),
+        frame:   new MeshPhongMaterial({ color: 0x555555 }),
+        door:    new MeshPhongMaterial({ color: 0x5a4030 }),
+        step:    new MeshPhongMaterial({ color: 0xb8b0a0 }),
+        finder:  new MeshPhongMaterial({ color: 0x777777 }),
+      };
+    }
+    const m = this.obsMaterials;
 
-    const S = 2.5; // global scale-up factor
+    // Accumulate geometries by material key, merge at the end into one mesh each.
+    const buckets: Record<keyof typeof m, BufferGeometry[]> = {
+      stone: [], stoneDk: [], dome: [], slit: [], window: [],
+      frame: [], door: [], step: [], finder: [],
+    };
+    const add = (geo: BufferGeometry, key: keyof typeof m) => buckets[key].push(geo);
 
-    // ── Colour palette ──
-    const COL_STONE    = new Color(0xd0c8b8);
-    const COL_STONE_DK = new Color(0xa89880);
-    const COL_DOME     = new Color(0xb0b8c4);
-    const COL_SLIT     = new Color(0x333340);
-    const COL_WINDOW   = new Color(0x5a90b8);
-    const COL_FRAME    = new Color(0x555555);
-    const COL_DOOR     = new Color(0x5a4030);
-    const COL_STEP     = new Color(0xb8b0a0);
-    const COL_FINDER   = new Color(0x777777);
+    const S = 2.5;
 
     // ── Wide 1-storey base ──
-    const baseW = 0.10 * S;
-    const baseD = 0.08 * S;
-    const baseH = 0.025 * S;
+    const baseW = 0.10 * S, baseD = 0.08 * S, baseH = 0.025 * S;
     const baseGeo = new BoxGeometry(baseW, baseH, baseD);
     baseGeo.translate(0, baseH / 2, 0);
-    g.add(new Mesh(baseGeo, new MeshPhongMaterial({ color: COL_STONE })));
+    add(baseGeo, "stone");
 
     // Stone plinth
     const plinthGeo = new BoxGeometry(baseW + 0.01 * S, 0.004 * S, baseD + 0.01 * S);
     plinthGeo.translate(0, 0.002 * S, 0);
-    g.add(new Mesh(plinthGeo, new MeshPhongMaterial({ color: COL_STEP })));
+    add(plinthGeo, "step");
 
     // Flat roof slab
     const roofGeo = new BoxGeometry(baseW + 0.005 * S, 0.003 * S, baseD + 0.005 * S);
     roofGeo.translate(0, baseH + 0.0015 * S, 0);
-    g.add(new Mesh(roofGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+    add(roofGeo, "stoneDk");
 
     // Door
-    const doorW = 0.016 * S;
-    const doorH = 0.018 * S;
+    const doorW = 0.016 * S, doorH = 0.018 * S;
     const doorGeo = new BoxGeometry(doorW, doorH, 0.003 * S);
     doorGeo.translate(0, doorH / 2 + 0.001 * S, baseD / 2 + 0.001 * S);
-    g.add(new Mesh(doorGeo, new MeshPhongMaterial({ color: COL_DOOR })));
+    add(doorGeo, "door");
 
-    // Windows — 2 per long side
+    // Windows — 2 per long side (4 windows + 4 frames)
     const winSize = 0.009 * S;
     for (const side of [-1, 1]) {
       for (const xOff of [-0.028 * S, 0.028 * S]) {
         const winGeo = new BoxGeometry(winSize, winSize, 0.003 * S);
         winGeo.translate(xOff, baseH * 0.52, (baseD / 2 + 0.001 * S) * side);
-        g.add(new Mesh(winGeo, new MeshPhongMaterial({ color: COL_WINDOW })));
+        add(winGeo, "window");
         const frameGeo = new BoxGeometry(winSize + 0.003 * S, winSize + 0.003 * S, 0.002 * S);
         frameGeo.translate(xOff, baseH * 0.52, (baseD / 2 + 0.0015 * S) * side);
-        g.add(new Mesh(frameGeo, new MeshPhongMaterial({ color: COL_FRAME })));
+        add(frameGeo, "frame");
       }
     }
 
-    // ── Short cylindrical drum (sits on the roof) ──
-    const drumR = 0.04 * S;
-    const drumH = 0.012 * S;
-    const drumY = baseH + 0.003 * S;
+    // ── Short cylindrical drum ──
+    const drumR = 0.04 * S, drumH = 0.012 * S, drumY = baseH + 0.003 * S;
     const drumGeo = new CylinderGeometry(drumR, drumR + 0.002 * S, drumH, 16);
     drumGeo.translate(0, drumY + drumH / 2, 0);
-    g.add(new Mesh(drumGeo, new MeshPhongMaterial({ color: COL_STONE })));
+    add(drumGeo, "stone");
 
     // Decorative band at drum top
     const bandGeo = new CylinderGeometry(drumR + 0.003 * S, drumR + 0.003 * S, 0.003 * S, 16);
     bandGeo.translate(0, drumY + drumH, 0);
-    g.add(new Mesh(bandGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+    add(bandGeo, "stoneDk");
 
     // ── Large hemisphere dome ──
     const domeR = drumR + 0.001 * S;
     const domeY = drumY + drumH + 0.001 * S;
-    const DOME_SEGS = 14;
     const profilePoints: Vector2[] = [];
-    for (let i = 0; i <= DOME_SEGS; i++) {
-      const t = i / DOME_SEGS;
-      const angle = t * Math.PI * 0.5;
+    for (let i = 0; i <= 14; i++) {
+      const angle = (i / 14) * Math.PI * 0.5;
       profilePoints.push(new Vector2(Math.cos(angle) * domeR, Math.sin(angle) * domeR));
     }
     const domeGeo = new LatheGeometry(profilePoints, 20);
     domeGeo.translate(0, domeY, 0);
-    g.add(new Mesh(domeGeo, new MeshPhongMaterial({ color: COL_DOME })));
+    add(domeGeo, "dome");
 
-    // ── Dark grey stripe across the dome surface (base → apex → base) ──
-    // Multiple thin box segments follow the dome curvature to form
-    // a continuous stripe that cuts through the middle, like a real
-    // observatory's rotating dome track.
+    // ── Dark grey stripe across the dome surface — 16 segments merged into 1 ──
     const slitAngle = rand() * Math.PI * 2;
     const stripeW = 0.008 * S;
-    const STRIPE_SEGS = 16;
-    const slitMat = new MeshPhongMaterial({ color: COL_SLIT });
-    for (let i = 0; i < STRIPE_SEGS; i++) {
-      const t0 = i / STRIPE_SEGS;
-      const t1 = (i + 1) / STRIPE_SEGS;
-      const a0 = t0 * Math.PI;
-      const a1 = t1 * Math.PI;
-      // Points on the dome arc: angle 0 = one base edge, π = opposite base edge
-      const y0 = domeY + Math.sin(a0) * domeR;
-      const y1 = domeY + Math.sin(a1) * domeR;
-      const r0 = Math.cos(a0) * (domeR + 0.001 * S);
-      const r1 = Math.cos(a1) * (domeR + 0.001 * S);
-      const midY = (y0 + y1) / 2;
-      const midR = (r0 + r1) / 2;
+    for (let i = 0; i < 16; i++) {
+      const a0 = (i / 16) * Math.PI, a1 = ((i + 1) / 16) * Math.PI;
+      const y0 = domeY + Math.sin(a0) * domeR, y1 = domeY + Math.sin(a1) * domeR;
+      const r0 = Math.cos(a0) * (domeR + 0.001 * S), r1 = Math.cos(a1) * (domeR + 0.001 * S);
       const segH = Math.sqrt((y1 - y0) ** 2 + (r1 - r0) ** 2);
       const segGeo = new BoxGeometry(stripeW, segH, 0.003 * S);
-      const tiltAngle = Math.atan2(r1 - r0, y1 - y0);
-      segGeo.rotateX(tiltAngle);
-      segGeo.translate(0, midY, midR);
+      segGeo.rotateX(Math.atan2(r1 - r0, y1 - y0));
+      segGeo.translate(0, (y0 + y1) / 2, (r0 + r1) / 2);
       segGeo.rotateY(slitAngle);
-      g.add(new Mesh(segGeo, slitMat));
+      add(segGeo, "slit");
     }
 
-    // ── Telescope tube — points diagonally upward through the slit ──
-    const scopeLen = domeR * 1.1;
+    // ── Telescope tube ──
     const scopeR = 0.006 * S;
-    const scopeGeo = new CylinderGeometry(scopeR, scopeR * 0.85, scopeLen, 8);
-    // Tilt ~55° from vertical so it pokes out the dome at an angle
+    const scopeGeo = new CylinderGeometry(scopeR, scopeR * 0.85, domeR * 1.1, 8);
     scopeGeo.rotateX(-(Math.PI * 0.30));
     scopeGeo.translate(0, domeY + domeR * 0.42, domeR * 0.22);
     scopeGeo.rotateY(slitAngle);
-    g.add(new Mesh(scopeGeo, new MeshPhongMaterial({ color: COL_FINDER })));
+    add(scopeGeo, "finder");
 
-    // Telescope dew shield (wider ring at the top end)
+    // Telescope dew shield (merged into slit bucket — same dark colour)
     const shieldGeo = new CylinderGeometry(scopeR * 1.3, scopeR * 1.1, 0.008 * S, 8);
     shieldGeo.rotateX(-(Math.PI * 0.30));
     shieldGeo.translate(0, domeY + domeR * 0.65, domeR * 0.38);
     shieldGeo.rotateY(slitAngle);
-    g.add(new Mesh(shieldGeo, new MeshPhongMaterial({ color: COL_SLIT })));
+    add(shieldGeo, "slit");
 
-    // ── Small chimney / vent on the base wing ──
+    // ── Small chimney / vent ──
     const ventGeo = new CylinderGeometry(0.003 * S, 0.004 * S, 0.01 * S, 6);
     ventGeo.translate(baseW * 0.32, baseH + 0.005 * S, -baseD * 0.28);
-    g.add(new Mesh(ventGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+    add(ventGeo, "stoneDk");
 
+    // ── Merge each bucket into a single Mesh ──
+    const g = new Group();
+    for (const key of Object.keys(buckets) as (keyof typeof m)[]) {
+      const geos = buckets[key];
+      if (geos.length === 0) continue;
+      const merged = mergeGeometries(geos, false);
+      if (merged) g.add(new Mesh(merged, m[key]));
+      // Source geometries consumed — dispose them.
+      for (const geo of geos) geo.dispose();
+    }
     return g;
   }
 
