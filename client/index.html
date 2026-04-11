@@ -5,12 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Tiny Skies</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin: 0; padding: 0; box-sizing: border-box; cursor: none !important; }
     html { -webkit-text-size-adjust: 100%; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Inter', system-ui, sans-serif; }
     #app { width: 100%; height: 100%; position: relative; }
     canvas { display: block; }
+    #custom-cursor {
+      position: fixed; top: 0; left: 0; width: 44px; height: 48px;
+      pointer-events: none; z-index: 99999;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='48' viewBox='0 0 44 48'%3E%3Cdefs%3E%3Cfilter id='g' x='-70%25' y='-70%25' width='240%25' height='240%25'%3E%3CfeGaussianBlur in='SourceGraphic' stdDeviation='5.5'/%3E%3C/filter%3E%3C/defs%3E%3Cpolygon points='13,10 32,24 13,35' fill='rgba(255,255,255,0.8)' filter='url(%23g)'/%3E%3Cpolygon points='13,10 32,24 13,35' fill='white' stroke='rgba(0,0,0,0.4)' stroke-width='0.7'/%3E%3C/svg%3E") no-repeat;
+      opacity: 0; transition: opacity 0.4s ease;
+    }
   </style>
+  <script>
+    (function(){
+      var c = document.createElement('div');
+      c.id = 'custom-cursor';
+      document.documentElement.appendChild(c);
+      var ox = 13, oy = 10, t, visible = false;
+      function show() {
+        if (!visible) { c.style.opacity = '1'; visible = true; }
+        clearTimeout(t);
+        t = setTimeout(function(){ c.style.opacity = '0'; visible = false; }, 2000);
+      }
+      document.addEventListener('mousemove', function(e) {
+        c.style.transform = 'translate(' + (e.clientX - ox) + 'px,' + (e.clientY - oy) + 'px)';
+        show();
+      });
+      document.addEventListener('mousedown', show);
+      t = setTimeout(function(){ c.style.opacity = '0'; visible = false; }, 2000);
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
