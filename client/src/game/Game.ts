@@ -1152,13 +1152,13 @@ export class Game {
     this.stepPreview(previewDt);
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
+    requestAnimationFrame(this.previewTick);
+
     if (this.transitionOverlay) {
       await this.transitionOverlay.fadeIn();
       this.transitionOverlay.dispose();
       this.transitionOverlay = null;
     }
-
-    requestAnimationFrame(this.previewTick);
 
     this.returningToMenuAfterMoon = false;
   }

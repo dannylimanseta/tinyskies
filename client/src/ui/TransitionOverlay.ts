@@ -24,6 +24,11 @@ export class TransitionOverlay {
 
   fadeIn(): Promise<void> {
     return new Promise((resolve) => {
+      // Re-enable CSS transition in case setOpacity() disabled it.
+      this.el.style.transition = "opacity 0.8s ease";
+      // Force a reflow so the browser registers the restored transition
+      // before we change the opacity value.
+      void this.el.offsetHeight;
       this.el.style.opacity = "0";
       this.el.addEventListener("transitionend", () => resolve(), { once: true });
     });
