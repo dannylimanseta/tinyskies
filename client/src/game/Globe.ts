@@ -1777,37 +1777,51 @@ transformed.z += sway2;`,
     domeGeo.translate(0, domeY, 0);
     g.add(new Mesh(domeGeo, new MeshPhongMaterial({ color: COL_DOME })));
 
-    // ── Dome slit — dark grey strip from base through the apex ──
-    // Two narrow boxes form a cross-section through the dome centre.
+    // ── Dark grey stripe across the dome surface (base → apex → base) ──
+    // Multiple thin box segments follow the dome curvature to form
+    // a continuous stripe that cuts through the middle, like a real
+    // observatory's rotating dome track.
     const slitAngle = rand() * Math.PI * 2;
-    const slitW = 0.008 * S;
+    const stripeW = 0.008 * S;
+    const STRIPE_SEGS = 16;
+    const slitMat = new MeshPhongMaterial({ color: COL_SLIT });
+    for (let i = 0; i < STRIPE_SEGS; i++) {
+      const t0 = i / STRIPE_SEGS;
+      const t1 = (i + 1) / STRIPE_SEGS;
+      const a0 = t0 * Math.PI;
+      const a1 = t1 * Math.PI;
+      // Points on the dome arc: angle 0 = one base edge, π = opposite base edge
+      const y0 = domeY + Math.sin(a0) * domeR;
+      const y1 = domeY + Math.sin(a1) * domeR;
+      const r0 = Math.cos(a0) * (domeR + 0.001 * S);
+      const r1 = Math.cos(a1) * (domeR + 0.001 * S);
+      const midY = (y0 + y1) / 2;
+      const midR = (r0 + r1) / 2;
+      const segH = Math.sqrt((y1 - y0) ** 2 + (r1 - r0) ** 2);
+      const segGeo = new BoxGeometry(stripeW, segH, 0.003 * S);
+      const tiltAngle = Math.atan2(r1 - r0, y1 - y0);
+      segGeo.rotateX(tiltAngle);
+      segGeo.translate(0, midY, midR);
+      segGeo.rotateY(slitAngle);
+      g.add(new Mesh(segGeo, slitMat));
+    }
 
-    // Vertical slit panel (front half, base to apex)
-    const slitVH = domeR * 1.02;
-    const slitVGeo = new BoxGeometry(slitW, slitVH, 0.003 * S);
-    slitVGeo.translate(0, domeY + slitVH * 0.5, domeR * 0.3);
-    slitVGeo.rotateY(slitAngle);
-    g.add(new Mesh(slitVGeo, new MeshPhongMaterial({ color: COL_SLIT })));
+    // ── Telescope tube — points diagonally upward through the slit ──
+    const scopeLen = domeR * 1.1;
+    const scopeR = 0.006 * S;
+    const scopeGeo = new CylinderGeometry(scopeR, scopeR * 0.85, scopeLen, 8);
+    // Tilt ~55° from vertical so it pokes out the dome at an angle
+    scopeGeo.rotateX(-(Math.PI * 0.30));
+    scopeGeo.translate(0, domeY + domeR * 0.42, domeR * 0.22);
+    scopeGeo.rotateY(slitAngle);
+    g.add(new Mesh(scopeGeo, new MeshPhongMaterial({ color: COL_FINDER })));
 
-    // Horizontal slit panel (extends radially outward from dome center)
-    const slitHLen = domeR * 0.85;
-    const slitHGeo = new BoxGeometry(slitW, 0.003 * S, slitHLen);
-    slitHGeo.translate(0, domeY + domeR * 0.92, slitHLen * 0.35);
-    slitHGeo.rotateY(slitAngle);
-    g.add(new Mesh(slitHGeo, new MeshPhongMaterial({ color: COL_SLIT })));
-
-    // ── Finder scope on dome exterior ──
-    const finderLen = 0.02 * S;
-    const finderR = 0.003 * S;
-    const finderAngle = slitAngle + 0.35;
-    const finderGeo = new CylinderGeometry(finderR, finderR * 0.7, finderLen, 6);
-    finderGeo.rotateZ(-Math.PI / 4);
-    finderGeo.translate(
-      Math.cos(finderAngle) * (domeR * 0.55),
-      domeY + domeR * 0.62,
-      Math.sin(finderAngle) * (domeR * 0.55),
-    );
-    g.add(new Mesh(finderGeo, new MeshPhongMaterial({ color: COL_FINDER })));
+    // Telescope dew shield (wider ring at the top end)
+    const shieldGeo = new CylinderGeometry(scopeR * 1.3, scopeR * 1.1, 0.008 * S, 8);
+    shieldGeo.rotateX(-(Math.PI * 0.30));
+    shieldGeo.translate(0, domeY + domeR * 0.65, domeR * 0.38);
+    shieldGeo.rotateY(slitAngle);
+    g.add(new Mesh(shieldGeo, new MeshPhongMaterial({ color: COL_SLIT })));
 
     // ── Small chimney / vent on the base wing ──
     const ventGeo = new CylinderGeometry(0.003 * S, 0.004 * S, 0.01 * S, 6);
