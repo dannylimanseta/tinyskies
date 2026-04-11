@@ -197,7 +197,7 @@ export class Game {
   private localPlayerWorldScratch = new Vector3();
 
   private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" = "flying";
-  private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "rewind" | "done" = "done";
+  private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
   private moonCinematicTimer = 0;
   private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
@@ -209,7 +209,6 @@ export class Game {
   private moonThreat: MoonThreat | null = null;
   private vhsOverlay: HTMLDivElement | null = null;
   private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
-  private rewindFadeOutStarted = false;
   private upgradeManager!: UpgradeManager;
   private levelUpCards!: LevelUpCards;
   /** Count of previously spawned bonus collectibles so we only spawn the delta. */
@@ -1038,6 +1037,55 @@ export class Game {
     wrap.remove();
   }
 
+  /** Self-contained rewind render loop — runs independently of this.tick. */
+  private async showMoonRewindSequence(): Promise<void> {
+    if (!this.transitionOverlay) return;
+
+    const REWIND_SPEED = 4.5;
+    const REWIND_DUR = 4.0;
+    const cam = this.moonCinematicCamera ?? this.cameraRig.camera;
+
+    // Fade in from black to reveal the 3D scene.
+    await this.transitionOverlay.fadeIn();
+
+    // Show the VHS overlay.
+    this.vhsOverlay = this.createVhsOverlay();
+
+    // Run a dedicated rAF loop — does not depend on this.running.
+    let prevTime = performance.now();
+    let rewindTimer = 0;
+    await new Promise<void>((resolve) => {
+      const loop = () => {
+        const now = performance.now();
+        const dt = Math.min((now - prevTime) / 1000, 0.05);
+        prevTime = now;
+        rewindTimer += dt;
+
+        const rewindProgress = Math.min(1, rewindTimer / REWIND_DUR);
+        this.moonThreat?.rewindTick(dt, REWIND_SPEED, rewindProgress);
+        this.globe.update(dt);
+        this.renderer.render(this.scene, cam);
+
+        if (rewindTimer < REWIND_DUR) {
+          requestAnimationFrame(loop);
+        } else {
+          resolve();
+        }
+      };
+      requestAnimationFrame(loop);
+    });
+
+    // Tear down VHS overlay then fade back to black.
+    if (this.vhsGlitchInterval !== null) {
+      clearInterval(this.vhsGlitchInterval);
+      this.vhsGlitchInterval = null;
+    }
+    this.vhsOverlay.remove();
+    this.vhsOverlay = null;
+
+    await this.transitionOverlay.fadeOut();
+  }
+
   private async returnToMainMenuAfterMoonImpact() {
     if (this.returningToMenuAfterMoon) return;
     this.returningToMenuAfterMoon = true;
@@ -1046,6 +1094,7 @@ export class Game {
 
     await this.showMoonEpitaphOverlay();
     await this.showMoonCreditsOverlay();
+    await this.showMoonRewindSequence();
 
     this.teardownGameplaySession();
 
@@ -1790,7 +1839,7 @@ export class Game {
         break;
       }
 
-      /* Step 3: Final fade to black */
+      /* Step 3: Final fade to black — cinematic complete */
       case "fadeOut2":
         if (this.moonThreat) {
           const trauma = this.moonThreat.getShakeTrauma();
@@ -1806,58 +1855,9 @@ export class Game {
             this.vignetteOverlay.remove();
             this.vignetteOverlay = null;
           }
-          this.moonCinematicStep = "rewind";
-          this.moonCinematicTimer = 0;
-          this.rewindFadeOutStarted = false;
-        }
-        break;
-
-      /* Step 4: Fast VHS-style rewind — moon + debris reverse at speed */
-      case "rewind": {
-        const REWIND_SPEED = 4.5;
-        const REVEAL_DUR = 0.5;   // fade in from black
-        const REWIND_DUR = 4.0;   // rewind plays
-        const FADE_DUR = 0.8;     // fade back to black
-
-        // First frame: show VHS overlay and reveal the scene.
-        if (!this.vhsOverlay) {
-          this.vhsOverlay = this.createVhsOverlay();
-          this.transitionOverlay?.fadeIn();
-        }
-
-        // Drive the rewind once the reveal completes.
-        if (this.moonCinematicTimer > REVEAL_DUR && this.moonThreat) {
-          const rewindProgress = Math.min(
-            1,
-            (this.moonCinematicTimer - REVEAL_DUR) / REWIND_DUR,
-          );
-          this.moonThreat.rewindTick(dt, REWIND_SPEED, rewindProgress);
-        }
-
-        // Start fade-out once rewind is done.
-        if (
-          this.moonCinematicTimer > REVEAL_DUR + REWIND_DUR &&
-          !this.rewindFadeOutStarted
-        ) {
-          this.rewindFadeOutStarted = true;
-          this.transitionOverlay?.fadeOut();
-        }
-
-        // Cleanup and proceed once screen is black again.
-        if (this.moonCinematicTimer > REVEAL_DUR + REWIND_DUR + FADE_DUR) {
-          if (this.vhsGlitchInterval !== null) {
-            clearInterval(this.vhsGlitchInterval);
-            this.vhsGlitchInterval = null;
-          }
-          this.vhsOverlay?.remove();
-          this.vhsOverlay = null;
-          this.moonCinematicStep = "done";
           void this.returnToMainMenuAfterMoonImpact();
         }
-
-        this.renderer.render(this.scene, cam);
         break;
-      }
 
       case "done":
         break;
