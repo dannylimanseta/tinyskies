@@ -87,6 +87,15 @@ export class PackageQuestHUD {
     return this.bubbleTimer !== null;
   }
 
+  hideBubble() {
+    if (this.bubbleTimer) {
+      clearTimeout(this.bubbleTimer);
+      this.bubbleTimer = null;
+    }
+    this.bubbleEl.style.opacity = "0";
+    this.onVisibilityChange?.(false);
+  }
+
   setProgress(value: number) {
     const offset = this.circumference * (1 - value);
     this.svgCircle.style.strokeDashoffset = `${offset}`;

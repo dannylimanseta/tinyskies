@@ -1305,7 +1305,7 @@ export class Game {
 
   private onDebugKey = (e: KeyboardEvent) => {
     if (e.key === "q" || e.key === "Q") {
-      this.moonThreat?.forceImpact();
+      this.moonThreat?.jumpTo(0.90);
     }
   };
 
@@ -1322,6 +1322,11 @@ export class Game {
     this.hud.root.style.display = "none";
     this.controls.enabled = false;
     if (this.touchControls) this.touchControls.enabled = false;
+
+    for (const id of DIALOGUE_LOOP_IDS) {
+      this.audioManager.fadeOutLoop(id);
+    }
+    this.packageQuestHUD.hideBubble();
 
     // Build a wide-angle camera positioned far from the globe
     const aspect = this.container.clientWidth / this.container.clientHeight;

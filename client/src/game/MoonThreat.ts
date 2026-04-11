@@ -1,6 +1,8 @@
 import {
   AdditiveBlending,
   Box3,
+  BufferAttribute,
+  BufferGeometry,
   DodecahedronGeometry,
   DoubleSide,
   Group,
@@ -10,6 +12,7 @@ import {
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
+  Points,
   Quaternion,
   Scene,
   ShaderMaterial,
@@ -38,12 +41,36 @@ const CAMERA_ROCK_COUNT = 3;
 const WAVE_COUNT = 3;
 const WAVE_STAGGER = 1.8; // seconds between each wave
 
+const EMBER_COUNT = 1500;
+const EMBER_LIFE_MIN = 0.8;
+const EMBER_LIFE_MAX = 2.5;
+const EMBER_DRIFT_SPEED = 3.5;
+const EMBER_SPREAD = 1.2;
+
+interface Ember {
+  life: number;
+  maxLife: number;
+  pos: Vector3;
+  vel: Vector3;
+}
+
 export class MoonThreat {
   readonly group = new Group();
   private elapsed = 0;
   private loaded = false;
   private baseScale = 1;
   private impacted = false;
+
+  /* ── Molten effect shader refs ──────────────────────────── */
+  private moltenShaders: { uniforms: Record<string, { value: number }> }[] = [];
+
+  /* ── Fire particles ─────────────────────────────────────── */
+  private embers: Ember[] = [];
+  private emberPoints: Points | null = null;
+  private emberMat: ShaderMaterial | null = null;
+  private emberPositions: Float32Array | null = null;
+  private emberAlphas: Float32Array | null = null;
+  private emberSizes: Float32Array | null = null;
 
   /* ── Impact VFX objects ─────────────────────────────────── */
   private shockwaveWaves: Mesh[] = [];
@@ -76,6 +103,12 @@ export class MoonThreat {
     this.elapsed = MOON_CYCLE_DURATION * 0.995;
   }
 
+  /** Debug: jump to a specific progress (0–1). */
+  jumpTo(pct: number) {
+    if (this.impacted) return;
+    this.elapsed = MOON_CYCLE_DURATION * Math.min(pct, 0.999);
+  }
+
   constructor(private globeRadius: number) {
     const loader = new GLTFLoader();
     loader.load("/3D/moon.glb", (gltf) => {
@@ -102,50 +135,111 @@ export class MoonThreat {
     this.group.position.copy(MOON_APPROACH_DIR.clone().multiplyScalar(MOON_START_DISTANCE));
   }
 
-  /* ── Rim light ────────────────────────────────────────────── */
+  /* ── Rim light + molten cracks ─────────────────────────────── */
 
   private applyRimLight(root: Group) {
+    const moltenUniforms = `
+uniform float rimIntensity;
+uniform float rimPower;
+uniform float uMolten;
+`;
+
+    const moltenFunctions = /* glsl */ `
+float hash3(vec3 p) {
+  p = fract(p * vec3(443.897, 441.423, 437.195));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+float noise3(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash3(i), hash3(i + vec3(1,0,0)), f.x),
+        mix(hash3(i + vec3(0,1,0)), hash3(i + vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x),
+        mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
+float fbm3(vec3 p) {
+  float v = 0.0; float a = 0.5;
+  for (int i = 0; i < 4; i++) { v += a * noise3(p); p *= 2.1; a *= 0.5; }
+  return v;
+}
+`;
+
+    const moltenEffect = /* glsl */ `
+vec3 rimViewDir = normalize(vViewPosition);
+vec3 rimN = normalize(normal);
+float rimF = 1.0 - abs(dot(rimViewDir, rimN));
+
+vec3 rimCoolCol = vec3(0.7, 0.75, 0.9);
+vec3 rimHotCol  = vec3(1.0, 0.45, 0.05);
+vec3 rimCol = mix(rimCoolCol, rimHotCol, uMolten);
+float rimP = mix(rimPower, 1.5, uMolten);
+float rimI = mix(rimIntensity, 1.8, uMolten);
+gl_FragColor.rgb += rimCol * rimI * pow(rimF, rimP);
+
+if (uMolten > 0.01) {
+  vec3 wp = vWorldPos;
+  float n1 = fbm3(wp * 3.0);
+  float n2 = fbm3(wp * 6.0 + 5.0);
+  float crack = smoothstep(0.42, 0.48, n1) * smoothstep(0.52, 0.48, n1);
+  crack += smoothstep(0.38, 0.44, n2) * smoothstep(0.56, 0.44, n2) * 0.6;
+  crack = clamp(crack, 0.0, 1.0);
+  vec3 lavaCore = vec3(1.0, 0.85, 0.2);
+  vec3 lavaEdge = vec3(1.0, 0.25, 0.0);
+  vec3 lavaCol = mix(lavaEdge, lavaCore, crack);
+  float glow = crack * uMolten;
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, lavaCol, glow * 0.9);
+  gl_FragColor.rgb += lavaEdge * glow * 0.4;
+}
+#include <dithering_fragment>`;
+
     root.traverse((child) => {
       if (!(child instanceof Mesh)) return;
       const mat = child.material;
 
+      const patchShader = (shader: {
+        uniforms: Record<string, { value: number }>;
+        fragmentShader: string;
+        vertexShader: string;
+      }, uniformAnchor: string) => {
+        shader.uniforms.rimIntensity = { value: 0.55 };
+        shader.uniforms.rimPower = { value: 2.5 };
+        shader.uniforms.uMolten = { value: 0 };
+        this.moltenShaders.push(shader);
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+          uniformAnchor,
+          uniformAnchor + "\n" + moltenUniforms,
+        );
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "void main() {",
+          "varying vec3 vWorldPos;\nvoid main() {",
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          "#include <begin_vertex>\nvWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;",
+        );
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "void main() {",
+          "varying vec3 vWorldPos;\n" + moltenFunctions + "\nvoid main() {",
+        );
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <dithering_fragment>",
+          moltenEffect,
+        );
+      };
+
       if (mat instanceof MeshStandardMaterial) {
         mat.color.multiplyScalar(0.35);
-        mat.onBeforeCompile = (shader) => {
-          shader.uniforms.rimIntensity = { value: 0.55 };
-          shader.uniforms.rimPower = { value: 2.5 };
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "uniform float opacity;",
-            `uniform float opacity;\nuniform float rimIntensity;\nuniform float rimPower;`,
-          );
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "#include <dithering_fragment>",
-            `vec3 rimViewDir = normalize(vViewPosition);
-vec3 rimN = normalize(normal);
-float rimF = 1.0 - abs(dot(rimViewDir, rimN));
-gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
-#include <dithering_fragment>`,
-          );
-        };
+        mat.onBeforeCompile = (shader) => patchShader(shader, "uniform float opacity;");
         mat.needsUpdate = true;
       } else if (mat instanceof MeshPhongMaterial) {
         mat.color.multiplyScalar(0.35);
-        mat.onBeforeCompile = (shader) => {
-          shader.uniforms.rimIntensity = { value: 0.55 };
-          shader.uniforms.rimPower = { value: 2.5 };
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "uniform vec3 emissive;",
-            `uniform vec3 emissive;\nuniform float rimIntensity;\nuniform float rimPower;`,
-          );
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "#include <dithering_fragment>",
-            `vec3 rimViewDir = normalize(vViewPosition);
-vec3 rimN = normalize(normal);
-float rimF = 1.0 - abs(dot(rimViewDir, rimN));
-gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
-#include <dithering_fragment>`,
-          );
-        };
+        mat.onBeforeCompile = (shader) => patchShader(shader, "uniform vec3 emissive;");
         mat.needsUpdate = true;
       }
     });
@@ -155,11 +249,164 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
     scene.add(this.group);
   }
 
+  /* ── Fire particle setup ─────────────────────────────────── */
+
+  private initEmbers() {
+    const positions = new Float32Array(EMBER_COUNT * 3);
+    const alphas = new Float32Array(EMBER_COUNT);
+    const sizes = new Float32Array(EMBER_COUNT);
+    this.emberPositions = positions;
+    this.emberAlphas = alphas;
+    this.emberSizes = sizes;
+
+    for (let i = 0; i < EMBER_COUNT; i++) {
+      this.embers.push({ life: 0, maxLife: 1, pos: new Vector3(), vel: new Vector3() });
+      alphas[i] = 0;
+      sizes[i] = 0;
+    }
+
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(positions, 3));
+    geo.setAttribute("alpha", new BufferAttribute(alphas, 1));
+    geo.setAttribute("size", new BufferAttribute(sizes, 1));
+
+    this.emberMat = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      vertexShader: /* glsl */ `
+        attribute float alpha;
+        attribute float size;
+        varying float vAlpha;
+        varying float vSize;
+        void main() {
+          vAlpha = alpha;
+          vSize = size;
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * (600.0 / -mvPos.z);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying float vAlpha;
+        varying float vSize;
+        void main() {
+          float d = length(gl_PointCoord - 0.5) * 2.0;
+          float sharp = step(0.0, 0.3 - vSize);
+          float soft = 1.0 - smoothstep(0.0, 1.0, d);
+          float hard = 1.0 - smoothstep(0.0, 0.35, d);
+          float disc = mix(soft, hard, sharp);
+          vec3 hotCol = vec3(1.0, 0.9, 0.5);
+          vec3 warmCol = vec3(1.0, 0.5, 0.05);
+          vec3 col = mix(warmCol, hotCol, disc * (1.0 - sharp * 0.3));
+          gl_FragColor = vec4(col, disc * vAlpha);
+        }
+      `,
+    });
+
+    this.emberPoints = new Points(geo, this.emberMat);
+    this.emberPoints.frustumCulled = false;
+    this.emberPoints.visible = false;
+  }
+
+  private spawnEmber(idx: number, moonWorldPos: Vector3, moonRadius: number) {
+    const e = this.embers[idx]!;
+    e.maxLife = EMBER_LIFE_MIN + Math.random() * (EMBER_LIFE_MAX - EMBER_LIFE_MIN);
+    e.life = e.maxLife;
+
+    let surfaceDir: Vector3;
+    for (;;) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(1 - 2 * Math.random());
+      surfaceDir = new Vector3(
+        Math.sin(phi) * Math.cos(theta),
+        Math.sin(phi) * Math.sin(theta),
+        Math.cos(phi),
+      );
+      if (surfaceDir.dot(MOON_APPROACH_DIR) < -0.5) break;
+    }
+    e.pos.copy(moonWorldPos).addScaledVector(surfaceDir, moonRadius * (1.0 + Math.random() * 0.03));
+
+    const backward = MOON_APPROACH_DIR.clone().multiplyScalar(
+      EMBER_DRIFT_SPEED * (0.6 + Math.random() * 0.6),
+    );
+    const radialOut = surfaceDir.clone().multiplyScalar(
+      EMBER_DRIFT_SPEED * (0.15 + Math.random() * 0.2),
+    );
+    const tangent = surfaceDir.clone().cross(MOON_APPROACH_DIR);
+    if (tangent.lengthSq() > 0.001) tangent.normalize();
+    else tangent.set(1, 0, 0);
+    const lateral = tangent.multiplyScalar((Math.random() - 0.5) * EMBER_SPREAD);
+
+    e.vel.copy(backward).add(radialOut).add(lateral);
+  }
+
+  private updateEmbers(dt: number, molten: number) {
+    if (!this.emberPoints) {
+      this.initEmbers();
+      this.group.parent?.add(this.emberPoints!);
+    }
+
+    this.emberPoints!.visible = molten > 0.01;
+    if (molten <= 0.01) return;
+
+    const moonWorldPos = this.group.position;
+    const currentScale = this.loaded && this.group.children[0]
+      ? this.group.children[0].scale.x
+      : this.baseScale * MOON_SCALE_START;
+    const scaleFactor = this.baseScale > 0 ? currentScale / this.baseScale : 1;
+    const moonRadius = this.globeRadius * scaleFactor * 0.5;
+
+    const spawnRate = molten * 0.85;
+
+    for (let i = 0; i < EMBER_COUNT; i++) {
+      const e = this.embers[i]!;
+
+      if (e.life <= 0) {
+        if (Math.random() < spawnRate * dt * 40) {
+          this.spawnEmber(i, moonWorldPos, moonRadius);
+        } else {
+          this.emberAlphas![i] = 0;
+          this.emberSizes![i] = 0;
+          continue;
+        }
+      }
+
+      e.life -= dt;
+
+      const toParticle = _emberScratch.copy(e.pos).sub(moonWorldPos);
+      const dist = toParticle.length();
+      if (dist > 0.001) {
+        toParticle.divideScalar(dist);
+        const pushStrength = Math.max(0, moonRadius * 1.1 - dist) * 6.0;
+        if (pushStrength > 0) {
+          e.vel.addScaledVector(toParticle, pushStrength * dt);
+        }
+      }
+
+      e.pos.addScaledVector(e.vel, dt);
+
+      const frac = Math.max(0, e.life / e.maxLife);
+      this.emberAlphas![i] = frac * molten;
+      const r = Math.random();
+      const baseSize = r < 0.6 ? 0.08 + r * 0.25 : 0.35 + r * 0.5;
+      this.emberSizes![i] = baseSize * frac * molten;
+
+      this.emberPositions![i * 3] = e.pos.x;
+      this.emberPositions![i * 3 + 1] = e.pos.y;
+      this.emberPositions![i * 3 + 2] = e.pos.z;
+    }
+
+    const geo = this.emberPoints!.geometry;
+    geo.attributes.position!.needsUpdate = true;
+    (geo.attributes.alpha as BufferAttribute).needsUpdate = true;
+    (geo.attributes.size as BufferAttribute).needsUpdate = true;
+  }
+
   /* ── Per-frame update ───────────────────────────────────── */
 
   update(dt: number) {
     if (this.impacted) {
-      // Moon keeps ploughing through the globe
       this.group.position.addScaledVector(
         _negApproach,
         POST_IMPACT_SPEED * dt,
@@ -167,6 +414,7 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
       if (this.loaded) {
         this.group.rotation.y += MOON_ROTATION_SPEED * dt;
       }
+      this.updateEmbers(dt, 1.0);
       this.updateImpactVFX(dt);
       return;
     }
@@ -183,6 +431,12 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
       const model = this.group.children[0];
       if (model) model.scale.setScalar(s);
     }
+
+    const molten = t < 0.75 ? 0 : Math.min(1, (t - 0.75) / 0.20);
+    for (const sh of this.moltenShaders) {
+      sh.uniforms.uMolten!.value = molten;
+    }
+    this.updateEmbers(dt, molten);
 
     if (t >= 1.0 && !this.impacted) {
       this.triggerImpact();
@@ -416,6 +670,13 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
       this.debrisMesh.parent?.remove(this.debrisMesh);
       this.debrisMesh = null;
     }
+    if (this.emberPoints) {
+      this.emberPoints.parent?.remove(this.emberPoints);
+      this.emberPoints.geometry.dispose();
+      this.emberMat?.dispose();
+      this.emberPoints = null;
+      this.emberMat = null;
+    }
   }
 
   dispose() {
@@ -427,3 +688,4 @@ gl_FragColor.rgb += vec3(0.7, 0.75, 0.9) * rimIntensity * pow(rimF, rimPower);
 /* ── Module-level scratch vectors (avoid per-frame allocs) ── */
 const _negApproach = MOON_APPROACH_DIR.clone().negate();
 const _zAxis = new Vector3(0, 0, 1);
+const _emberScratch = new Vector3();
