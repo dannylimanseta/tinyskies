@@ -197,7 +197,7 @@ export class Game {
   private localPlayerWorldScratch = new Vector3();
 
   private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" = "flying";
-  private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
+  private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "rewind" | "done" = "done";
   private moonCinematicTimer = 0;
   private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
@@ -207,6 +207,9 @@ export class Game {
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
   private moonThreat: MoonThreat | null = null;
+  private vhsOverlay: HTMLDivElement | null = null;
+  private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
+  private rewindFadeOutStarted = false;
   private upgradeManager!: UpgradeManager;
   private levelUpCards!: LevelUpCards;
   /** Count of previously spawned bonus collectibles so we only spawn the delta. */
@@ -895,6 +898,13 @@ export class Game {
 
     this.upgradeManager?.reset();
     this.levelUpCards?.dispose();
+
+    if (this.vhsGlitchInterval !== null) {
+      clearInterval(this.vhsGlitchInterval);
+      this.vhsGlitchInterval = null;
+    }
+    this.vhsOverlay?.remove();
+    this.vhsOverlay = null;
 
     window.removeEventListener("resize", this.onResize);
   }
@@ -1780,7 +1790,7 @@ export class Game {
         break;
       }
 
-      /* Step 3: Final fade to black — cinematic complete */
+      /* Step 3: Final fade to black */
       case "fadeOut2":
         if (this.moonThreat) {
           const trauma = this.moonThreat.getShakeTrauma();
@@ -1796,9 +1806,58 @@ export class Game {
             this.vignetteOverlay.remove();
             this.vignetteOverlay = null;
           }
-          void this.returnToMainMenuAfterMoonImpact();
+          this.moonCinematicStep = "rewind";
+          this.moonCinematicTimer = 0;
+          this.rewindFadeOutStarted = false;
         }
         break;
+
+      /* Step 4: Fast VHS-style rewind — moon + debris reverse at speed */
+      case "rewind": {
+        const REWIND_SPEED = 4.5;
+        const REVEAL_DUR = 0.5;   // fade in from black
+        const REWIND_DUR = 4.0;   // rewind plays
+        const FADE_DUR = 0.8;     // fade back to black
+
+        // First frame: show VHS overlay and reveal the scene.
+        if (!this.vhsOverlay) {
+          this.vhsOverlay = this.createVhsOverlay();
+          this.transitionOverlay?.fadeIn();
+        }
+
+        // Drive the rewind once the reveal completes.
+        if (this.moonCinematicTimer > REVEAL_DUR && this.moonThreat) {
+          const rewindProgress = Math.min(
+            1,
+            (this.moonCinematicTimer - REVEAL_DUR) / REWIND_DUR,
+          );
+          this.moonThreat.rewindTick(dt, REWIND_SPEED, rewindProgress);
+        }
+
+        // Start fade-out once rewind is done.
+        if (
+          this.moonCinematicTimer > REVEAL_DUR + REWIND_DUR &&
+          !this.rewindFadeOutStarted
+        ) {
+          this.rewindFadeOutStarted = true;
+          this.transitionOverlay?.fadeOut();
+        }
+
+        // Cleanup and proceed once screen is black again.
+        if (this.moonCinematicTimer > REVEAL_DUR + REWIND_DUR + FADE_DUR) {
+          if (this.vhsGlitchInterval !== null) {
+            clearInterval(this.vhsGlitchInterval);
+            this.vhsGlitchInterval = null;
+          }
+          this.vhsOverlay?.remove();
+          this.vhsOverlay = null;
+          this.moonCinematicStep = "done";
+          void this.returnToMainMenuAfterMoonImpact();
+        }
+
+        this.renderer.render(this.scene, cam);
+        break;
+      }
 
       case "done":
         break;
@@ -1806,6 +1865,109 @@ export class Game {
 
     /* fadeOutLoop / stopWhenSilent only advance in update(); flying tick skips this during moonImpact. */
     this.audioManager.update(dt);
+  }
+
+  private createVhsOverlay(): HTMLDivElement {
+    // Inject keyframe styles once.
+    const styleId = "vhs-rewind-style";
+    if (!document.getElementById(styleId)) {
+      const s = document.createElement("style");
+      s.id = styleId;
+      s.textContent = `
+        @keyframes vhs-scan {
+          0%   { background-position: 0 0; }
+          100% { background-position: 0 8px; }
+        }
+        @keyframes vhs-bands {
+          0%   { background-position: 0 0; }
+          100% { background-position: 0 60px; }
+        }
+        @keyframes vhs-blink {
+          0%,49%  { opacity: 1; }
+          50%,100%{ opacity: 0; }
+        }
+        @keyframes vhs-flicker {
+          0%,100%{ opacity: 1; }
+          91%    { opacity: 0.88; }
+          93%    { opacity: 1; }
+          95%    { opacity: 0.82; }
+          97%    { opacity: 1; }
+        }
+      `;
+      document.head.appendChild(s);
+    }
+
+    const wrap = document.createElement("div");
+    Object.assign(wrap.style, {
+      position: "absolute",
+      inset: "0",
+      zIndex: "6",
+      pointerEvents: "none",
+      animation: "vhs-flicker 0.18s step-end infinite",
+    });
+
+    // Fine horizontal scan lines.
+    const scanLines = document.createElement("div");
+    Object.assign(scanLines.style, {
+      position: "absolute",
+      inset: "0",
+      background:
+        "repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.18) 2px, rgba(0,0,0,0.18) 4px)",
+      backgroundSize: "100% 4px",
+      animation: "vhs-scan 0.06s linear infinite",
+    });
+
+    // Wider scrolling tracking bands — the classic VHS fast-forward look.
+    const bands = document.createElement("div");
+    Object.assign(bands.style, {
+      position: "absolute",
+      inset: "0",
+      background:
+        "repeating-linear-gradient(to bottom, transparent 0px, transparent 24px, rgba(255,255,255,0.05) 24px, rgba(255,255,255,0.05) 30px, transparent 30px, transparent 60px)",
+      backgroundSize: "100% 60px",
+      animation: "vhs-bands 0.12s linear infinite",
+    });
+
+    // Horizontal glitch line — JS-driven random positioning.
+    const glitchLine = document.createElement("div");
+    Object.assign(glitchLine.style, {
+      position: "absolute",
+      left: "0",
+      right: "0",
+      height: "3px",
+      background: "rgba(255,255,255,0.7)",
+      mixBlendMode: "screen",
+      opacity: "0",
+    });
+    this.vhsGlitchInterval = setInterval(() => {
+      if (!glitchLine.isConnected) return;
+      glitchLine.style.top = `${10 + Math.random() * 80}%`;
+      glitchLine.style.height = `${1 + Math.floor(Math.random() * 4)}px`;
+      glitchLine.style.opacity = Math.random() > 0.45 ? "0.8" : "0";
+    }, 80);
+
+    // ◀◀ RWD indicator — bottom-right, blinking.
+    const indicator = document.createElement("div");
+    indicator.textContent = "◀◀  RWD";
+    Object.assign(indicator.style, {
+      position: "absolute",
+      bottom: "2.5rem",
+      right: "2rem",
+      fontFamily: "'Courier New', Courier, monospace",
+      fontSize: "clamp(0.75rem, 2vw, 1rem)",
+      fontWeight: "700",
+      color: "#ffffff",
+      letterSpacing: "0.22em",
+      textShadow: "0 0 8px rgba(255,255,255,0.9), 0 0 20px rgba(255,200,50,0.6)",
+      animation: "vhs-blink 0.5s step-end infinite",
+    });
+
+    wrap.appendChild(scanLines);
+    wrap.appendChild(bands);
+    wrap.appendChild(glitchLine);
+    wrap.appendChild(indicator);
+    this.container.appendChild(wrap);
+    return wrap;
   }
 
   /* ── Campsite landing / takeoff ─────────────────────────────── */

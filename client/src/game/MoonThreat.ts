@@ -723,30 +723,73 @@ if (uMolten > 0.01) {
 
   /* ── Animate impact VFX ─────────────────────────────────── */
 
-  private updateImpactVFX(dt: number) {
-    this.impactTime += dt;
-
+  /** Render shockwave rings based on current `this.impactTime` (shared by forward and rewind). */
+  private renderShockwaves() {
     for (let w = 0; w < this.shockwaveWaves.length; w++) {
       const wave = this.shockwaveWaves[w]!;
       const waveTime = this.impactTime - w * WAVE_STAGGER;
       if (waveTime < 0) { wave.visible = false; continue; }
-
       wave.visible = true;
-      const speedMul = 1.0 + w * 0.4; // later waves expand faster
+      const speedMul = 1.0 + w * 0.4;
       const dur = IMPACT_SHOCKWAVE_DUR / speedMul;
       const t = Math.min(waveTime / dur, 1);
       const maxRadius = this.globeRadius * 5;
-      const radius = t * maxRadius;
-      wave.scale.setScalar(radius || 0.01);
-
+      wave.scale.setScalar((t * maxRadius) || 0.01);
       const mat = wave.material as ShaderMaterial;
-      const baseWidth = 0.28 - w * 0.08; // first wave much thicker
-      const ringWidth = baseWidth + t * 0.06;
-      mat.uniforms.uInnerR!.value = Math.max(0, 1.0 - ringWidth);
+      const baseWidth = 0.28 - w * 0.08;
+      mat.uniforms.uInnerR!.value = Math.max(0, 1.0 - (baseWidth + t * 0.06));
       mat.uniforms.uOuterR!.value = 1.0;
-      const baseOpacity = 0.85 - w * 0.2;
-      mat.uniforms.uOpacity!.value = baseOpacity * (1 - t * t);
+      mat.uniforms.uOpacity!.value = (0.85 - w * 0.2) * (1 - t * t);
     }
+  }
+
+  /**
+   * Tick one frame of a fast VHS-style rewind.
+   * @param dt Real frame delta (seconds).
+   * @param speed Playback multiplier (e.g. 4.5 = 4.5× faster than real-time).
+   * @param rewindProgress 0→1 progress of the full rewind duration (used to fade embers out).
+   */
+  rewindTick(dt: number, speed: number, rewindProgress: number) {
+    const rdt = dt * speed;
+
+    // Moon flies back toward its original starting position.
+    this.group.position.addScaledVector(MOON_APPROACH_DIR, POST_IMPACT_SPEED * rdt);
+    if (this.loaded) this.group.rotation.y -= MOON_ROTATION_SPEED * rdt;
+
+    // Shockwaves contract by walking impactTime backwards.
+    this.impactTime = Math.max(0, this.impactTime - rdt);
+    this.renderShockwaves();
+
+    // Debris flies back toward the impact point.
+    if (this.debrisMesh) {
+      const totalCount = Math.min(DEBRIS_COUNT + CAMERA_ROCK_COUNT, this.debrisVelocities.length);
+      const dummy = new Object3D();
+      for (let i = 0; i < totalCount; i++) {
+        this.debrisMesh.getMatrixAt(i, dummy.matrix);
+        dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+        const vel = this.debrisVelocities[i]!;
+        dummy.position.addScaledVector(vel, -rdt);
+        // Un-apply gravity so pieces don't sink into the globe.
+        vel.y += (i >= DEBRIS_COUNT ? 0.03 : 0.15) * rdt;
+        dummy.rotation.x -= rdt * (0.25 + (i % 3) * 0.15);
+        dummy.rotation.z -= rdt * (0.15 + (i % 4) * 0.08);
+        dummy.updateMatrix();
+        this.debrisMesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.debrisMesh.instanceMatrix.needsUpdate = true;
+      const mat = this.debrisMesh.material as MeshStandardMaterial;
+      mat.opacity = 1;
+      mat.transparent = false;
+    }
+
+    // Embers fade out as rewind progresses.
+    const molten = Math.max(0, 1 - rewindProgress * 1.5);
+    this.updateEmbers(dt, molten);
+  }
+
+  private updateImpactVFX(dt: number) {
+    this.impactTime += dt;
+    this.renderShockwaves();
 
     if (this.debrisMesh) {
       const totalCount = DEBRIS_COUNT + CAMERA_ROCK_COUNT;
