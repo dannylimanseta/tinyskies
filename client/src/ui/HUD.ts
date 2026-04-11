@@ -1,4 +1,5 @@
 import type { Vehicle } from "@globefly/shared";
+import { CAMPSITE_HOME_ENABLED } from "../config/features";
 
 export class HUD {
   private el: HTMLDivElement;
@@ -85,6 +86,10 @@ export class HUD {
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
     this.muteBtn = this.el.querySelector(".hud-mute-btn")!;
     this.campsiteBtn = this.el.querySelector(".hud-campsite-btn")!;
+
+    if (!CAMPSITE_HOME_ENABLED) {
+      this.campsiteBtn.style.display = "none";
+    }
 
     this.campsiteBtn.addEventListener("click", () => {
       this.onCampsiteClick?.();
@@ -193,6 +198,7 @@ export class HUD {
   }
 
   showCampsitePrompt(visible: boolean) {
+    if (!CAMPSITE_HOME_ENABLED) return;
     if (visible && !this.campsitePromptEl) {
       this.campsitePromptEl = document.createElement("div");
       Object.assign(this.campsitePromptEl.style, {
@@ -230,6 +236,7 @@ export class HUD {
   }
 
   setCampsiteButtonVisible(visible: boolean) {
+    if (!CAMPSITE_HOME_ENABLED) return;
     this.campsiteBtn.style.display = visible ? "" : "none";
   }
 

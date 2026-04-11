@@ -1,4 +1,5 @@
 import type { Vehicle } from "@globefly/shared";
+import { CAMPSITE_HOME_ENABLED } from "../config/features";
 
 /* ── Whimsical Name Generator ──────────────────────────────────────── */
 
@@ -83,10 +84,14 @@ export class Lobby {
                 <span class="lobby-vlabel">Carpet</span>
               </button>
             </div>
-            <button type="button" class="lobby-vbtn lobby-home" id="btn-camp" aria-label="Start at campsite">
+            ${
+              CAMPSITE_HOME_ENABLED
+                ? `<button type="button" class="lobby-vbtn lobby-home" id="btn-camp" aria-label="Start at campsite">
               <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 20h18Z"/><path d="M9 20v-6l3-2 3 2v6"/></svg></span>
               <span class="lobby-vlabel">Home</span>
-            </button>
+            </button>`
+                : ""
+            }
           </div>
           <button type="button" class="lobby-fly" id="btn-fly">GO</button>
         </div>
@@ -155,14 +160,14 @@ export class Lobby {
     }
 
     const flyBtn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
-    const campBtn = this.el.querySelector("#btn-camp") as HTMLButtonElement;
+    const campBtn = this.el.querySelector("#btn-camp") as HTMLButtonElement | null;
 
     const lockLobbyButtons = () => {
       flyBtn.disabled = true;
-      campBtn.disabled = true;
+      if (campBtn) campBtn.disabled = true;
     };
 
-    campBtn.addEventListener("click", () => {
+    campBtn?.addEventListener("click", () => {
       lockLobbyButtons();
       Lobby.requestFullscreen();
       this.options.onPlay(this.selectedVehicle, { startAtCampsite: true });
@@ -315,7 +320,7 @@ export class Lobby {
         transform: translateX(-50%) translateY(20px);
       }
 
-      /* ── Vehicle + Home: four equal columns, even gaps (rg uses display:contents) ─ */
+      /* ── Vehicle row (+ optional Home): equal columns, even gaps (rg uses display:contents) ─ */
       .lobby-vehicles {
         display: flex;
         gap: 4px;

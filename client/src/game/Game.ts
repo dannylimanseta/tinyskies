@@ -63,6 +63,7 @@ import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
+import { CAMPSITE_HOME_ENABLED } from "../config/features";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -298,7 +299,8 @@ export class Game {
       mobile: this.mobile,
       onNameChange: (name) => { this.playerName = name; },
       onPlay: (vehicle, options) => {
-        this.pendingCampsiteAfterIntro = options?.startAtCampsite ?? false;
+        this.pendingCampsiteAfterIntro =
+          CAMPSITE_HOME_ENABLED && (options?.startAtCampsite ?? false);
         this.playerVehicle = vehicle;
         this.audioManager.startMusic();
         void this.audioManager.loadSFX("crickets_loop", "/audio/sfx/crickets_loop.mp3").then(() => {
@@ -492,7 +494,9 @@ export class Game {
       this.volcanoes.push(new Volcano(this.scene, globeRadius, seed, terrainType, vi));
     }
 
-    this.campsiteMarker = new CampsiteMarker(this.scene, globeRadius, seed, terrainType);
+    if (CAMPSITE_HOME_ENABLED) {
+      this.campsiteMarker = new CampsiteMarker(this.scene, globeRadius, seed, terrainType);
+    }
 
     window.addEventListener("resize", this.onPreviewResize);
   }
@@ -556,7 +560,9 @@ export class Game {
 
     const w2 = this.container.clientWidth;
     const h2 = this.container.clientHeight;
-    this.campsiteScene = new CampsiteScene(w2 / h2, this.mobile, this.container);
+    this.campsiteScene = CAMPSITE_HOME_ENABLED
+      ? new CampsiteScene(w2 / h2, this.mobile, this.container)
+      : null;
     this.transitionOverlay = new TransitionOverlay(this.container);
 
     if (vehicle === "boat") {
@@ -1647,7 +1653,7 @@ export class Game {
 
     await this.transitionOverlay.fadeIn();
     this.gamePhase = "flying";
-    this.hud.setCampsiteButtonVisible(true);
+    if (CAMPSITE_HOME_ENABLED) this.hud.setCampsiteButtonVisible(true);
   }
 
   /* ── Resize ──────────────────────────────────────────────────────── */
