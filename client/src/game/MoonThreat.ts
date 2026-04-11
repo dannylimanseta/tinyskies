@@ -64,7 +64,7 @@ export class MoonThreat {
   private impacted = false;
 
   /* ── Molten effect shader refs ──────────────────────────── */
-  private moltenShaders: { uniforms: Record<string, { value: number }> }[] = [];
+  private moltenShaders: { uniforms: Record<string, { value: any }> }[] = [];
 
   /* ── Fire particles ─────────────────────────────────────── */
   private embers: Ember[] = [];
@@ -160,6 +160,8 @@ export class MoonThreat {
 uniform float rimIntensity;
 uniform float rimPower;
 uniform float uMolten;
+uniform vec3 uMoonCenter;
+uniform vec3 uApproachDir;
 `;
 
     const moltenFunctions = /* glsl */ `
@@ -191,13 +193,20 @@ float rimF = 1.0 - abs(dot(rimViewDir, rimN));
 
 vec3 rimCoolCol = vec3(0.7, 0.75, 0.9);
 vec3 rimHotCol  = vec3(1.0, 0.45, 0.05);
-vec3 rimCol = mix(rimCoolCol, rimHotCol, uMolten);
-float rimP = mix(rimPower, 1.5, uMolten);
-float rimI = mix(rimIntensity, 1.8, uMolten);
+vec3 toFragRim = normalize(vWorldPos - uMoonCenter);
+float hemiRim = smoothstep(-0.15, 0.45, -dot(toFragRim, uApproachDir));
+float hotBlend = uMolten * hemiRim;
+vec3 rimCol = mix(rimCoolCol, rimHotCol, hotBlend);
+float rimP = mix(rimPower, 1.5, hotBlend);
+float rimI = mix(rimIntensity, 1.8, hotBlend);
 gl_FragColor.rgb += rimCol * rimI * pow(rimF, rimP);
 
 if (uMolten > 0.01) {
   vec3 wp = vWorldPos;
+  vec3 toFrag = normalize(wp - uMoonCenter);
+  float hemi = -dot(toFrag, uApproachDir);
+  float hemiFade = smoothstep(-0.15, 0.45, hemi);
+
   float n1 = fbm3(wp * 3.0);
   float n2 = fbm3(wp * 6.0 + 5.0);
   float crack = smoothstep(0.42, 0.48, n1) * smoothstep(0.52, 0.48, n1);
@@ -206,7 +215,7 @@ if (uMolten > 0.01) {
   vec3 lavaCore = vec3(1.0, 0.85, 0.2);
   vec3 lavaEdge = vec3(1.0, 0.25, 0.0);
   vec3 lavaCol = mix(lavaEdge, lavaCore, crack);
-  float glow = crack * uMolten;
+  float glow = crack * uMolten * hemiFade;
   gl_FragColor.rgb = mix(gl_FragColor.rgb, lavaCol, glow * 0.9);
   gl_FragColor.rgb += lavaEdge * glow * 0.4;
 }
@@ -217,13 +226,15 @@ if (uMolten > 0.01) {
       const mat = child.material;
 
       const patchShader = (shader: {
-        uniforms: Record<string, { value: number }>;
+        uniforms: Record<string, { value: any }>;
         fragmentShader: string;
         vertexShader: string;
       }, uniformAnchor: string) => {
         shader.uniforms.rimIntensity = { value: 0.55 };
         shader.uniforms.rimPower = { value: 2.5 };
         shader.uniforms.uMolten = { value: 0 };
+        shader.uniforms.uMoonCenter = { value: this.group.position };
+        shader.uniforms.uApproachDir = { value: MOON_APPROACH_DIR };
         this.moltenShaders.push(shader);
 
         shader.fragmentShader = shader.fragmentShader.replace(
