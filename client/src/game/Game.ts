@@ -803,7 +803,9 @@ export class Game {
         this.packageQuestHUD.showBubble(npcName, dialogue);
         this.packageQuestHUD.hideDeliveryTarget();
 
-        const scaledXp = Math.round(xp * this.ringManager.upgrades.deliveryXpMult);
+        const scaledXp = Math.round(
+          xp * this.ringManager.upgrades.deliveryXpMult * this.ringManager.upgrades.nightXpMult,
+        );
         this.hud.showXPGain(scaledXp);
         // applyBonusXP updates level and fires onLevelUp → handleLevelUp if threshold crossed.
         this.ringManager.applyBonusXP(scaledXp);
@@ -1152,6 +1154,11 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
+
+    // Night Owl: keep ringManager's nightXpMult in sync with the current night weight.
+    if (this.upgradeManager?.state.nightOwlEnabled) {
+      this.ringManager.upgrades.nightXpMult = 1 + 0.2 * this.dayNightCycle.getNightWeight();
+    }
 
     if (this.introActive) {
       this.localPlayer.visibility = 1;
@@ -1979,6 +1986,9 @@ export class Game {
 
     this.ringManager.upgrades.diamondXpMult = s.diamondXpMult;
     this.ringManager.upgrades.deliveryXpMult = s.deliveryXpMult;
+    this.ringManager.upgrades.frequentFlyerEnabled = s.frequentFlyerEnabled;
+    // nightXpMult is updated live in tick(); just reset it to 1 if night owl is off.
+    if (!s.nightOwlEnabled) this.ringManager.upgrades.nightXpMult = 1;
 
     this.spawnExtraCollectibles(s);
   }

@@ -116,6 +116,8 @@ const UPGRADE_ICONS: Record<string, string> = {
   firefly_season: "🪲",
   lantern_festival: "🏮",
   roll_boost: "🚀",
+  frequent_flyer: "✈️",
+  night_owl: "🦉",
 };
 
 let styleInjected = false;

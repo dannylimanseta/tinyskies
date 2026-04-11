@@ -16,6 +16,9 @@ export interface UpgradeState {
   extraRainbows: number;
   extraFireflies: number;
   extraLanterns: number;
+  // Special mechanics
+  frequentFlyerEnabled: boolean;
+  nightOwlEnabled: boolean;
 }
 
 export interface UpgradeDefinition {
@@ -42,6 +45,8 @@ function defaultState(): UpgradeState {
     extraRainbows: 0,
     extraFireflies: 0,
     extraLanterns: 0,
+    frequentFlyerEnabled: false,
+    nightOwlEnabled: false,
   };
 }
 
@@ -143,6 +148,20 @@ const UPGRADES: UpgradeDefinition[] = [
     description: "Barrel rolls give a brief 10% speed kick",
     category: "performance",
     apply: (s) => { s.rollBoostEnabled = true; },
+  },
+  {
+    id: "frequent_flyer",
+    name: "Frequent Flyer",
+    description: "Every 5th diamond collected gives double XP",
+    category: "economy",
+    apply: (s) => { s.frequentFlyerEnabled = true; },
+  },
+  {
+    id: "night_owl",
+    name: "Night Owl",
+    description: "+20% XP from all sources during night-time",
+    category: "economy",
+    apply: (s) => { s.nightOwlEnabled = true; },
   },
 ];
 

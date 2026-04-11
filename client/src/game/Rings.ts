@@ -150,7 +150,13 @@ export class RingManager {
   upgrades = {
     diamondXpMult: 1,
     deliveryXpMult: 1,
+    frequentFlyerEnabled: false,
+    /** Set by Game.ts each tick when Night Owl is active (1.0 = no bonus). */
+    nightXpMult: 1,
   };
+
+  /** Running count of diamonds collected this session (used for Frequent Flyer). */
+  private diamondStreakCount = 0;
 
   setConsumerActive(active: boolean) {
     this.consumerActive = active;
@@ -407,13 +413,18 @@ export class RingManager {
     d.active = false;
     d.mesh.visible = false;
 
+    this.diamondStreakCount++;
+    const isFrequentFlyerBonus =
+      this.upgrades.frequentFlyerEnabled && this.diamondStreakCount % 5 === 0;
+    const freqMult = isFrequentFlyerBonus ? 2 : 1;
+
     const prevLevel = this.level;
-    const xp = Math.round(DIAMOND_XP * this.upgrades.diamondXpMult);
+    const xp = Math.round(DIAMOND_XP * this.upgrades.diamondXpMult * freqMult * this.upgrades.nightXpMult);
     this.sessionXP += xp;
     this.level = this.computeLevel();
 
     if (this.onCollect) {
-      this.onCollect(xp, worldPos, 0);
+      this.onCollect(xp, worldPos, isFrequentFlyerBonus ? 1 : 0);
     }
 
     if (this.level > prevLevel && this.onLevelUp) {
@@ -495,6 +506,7 @@ export class RingManager {
   }
 
   dispose() {
+    this.diamondStreakCount = 0;
     for (const d of this.diamonds) {
       (d.mesh.material as ShaderMaterial).dispose();
       this.group.remove(d.mesh);
