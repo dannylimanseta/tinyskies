@@ -112,6 +112,19 @@ export class MoonThreat {
     this.elapsed = MOON_CYCLE_DURATION * Math.min(pct, 0.999);
   }
 
+  /** World-space position of the moon centre. */
+  get worldPosition(): Vector3 {
+    return this.group.position;
+  }
+
+  /** Current world-space radius of the moon. */
+  get worldRadius(): number {
+    if (!this.loaded || !this.group.children[0]) return 0;
+    const currentScale = this.group.children[0].scale.x;
+    const scaleFactor = this.baseScale > 0 ? currentScale / this.baseScale : 1;
+    return this.globeRadius * scaleFactor * 0.5;
+  }
+
   constructor(private globeRadius: number) {
     const loader = new GLTFLoader();
     loader.load("/3D/moon.glb", (gltf) => {

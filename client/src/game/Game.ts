@@ -70,6 +70,7 @@ import { TransitionOverlay } from "../ui/TransitionOverlay";
  * never enter the sphere in one frame. ~1.2 matches a comfortable fly-by.
  */
 const _farQ = new Quaternion();
+const _moonCollisionScratch = new Vector3();
 const BALLOON_GREET_DIST = 1.2;
 const BALLOON_GREET_EXIT_DIST = 1.75;
 /** Seconds before the same balloon can greet again after you leave. */
@@ -497,7 +498,6 @@ export class Game {
     this.previewCamera.lookAt(0, 0, 0);
 
     this.globe.update(dt);
-    this.moonThreat?.update(dt);
     for (const v of this.volcanoes) v.update(dt, _farQ, 999);
     this.campsiteMarker?.update(dt);
     this.applyDayNightPreset();
@@ -1022,6 +1022,24 @@ export class Game {
     const { turnRate, forward, brake, elevate, descend, barrelRoll, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll, descend);
+
+    if (this.moonThreat && !this.moonThreat.hasImpacted) {
+      this.localPlayer.group.updateMatrixWorld(true);
+      const playerPos = _moonCollisionScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      const moonPos = this.moonThreat.worldPosition;
+      const moonR = this.moonThreat.worldRadius;
+      const buffer = moonR + 0.3;
+      const toPlayer = playerPos.clone().sub(moonPos);
+      const dist = toPlayer.length();
+      if (dist < buffer && dist > 0.001) {
+        const push = buffer - dist;
+        const pushDir = toPlayer.divideScalar(dist);
+        const up = playerPos.clone().normalize();
+        const altPush = pushDir.dot(up) * push;
+        this.localPlayer.altitude += Math.max(altPush, push * 0.5);
+        this.localPlayer.applyMatrix();
+      }
+    }
 
     this.cameraRig.update(
       dt,
