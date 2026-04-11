@@ -62,32 +62,14 @@ export function getNpcPortraitUrl(npcName: string): string {
   return file ? `/npc/${file}` : "";
 }
 
-const PICKUP_TEMPLATES_URGENT = [
-  "Please, get this to {dest} quickly. Something terrible is coming.",
-  "{receiver} in {dest} needs this. I have a bad feeling about tonight.",
-  "Hurry — take this to {dest} before the sky gets any stranger.",
-  "This package must reach {dest}. {receiver} is preparing for the worst.",
-  "I packed emergency supplies for {dest}. Please don't delay.",
-  "The moon is too close. {receiver} needs this — it might be our last chance.",
-  "Get this to {dest}, pilot. And if I were you, I wouldn't linger.",
-  "Something is very wrong. Take this to {receiver} in {dest}, quickly.",
-  "Don't ask what's inside. Just get it to {dest}. Time is running out.",
-  "I promised {receiver} I'd send help. You're all I've got, pilot.",
-];
+/**
+ * Pickup lines by moon phase — each pool uses **items that fit the tone**:
+ * - Calm: everyday cosy parcels (jam, gifts, hobbies).
+ * - Urgent: deadlines, warnings, important documents (handwritten letter, medicine, sealed orders).
+ * - Frantic: survival / last deliveries (emergency supplies, rations, don't ask).
+ */
 
-const PICKUP_TEMPLATES_FRANTIC = [
-  "PLEASE! Take this to {dest} before it's too late!",
-  "No time to explain — fly this to {dest} NOW!",
-  "Forget the small talk — {receiver} needs this or we're all done for!",
-  "{dest}! Go! GO! {receiver} is counting on you!",
-  "I can see it coming. Just take this and fly to {dest} — FAST!",
-  "This might be the last delivery anyone ever makes. Get it to {dest}!",
-  "My hands are shaking. Please — {receiver} in {dest} — hurry!",
-  "If {dest} doesn't get this, nothing else matters anyway.",
-  "Take it! Take it and fly! Don't look up, just fly to {dest}!",
-  "There's no time! {receiver} needs this NOW — the sky is falling!",
-];
-
+// Moon < 0.5 — mundane, cosy parcels.
 const PICKUP_TEMPLATES = [
   "Could you take this to {dest}? {receiver} has been waiting for days!",
   "A parcel for {dest}! Handle with care, it's full of jam.",
@@ -96,7 +78,7 @@ const PICKUP_TEMPLATES = [
   "Help! My pen pal in {dest} needs this letter. And the cookies I baked.",
   "Oh, a pilot! Could you fly this to {dest}? The roads are far too winding.",
   "Special order for {dest}. {receiver} will know what it is. Very hush-hush.",
-  "Urgent: one jar of pickles to {dest}. Don't ask. Just deliver.",
+  "One jar of pickles to {dest} — the village fair judges are waiting.",
   "This telescope belongs to {receiver} in {dest}. They lent it ages ago!",
   "A care package for {dest}. Mostly socks. Everyone needs socks.",
   "Please bring this to {dest}! It's a music box — fragile!",
@@ -104,10 +86,8 @@ const PICKUP_TEMPLATES = [
   "Would you mind? {receiver} in {dest} ordered a book. Three months ago.",
   "This pie needs to get to {dest} while it's still warm. Fly fast!",
   "A package of seeds for the garden in {dest}. Spring waits for no one!",
-  "Oh thank goodness, a pilot! {receiver} in {dest} is expecting medicine.",
   "It's just a little box of chocolates for {receiver}. Don't eat any!",
   "Take this map to {dest}. {receiver} drew the first half, I drew the rest.",
-  "Emergency! The choir in {dest} needs new sheet music by tonight!",
   "This crate of honey goes to {dest}. The bees worked very hard.",
   "Could you bring this compass to {receiver}? They keep getting lost.",
   "A jar of fireflies for {dest}. They light up the whole square!",
@@ -119,34 +99,101 @@ const PICKUP_TEMPLATES = [
   "This lantern was crafted for {receiver}. It glows in seven colors!",
   "Fly this kite to {dest} — it's for the children's festival.",
   "One barrel of apple cider for {dest}. Don't let it slosh!",
+  "Sheet music for the choir in {dest} — rehearsal is tomorrow, no rush.",
 ];
 
+/** Moon 0.5–0.75 — serious deadlines, warnings, critical goods (not yet last-second panic). */
+const PICKUP_TEMPLATES_URGENT = [
+  "This handwritten letter must reach {receiver} in {dest} — it explains the evacuation plan.",
+  "Sealed medical supplies for the clinic in {dest}. {receiver} is running out by the hour.",
+  "Hurry — take this dossier to {dest} before the council meets. {receiver} needs to read it in person.",
+  "The moon looks wrong. Get this telescope to {receiver} in {dest} — they need to confirm the readings.",
+  "A handwritten will for {receiver} in {dest}. They asked for it before dark.",
+  "These are signed shelter blueprints — {dest} must receive them before ground breaks.",
+  "Take this satchel of medicine to {dest}. Half the village is counting on {receiver}.",
+  "A courier's satchel of witness statements — {dest} needs them before the hearing tonight.",
+  "This pie needs to reach {dest} before the storm front — {receiver} won't eat once they're on watch.",
+  "Battery packs and spare valves for the signal station in {dest}. {receiver} is holding the line.",
+  "A sealed envelope from the mayor — only {receiver} in {dest} may open it.",
+  "This radio kit goes to {dest}. {receiver} needs to assemble it before nightfall.",
+  "Last crate of preserved food for the cellars in {dest}. Don't let it sit out.",
+  "A handwritten prayer list for {receiver} — families in {dest} need to know who's accounted for.",
+  "Take these keys to {dest}. {receiver} must lock the vault before curfew.",
+  "The choir's sheet music for tonight's vigil in {dest} — late is not an option.",
+  "A wax-sealed letter from the lighthouse — {receiver} in {dest} knows what it means.",
+  "This crate of bandages and splints for {dest}. {receiver} is expecting a busy night.",
+];
+
+/** Moon ≥ 0.75 — survival, emergency supplies, last possible deliveries. */
+const PICKUP_TEMPLATES_FRANTIC = [
+  "EMERGENCY SUPPLIES for {dest}! Water, rations, blankets — move!",
+  "This crate is marked EMERGENCY — get it to {receiver} in {dest} — NOW!",
+  "Don't ask what's inside — just fly it to {dest}. {receiver} will know what to do!",
+  "Last satchel of medical kits and burn dressings for {dest}! GO!",
+  "Evacuation tags for the children — {dest} must receive them before the shelters seal!",
+  "Distress flares and signal powder — {receiver} in {dest} needs this to guide people!",
+  "Emergency rations and purification tablets — {dest} runs out in minutes!",
+  "This might be the last delivery anyone ever makes. Emergency supplies to {dest}!",
+  "TAKE IT! Emergency blankets and rope for {dest} — the ground is splitting!",
+  "The final coded message — only {receiver} in {dest} can broadcast it!",
+  "If {dest} doesn't get this emergency crate, nothing else matters anyway!",
+  "First-aid, tourniquets, and plasma — {receiver} said they have seconds left!",
+  "No time to explain — emergency supplies for {dest}! Fly!",
+  "Last oxygen canisters for the infirmary in {dest}! Please — RUN!",
+  "Signal lanterns and fuel — {receiver} needs to light the way out!",
+  "Emergency rations and baby formula — {dest} is out of everything!",
+  "Take it! Take it and fly! Don't look up — emergency supplies for {dest}!",
+  "The sky is falling — get this trauma kit to {receiver} in {dest}!",
+];
+
+/** Moon 0.5–0.75 — relief mixed with dread; may reference letters, medicine, sealed orders. */
 const DELIVERY_TEMPLATES_URGENT = [
-  "Thank goodness. Have you seen the moon? I'm scared, pilot.",
+  "The letter — thank the skies. I'll read every word before we lock down.",
+  "Medical supplies in one piece. You may have saved more than you know.",
+  "Have you seen the moon? I'm scared — but this helps us prepare.",
+  "The sealed envelope... good. Tell {sender} we're following the plan.",
   "You made it. I wasn't sure anyone would, with the sky like that.",
-  "This might help us prepare. Thank you — and be careful out there.",
-  "I owe you. Now get somewhere safe. I don't trust that moon.",
-  "Finally! Tell {sender} to get underground. Something is coming.",
+  "The telescope — {sender} was right to rush this. We see it now.",
+  "Shelter blueprints received. Tell {sender} we start tonight.",
+  "Finally! Tell {sender} to get underground if they still can.",
   "Thank you. I hope this isn't the last delivery I ever receive.",
   "You're braver than most. The others have stopped flying entirely.",
   "{sender} always keeps their promises. Even now. Bless them.",
   "We needed this. The village is frightened. Stay safe, pilot.",
-  "I almost didn't expect you'd come. The world feels like it's ending.",
+  "The keys — the vault's secure. Thank you, pilot.",
+  "Radio kit's here. We might still reach someone before dark.",
+  "Bandages accounted for. {sender} didn't exaggerate the hurry.",
+  "The wax-sealed letter... I'll do what it says. Go. Fly safe.",
+  "Witness statements delivered. At least the record will be straight.",
+  "Preserved food for the cellars — we'll stretch it as long as we can.",
+  "Prayer list in hand. I'll read every name aloud tonight.",
+  "Sheet music for the vigil — the choir can sing one more time.",
 ];
 
+/** Moon ≥ 0.75 — panic; emergency supplies received or too late. */
 const DELIVERY_TEMPLATES_FRANTIC = [
-  "FINALLY! Now get out of here — there's no time!",
+  "THE CRATE! Put it down — we'll unload! NOW GET OUT OF HERE!",
+  "Emergency supplies — you actually made it?! GO! Don't look back!",
+  "Don't ask what's inside — we're using it all. Thank you — RUN!",
+  "Evacuation tags — the children — thank you — the shelters are sealing!",
+  "Flares! We can still signal — pilot, FLY!",
+  "Rations — water — it's here — now save yourself!",
+  "The coded message — I'll broadcast — GO! THE SKY IS COMING DOWN!",
+  "Trauma kits — stack them THERE! Pilot, I love you — LEAVE!",
+  "Last oxygen — unload! There's no time for goodbyes!",
+  "Lanterns — fuel — if anyone survives they'll see the light — thank you!",
+  "Baby formula — you beautiful fool — RUN!",
+  "Emergency blankets — pile them on — thank you — I think we're done for!",
+  "Plasma and tourniquets — {sender} sent a saint — NOW RUN!",
+  "Nothing matters anymore — but you brought hope for five more minutes — GO!",
+  "I can't believe you made it. The ground won't stop shaking — RUN!",
+  "Tell {sender} I said goodbye if you see them — and thank you — GO!",
   "You're insane for still flying! Thank you — now LEAVE!",
-  "It doesn't matter anymore. Nothing matters. But... thank you.",
-  "I can't believe you made it. The sky is falling apart!",
-  "Take shelter! Forget more deliveries — save yourself!",
-  "Tell {sender} I said goodbye. And thank you. Now GO!",
-  "You beautiful, crazy pilot. Now run. RUN!",
-  "The ground is shaking. Thank you — now please, get somewhere safe!",
-  "I thought I'd die waiting. Thank you. I think we're all going to die anyway.",
   "Bless you, pilot. If we survive this, I owe you everything.",
+  "The sky is tearing open — supplies are here — SAVE YOURSELF!",
 ];
 
+// Moon < 0.5 — warm, everyday thanks (jam, cake, gifts).
 const DELIVERY_TEMPLATES = [
   "Finally! I was about to send a carrier pigeon instead.",
   "You made it! The whole village was starting to worry.",
