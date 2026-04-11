@@ -211,6 +211,11 @@ export class AudioManager {
 
   /* ── SFX ───────────────────────────────────────────────── */
 
+  /** True if this one-shot SFX was loaded successfully (buffer present). */
+  hasSFX(name: string): boolean {
+    return this.sfxBuffers.has(name);
+  }
+
   async loadSFX(name: string, url: string) {
     if (!this.ctx || this.sfxBuffers.has(name)) return;
     try {

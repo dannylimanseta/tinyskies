@@ -1277,9 +1277,14 @@ export class Game {
         );
         if (justCollected) {
           const litCount = cluster.lanternCount;
-          const lanternSfx =
-            LANTERN_COLLECT_SFX_IDS[Math.floor(Math.random() * LANTERN_COLLECT_SFX_IDS.length)]!;
-          this.audioManager.playSFX(lanternSfx, LANTERN_COLLECT_SFX_VOLUME);
+          const loadedLanternSfx = LANTERN_COLLECT_SFX_IDS.filter((id) =>
+            this.audioManager.hasSFX(id),
+          );
+          if (loadedLanternSfx.length > 0) {
+            const lanternSfx =
+              loadedLanternSfx[Math.floor(Math.random() * loadedLanternSfx.length)]!;
+            this.audioManager.playSFX(lanternSfx, LANTERN_COLLECT_SFX_VOLUME);
+          }
           this.hud.showLanternCelebrate(litCount);
           this.globalLanternsLit += litCount;
           this.hud.showGlobalLanternCounter(this.globalLanternsLit, GLOBAL_LANTERN_GOAL);
