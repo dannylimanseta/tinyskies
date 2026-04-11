@@ -1056,10 +1056,10 @@ export class Game {
   private async showMoonRewindSequence(): Promise<void> {
     if (!this.transitionOverlay) return;
 
-    const REWIND_SPEED = 4.5;
-    const FADE_IN = 1.2;   // seconds to reveal scene
-    const HOLD = 3.5;      // seconds of full-visibility rewind
-    const FADE_OUT = 1.2;  // seconds to go back to black
+    const REWIND_SPEED = 9.0;
+    const FADE_IN = 1.0;   // seconds to reveal scene
+    const HOLD = 1.8;      // seconds of full-visibility rewind
+    const FADE_OUT = 1.0;  // seconds to go back to black
     const TOTAL = FADE_IN + HOLD + FADE_OUT;
     const cam = this.moonCinematicCamera ?? this.cameraRig.camera;
 
