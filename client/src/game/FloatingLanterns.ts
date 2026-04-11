@@ -18,7 +18,6 @@ import {
 export const LANTERN_CLUSTER_COUNT = 5;
 export const LANTERN_XP = 30;
 
-const LANTERNS_PER_CLUSTER = 14;
 const CLUSTER_ALTITUDE = 0.55;
 const CLUSTER_SPREAD = 0.4;
 const SWAY_SPEED = 0.35;
@@ -27,6 +26,8 @@ const BOB_SPEED = 0.6;
 const BOB_AMP = 0.012;
 const FLY_THROUGH_DIST = 0.32;
 const REWARD_COOLDOWN_SEC = 80;
+const MIN_LANTERNS = 12;
+const MAX_LANTERNS = 16;
 
 /* ── Shader ─────────────────────────────────────────────────────── */
 
@@ -71,6 +72,8 @@ interface LanternData {
   localOffset: Vector3;
   phase: number;
   bobPhase: number;
+  driftSpeed: number;
+  driftOffset: number;
   pos: Vector3;
 }
 
@@ -78,6 +81,7 @@ interface LanternData {
 
 export class FloatingLanterns {
   readonly group = new Group();
+  readonly lanternCount: number;
 
   private globeRadius: number;
   private material: ShaderMaterial;
@@ -93,12 +97,10 @@ export class FloatingLanterns {
 
   private rewarded = false;
   private cooldown = 0;
-  private fadeDelay = 0;
   private fadeOut = 0;
   private fadeIn = 0;
   private time = 0;
-  private static readonly FADE_DELAY_SEC = 3;
-  private static readonly FADE_OUT_SEC = 1.5;
+  private static readonly FADE_OUT_SEC = 2.0;
   private static readonly FADE_IN_SEC = 1.5;
 
   private tmpMat = new Matrix4();
@@ -109,6 +111,10 @@ export class FloatingLanterns {
 
   constructor(scene: Scene, globeRadius: number, worldSeed: number, clusterIndex: number) {
     this.globeRadius = globeRadius;
+
+    const seedVal = worldSeed + clusterIndex * 834712963;
+    const countHash = this.hashInt(seedVal ^ 0x1a2b3c4d);
+    this.lanternCount = MIN_LANTERNS + (((countHash & 0xff) >>> 0) % (MAX_LANTERNS - MIN_LANTERNS + 1));
 
     this.geometry = new BoxGeometry(0.022, 0.055, 0.022);
     this.material = new ShaderMaterial({
@@ -123,14 +129,13 @@ export class FloatingLanterns {
       blending: AdditiveBlending,
     });
 
-    this.instancedMesh = new InstancedMesh(this.geometry, this.material, LANTERNS_PER_CLUSTER);
+    this.instancedMesh = new InstancedMesh(this.geometry, this.material, this.lanternCount);
     this.instancedMesh.frustumCulled = false;
     this.group.add(this.instancedMesh);
 
-    const seedVal = worldSeed + clusterIndex * 834712963;
     this.placeOnGlobe(seedVal, clusterIndex);
 
-    for (let i = 0; i < LANTERNS_PER_CLUSTER; i++) {
+    for (let i = 0; i < this.lanternCount; i++) {
       const hash = this.hashInt(seedVal + i * 7919);
       const localOffset = new Vector3(
         ((hash & 0xff) / 255 - 0.5) * CLUSTER_SPREAD,
@@ -139,8 +144,10 @@ export class FloatingLanterns {
       );
       const phase = ((hash >> 4 & 0xff) / 255) * Math.PI * 2;
       const bobPhase = ((hash >> 12 & 0xff) / 255) * Math.PI * 2;
+      const driftHash = this.hashInt(seedVal + i * 3571);
+      const driftSpeed = (0.06 + ((driftHash & 0xff) / 255) * 0.12) * this.globeRadius;
 
-      this.lanterns.push({ localOffset, phase, bobPhase, pos: new Vector3() });
+      this.lanterns.push({ localOffset, phase, bobPhase, driftSpeed, driftOffset: 0, pos: new Vector3() });
     }
 
     scene.add(this.group);
@@ -171,9 +178,9 @@ export class FloatingLanterns {
     this.placeOnGlobe(seed, index);
     this.rewarded = false;
     this.cooldown = 0;
-    this.fadeDelay = 0;
     this.fadeOut = 0;
     this.fadeIn = FloatingLanterns.FADE_IN_SEC;
+    for (const l of this.lanterns) l.driftOffset = 0;
     this.group.visible = true;
   }
 
@@ -191,17 +198,10 @@ export class FloatingLanterns {
     const sharpNight = nightWeight * nightWeight * (3 - 2 * nightWeight);
     let opacity = sharpNight;
 
-    if (this.fadeDelay > 0) {
-      this.fadeDelay = Math.max(0, this.fadeDelay - dt);
-      if (this.fadeDelay <= 0) {
-        this.fadeOut = FloatingLanterns.FADE_OUT_SEC;
-      }
-    }
-
     if (this.fadeOut > 0) {
       this.fadeOut = Math.max(0, this.fadeOut - dt);
       opacity *= this.fadeOut / FloatingLanterns.FADE_OUT_SEC;
-    } else if (this.rewarded && this.fadeDelay <= 0) {
+    } else if (this.rewarded) {
       opacity = 0;
     }
 
@@ -219,6 +219,10 @@ export class FloatingLanterns {
     for (let i = 0; i < this.lanterns.length; i++) {
       const l = this.lanterns[i]!;
 
+      if (this.rewarded) {
+        l.driftOffset += l.driftSpeed * dt;
+      }
+
       const bob = Math.sin(this.time * BOB_SPEED + l.bobPhase) * BOB_AMP;
       const swayX = Math.sin(this.time * SWAY_SPEED + l.phase) * SWAY_AMP;
       const swayZ = Math.cos(this.time * SWAY_SPEED * 0.7 + l.phase * 1.3) * SWAY_AMP;
@@ -226,7 +230,7 @@ export class FloatingLanterns {
       l.pos
         .copy(this.clusterCenter)
         .addScaledVector(this.north, l.localOffset.x + swayX)
-        .addScaledVector(this.up, l.localOffset.y + bob)
+        .addScaledVector(this.up, l.localOffset.y + bob + l.driftOffset)
         .addScaledVector(this.east, l.localOffset.z + swayZ);
 
       this.lookTarget.copy(l.pos).add(this.north);
@@ -267,7 +271,7 @@ export class FloatingLanterns {
       this.rewarded = true;
       justCollected = true;
       this.cooldown = REWARD_COOLDOWN_SEC;
-      this.fadeDelay = FloatingLanterns.FADE_DELAY_SEC;
+      this.fadeOut = FloatingLanterns.FADE_OUT_SEC;
     }
 
     return { justCollected };

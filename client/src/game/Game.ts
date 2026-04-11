@@ -108,6 +108,14 @@ const DIAMOND_SFX_IDS = [
   "diamond_collect_3",
 ] as const;
 
+const LANTERN_COLLECT_SFX_IDS = [
+  "lantern_collect_1",
+  "lantern_collect_2",
+  "lantern_collect_3",
+  "lantern_collect_4",
+] as const;
+const LANTERN_COLLECT_SFX_VOLUME = 0.38;
+
 const SPEED_BOOST_SFX_IDS = [
   "speed_boost_1",
   "speed_boost_2",
@@ -132,6 +140,8 @@ const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
 
 const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
 const LEVELUP_SFX_VOLUME = 0.42;
+
+const GLOBAL_LANTERN_GOAL = 1_000_000;
 
 export class Game {
   private container: HTMLElement;
@@ -211,6 +221,7 @@ export class Game {
   private vehicleFlashTimer = 0;
   private lastDiamondCollectAt = 0;
   private diamondComboStep = 0;
+  private globalLanternsLit = 0;
   private introStartPos = new Vector3();
   private introEndPos = new Vector3();
   private introEndLookAt = new Vector3();
@@ -266,6 +277,9 @@ export class Game {
       for (const id of DIAMOND_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      for (const id of LANTERN_COLLECT_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
       for (const id of SPEED_BOOST_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
@@ -316,6 +330,9 @@ export class Game {
           this.audioManager.startLoop(RUMBLE_LOOP_NAME, 0);
         });
         void this.audioManager.loadSFX(EXPLOSION_SFX_NAME, "/audio/sfx/explosion_1.mp3");
+        for (const id of LANTERN_COLLECT_SFX_IDS) {
+          void this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+        }
         this.lobby.fadeOut(() => {
           this.lobby.dispose();
           this.startGame(vehicle);
@@ -796,6 +813,12 @@ export class Game {
 
     this.initNetworking(this.worldSlug);
 
+    const serverUrl = this.getServerUrl();
+    fetch(`${serverUrl}/api/lanterns/total`)
+      .then((r) => r.json())
+      .then((d) => { this.globalLanternsLit = d.total ?? 0; })
+      .catch(() => {});
+
     this.clock.getDelta();
     this.running = true;
     window.addEventListener("keydown", this.onDebugKey);
@@ -1253,7 +1276,24 @@ export class Game {
           this.worldConfig?.seed ?? 42,
         );
         if (justCollected) {
-          this.hud.showLanternCelebrate();
+          const litCount = cluster.lanternCount;
+          const lanternSfx =
+            LANTERN_COLLECT_SFX_IDS[Math.floor(Math.random() * LANTERN_COLLECT_SFX_IDS.length)]!;
+          this.audioManager.playSFX(lanternSfx, LANTERN_COLLECT_SFX_VOLUME);
+          this.hud.showLanternCelebrate(litCount);
+          this.globalLanternsLit += litCount;
+          this.hud.showGlobalLanternCounter(this.globalLanternsLit, GLOBAL_LANTERN_GOAL);
+
+          const srvUrl = this.getServerUrl();
+          fetch(`${srvUrl}/api/lanterns/add`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count: litCount, worldSlug: this.worldSlug }),
+          })
+            .then((r) => r.json())
+            .then((d) => { if (d.total) this.globalLanternsLit = d.total; })
+            .catch(() => {});
+
           this.ringManager.applyBonusXP(LANTERN_XP);
           this.hud.showXPGain(LANTERN_XP);
           this.hud.setXP(

@@ -167,14 +167,40 @@ export class HUD {
     setTimeout(() => el.remove(), 1600);
   }
 
-  showLanternCelebrate() {
+  showLanternCelebrate(count: number) {
     const el = document.createElement("div");
     el.className = "hud-lantern-celebration";
-    el.textContent = "You drifted through the lanterns";
+    el.textContent = `You have lighted ${count} lanterns`;
     this.el.appendChild(el);
 
     requestAnimationFrame(() => el.classList.add("hud-lantern-celebration-animate"));
     setTimeout(() => el.remove(), 1600);
+  }
+
+  private globalLanternEl: HTMLDivElement | null = null;
+  private globalLanternTimer: ReturnType<typeof setTimeout> | null = null;
+
+  showGlobalLanternCounter(current: number, goal: number) {
+    if (this.globalLanternEl) {
+      this.globalLanternEl.remove();
+      if (this.globalLanternTimer) clearTimeout(this.globalLanternTimer);
+    }
+
+    const el = document.createElement("div");
+    el.className = "hud-global-lantern-counter";
+    el.textContent = `${current.toLocaleString()} / ${goal.toLocaleString()} lanterns lit`;
+    this.el.appendChild(el);
+    this.globalLanternEl = el;
+
+    requestAnimationFrame(() => el.classList.add("hud-global-lantern-counter-animate"));
+
+    this.globalLanternTimer = setTimeout(() => {
+      el.classList.add("hud-global-lantern-counter-fadeout");
+      this.globalLanternTimer = setTimeout(() => {
+        el.remove();
+        if (this.globalLanternEl === el) this.globalLanternEl = null;
+      }, 600);
+    }, 2500);
   }
 
   showFireflyCelebrate() {
@@ -568,6 +594,25 @@ export class HUD {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }
+
+      .hud-global-lantern-counter {
+        position: absolute;
+        bottom: 18%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(255, 170, 50, 0.5), 0 2px 8px rgba(0,0,0,0.6);
+        opacity: 0;
+        transition: opacity 0.5s ease-out;
+        pointer-events: none;
+        white-space: nowrap;
+        z-index: 14;
+      }
+      .hud-global-lantern-counter-animate { opacity: 1; }
+      .hud-global-lantern-counter-fadeout { opacity: 0; }
 
       .hud-firefly-celebration {
         position: absolute;

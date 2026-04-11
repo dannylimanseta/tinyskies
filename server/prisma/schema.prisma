@@ -19,3 +19,10 @@ model World {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model LanternLedger {
+  id        String   @id @default(cuid())
+  count     Int
+  worldSlug String
+  createdAt DateTime @default(now())
+}
