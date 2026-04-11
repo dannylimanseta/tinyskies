@@ -151,7 +151,7 @@ export class Carpet {
     this.applyMatrix();
   }
 
-  private applyMatrix() {
+  applyMatrix() {
     const m = buildPlaneMatrix(
       this.qPosition,
       this.heading,

@@ -186,6 +186,7 @@ export class Game {
   private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" = "flying";
   private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
   private moonCinematicTimer = 0;
+  private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
   private vehicleHintsEl: HTMLElement | null = null;
@@ -288,6 +289,10 @@ export class Game {
 
     this.removeLoadingOverlay();
 
+    this.mountLobby();
+  }
+
+  private mountLobby() {
     this.lobby = new Lobby(this.container, {
       playerName: this.playerName,
       mobile: this.mobile,
@@ -471,8 +476,6 @@ export class Game {
     };
     this.moonThreat.addTo(this.scene);
 
-    window.addEventListener("keydown", this.onDebugKey);
-
     this.starfield = new Starfield();
     this.starfield.group.visible = preset.stars;
     this.scene.add(this.starfield.group);
@@ -494,11 +497,8 @@ export class Game {
     window.addEventListener("resize", this.onPreviewResize);
   }
 
-  private previewTick = () => {
-    if (!this.previewActive) return;
-    requestAnimationFrame(this.previewTick);
-
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+  /** One preview frame (shared by the RAF loop and return-to-menu while overlay stays black). */
+  private stepPreview(dt: number) {
     this.previewAngle += 0.05 * dt;
 
     const radius = this.mobile ? 17 : 12;
@@ -518,6 +518,14 @@ export class Game {
     this.audioManager.update(dt);
     this.aurora?.update(dt, this.previewCamera);
     this.renderer.render(this.scene, this.previewCamera);
+  }
+
+  private previewTick = () => {
+    if (!this.previewActive) return;
+    requestAnimationFrame(this.previewTick);
+
+    const dt = Math.min(this.clock.getDelta(), 0.05);
+    this.stepPreview(dt);
   };
 
   private onPreviewResize = () => {
@@ -784,7 +792,103 @@ export class Game {
 
     this.clock.getDelta();
     this.running = true;
+    window.addEventListener("keydown", this.onDebugKey);
     this.tick();
+  }
+
+  /** Tear down everything created in startGame (globe / moon / renderer stay). */
+  private teardownGameplaySession() {
+    this.stateSync?.stop();
+    this.stateSync = null;
+    this.socketClient?.disconnect();
+    this.socketClient = null;
+
+    this.controls?.dispose();
+    this.touchControls?.dispose();
+    this.touchControls = null;
+    this.speedLines?.dispose();
+    this.contrails?.dispose();
+    this.wakeTrail?.dispose();
+    this.carpetTrail?.dispose();
+    this.carpetWake?.dispose();
+    this.carpetLeaves?.dispose();
+    this.lensFlare?.dispose();
+    this.rainOverlay?.dispose();
+    this.ringManager?.dispose();
+    this.collectVFX?.dispose();
+    this.localPlayer?.dispose();
+    this.remotePlanes?.dispose();
+    this.landmarkHUD?.dispose();
+    this.packageQuest?.dispose();
+    this.packageQuest = null;
+    this.packageQuestHUD.dispose();
+    for (const f of this.birdFlocks) f.dispose();
+    this.birdFlocks = [];
+    for (const r of this.rainbowArches) r.dispose();
+    this.rainbowArches = [];
+    for (const l of this.lanternClusters) l.dispose();
+    this.lanternClusters = [];
+    for (const f of this.fireflyClusters) f.dispose();
+    this.fireflyClusters = [];
+    this.campsiteScene?.dispose();
+    this.campsiteScene = null;
+    this.flockFormationHUD?.dispose();
+    this.flockFormationHUD = null;
+    this.remotePlayerNameLabels.dispose();
+    this.hud.dispose();
+
+    if (this.playerLight) {
+      this.scene.remove(this.playerLight);
+      this.playerLight.dispose();
+      this.playerLight = null;
+    }
+
+    this.audioManager.stopLoop("engine_biplane");
+    this.audioManager.stopLoop("engine_carpet");
+    for (const id of DIALOGUE_LOOP_IDS) {
+      this.audioManager.fadeOutLoop(id);
+    }
+    this.audioManager.setEndTimesWeight(0);
+    this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
+
+    window.removeEventListener("resize", this.onResize);
+  }
+
+  private async returnToMainMenuAfterMoonImpact() {
+    if (this.returningToMenuAfterMoon) return;
+    this.returningToMenuAfterMoon = true;
+    this.running = false;
+    window.removeEventListener("keydown", this.onDebugKey);
+
+    this.teardownGameplaySession();
+
+    this.dayNightCycle.moonProgress = 0;
+    this.moonThreat?.reset();
+    this.applyDayNightPreset();
+    this.gamePhase = "flying";
+    this.moonCinematicStep = "done";
+    this.moonCinematicCamera = null;
+    this.introActive = false;
+    this.vehicleHintsEl = null;
+    this.campsiteHintsEl = null;
+
+    this.mountLobby();
+    this.previewActive = true;
+    window.addEventListener("resize", this.onPreviewResize);
+    this.onPreviewResize();
+    const previewDt = Math.min(this.clock.getDelta(), 0.05);
+    this.stepPreview(previewDt);
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+    if (this.transitionOverlay) {
+      await this.transitionOverlay.fadeIn();
+      this.transitionOverlay.dispose();
+      this.transitionOverlay = null;
+    }
+
+    requestAnimationFrame(this.previewTick);
+
+    this.returningToMenuAfterMoon = false;
   }
 
   /* ── Networking ──────────────────────────────────────────────────── */
@@ -1462,12 +1566,11 @@ export class Game {
         }
         this.renderer.render(this.scene, cam);
         if (this.moonCinematicTimer > 1.0) {
-          this.moonCinematicStep = "done";
           if (this.vignetteOverlay) {
             this.vignetteOverlay.remove();
             this.vignetteOverlay = null;
           }
-          // Future: trigger world migration here
+          void this.returnToMainMenuAfterMoonImpact();
         }
         break;
 
