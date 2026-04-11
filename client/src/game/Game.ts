@@ -88,6 +88,13 @@ const RAIN_LOOP_MAX_VOL = 0.18;
 const BIRDS_LOOP_NAME = "birds_loop";
 const BIRDS_LOOP_MAX_VOL = 0.04;
 
+const RUMBLE_LOOP_NAME = "rumbling_1";
+/** Moon rumble at 100% progress (0 at 75%, ramps up to this by impact). */
+const RUMBLE_MAX_VOL = 0.42;
+
+const EXPLOSION_SFX_NAME = "explosion_1";
+const EXPLOSION_SFX_VOLUME = 0.48;
+
 /** Next diamond within this window raises pitch (combo). */
 const DIAMOND_COMBO_WINDOW_MS = 900;
 const DIAMOND_COMBO_MAX_STEPS = 5;
@@ -298,6 +305,10 @@ export class Game {
         void this.audioManager.loadSFX(BIRDS_LOOP_NAME, "/audio/sfx/birds_chirp_1.mp3").then(() => {
           this.audioManager.startLoop(BIRDS_LOOP_NAME, 0);
         });
+        void this.audioManager.loadSFX(RUMBLE_LOOP_NAME, "/audio/sfx/rumbling_1.mp3").then(() => {
+          this.audioManager.startLoop(RUMBLE_LOOP_NAME, 0);
+        });
+        void this.audioManager.loadSFX(EXPLOSION_SFX_NAME, "/audio/sfx/explosion_1.mp3");
         this.lobby.fadeOut(() => {
           this.lobby.dispose();
           this.startGame(vehicle);
@@ -455,6 +466,9 @@ export class Game {
     this.globe.addTo(this.scene);
 
     this.moonThreat = new MoonThreat(this.worldConfig?.globeRadius ?? 5);
+    this.moonThreat.onShockwaveSpawn = () => {
+      this.audioManager.playSFX(EXPLOSION_SFX_NAME, EXPLOSION_SFX_VOLUME);
+    };
     this.moonThreat.addTo(this.scene);
 
     window.addEventListener("keydown", this.onDebugKey);
@@ -1344,6 +1358,7 @@ export class Game {
     for (const id of DIALOGUE_LOOP_IDS) {
       this.audioManager.fadeOutLoop(id);
     }
+    this.audioManager.fadeOutLoop(RUMBLE_LOOP_NAME);
     this.packageQuestHUD.hideBubble();
 
     // Build a wide-angle camera positioned far from the globe
@@ -1637,6 +1652,14 @@ export class Game {
     this.audioManager.setLoopVolume(RAIN_LOOP_NAME, rainW * RAIN_LOOP_MAX_VOL);
     this.audioManager.setLoopVolume("crickets_loop", nightW * CRICKETS_LOOP_MAX_VOL * rainDampen);
     this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, dayW * BIRDS_LOOP_MAX_VOL * rainDampen);
+
+    let rumbleVol = 0;
+    if (moonProg >= 0.75 && !this.moonThreat?.hasImpacted) {
+      const t = Math.min(1, (moonProg - 0.75) / 0.25);
+      const eased = t * t * (3 - 2 * t);
+      rumbleVol = eased * RUMBLE_MAX_VOL;
+    }
+    this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, rumbleVol);
 
     const mw = this.dayNightCycle.getMusicWeights();
     const endTimesBlend = moonProg >= 0.65

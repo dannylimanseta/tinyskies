@@ -56,6 +56,8 @@ interface Ember {
 
 export class MoonThreat {
   readonly group = new Group();
+  /** Fired once when impact shockwave rings are created (moon hits globe). */
+  onShockwaveSpawn?: () => void;
   private elapsed = 0;
   private loaded = false;
   private baseScale = 1;
@@ -638,6 +640,7 @@ if (uMolten > 0.01) {
       parent.add(wave);
       this.shockwaveWaves.push(wave);
     }
+    this.onShockwaveSpawn?.();
   }
 
   private spawnDebris() {
