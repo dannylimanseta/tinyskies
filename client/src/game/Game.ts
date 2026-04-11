@@ -58,7 +58,7 @@ import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyClus
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
-import { isNpcMale, pickBalloonGreeting, pickPanicLine } from "./PackageDialogue";
+import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
@@ -78,6 +78,10 @@ const BALLOON_GREET_DIST = 1.2;
 const BALLOON_GREET_EXIT_DIST = 1.75;
 /** Seconds before the same balloon can greet again after you leave. */
 const BALLOON_GREET_COOLDOWN = 32;
+
+const OBSERVATORY_GREET_DIST = 1.6;
+const OBSERVATORY_GREET_EXIT_DIST = 2.2;
+const OBSERVATORY_GREET_COOLDOWN = 40;
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -193,6 +197,9 @@ export class Game {
   private balloonGreetCooldown: number[] = [];
   private balloonGreetSalt = 0;
   private balloonPosScratch = new Vector3();
+  private observatoryInRange: boolean[] = [];
+  private observatoryCooldown: number[] = [];
+  private observatoryWorldPositions: Vector3[] = [];
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
@@ -782,6 +789,13 @@ export class Game {
     const balloonN = this.globe.balloonCount;
     this.balloonInRange = new Array(balloonN).fill(false);
     this.balloonGreetCooldown = new Array(balloonN).fill(0);
+
+    const obsN = this.globe.observatoryCenters.length;
+    this.observatoryInRange = new Array(obsN).fill(false);
+    this.observatoryCooldown = new Array(obsN).fill(0);
+    this.observatoryWorldPositions = this.globe.observatoryCenters.map((o) => {
+      return o.normal.clone().multiplyScalar(globeRadius + 0.04);
+    });
 
     if (this.vehicleFeatures.packageQuests) {
       this.packageQuest = new PackageQuestManager(
@@ -1694,6 +1708,7 @@ export class Game {
       if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
     }
     this.updateBalloonGreetings(dt, questPlayerPos);
+    this.updateObservatoryGreetings(dt, questPlayerPos);
 
     if (this.playerVehicle === "plane") {
       const engineVol =
@@ -2305,6 +2320,29 @@ export class Game {
         }
       } else if (dist > BALLOON_GREET_EXIT_DIST) {
         this.balloonInRange[i] = false;
+      }
+    }
+  }
+
+  private updateObservatoryGreetings(dt: number, playerWorld: Vector3) {
+    for (let i = 0; i < this.observatoryCooldown.length; i++) {
+      this.observatoryCooldown[i] = Math.max(0, this.observatoryCooldown[i] - dt);
+    }
+    if (this.packageQuestHUD.isBubbleShowing) return;
+    for (let i = 0; i < this.observatoryWorldPositions.length; i++) {
+      const dist = playerWorld.distanceTo(this.observatoryWorldPositions[i]);
+      if (dist < OBSERVATORY_GREET_DIST) {
+        if (!this.observatoryInRange[i]) {
+          if (this.observatoryCooldown[i] <= 0) {
+            const moonProg = this.moonThreat?.progress ?? 0;
+            const { npcName, line } = pickObservatoryGreeting(i, moonProg);
+            this.packageQuestHUD.showBubble(npcName, line);
+            this.observatoryCooldown[i] = moonProg >= 0.75 ? 12 : OBSERVATORY_GREET_COOLDOWN;
+          }
+          this.observatoryInRange[i] = true;
+        }
+      } else if (dist > OBSERVATORY_GREET_EXIT_DIST) {
+        this.observatoryInRange[i] = false;
       }
     }
   }

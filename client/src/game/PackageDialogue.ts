@@ -390,3 +390,66 @@ export function pickPanicLine(): { npcName: string; line: string } {
   const line = PANIC_LINES[Math.floor(Math.random() * PANIC_LINES.length)]!;
   return { npcName, line };
 }
+
+/* ── Observatory astronomer dialogue ──────────────────────────────── */
+
+const ASTRONOMER_NAMES = [
+  "Professor Astrid",
+  "Stargazer Orion",
+  "Doctor Celeste",
+] as const;
+
+MALE_NPC_NAMES.add("Stargazer Orion");
+
+const ASTRO_CALM = [
+  "The constellations are beautiful tonight. Have you seen Orion's belt?",
+  "I've been charting the stars for years. Everything looks normal… for now.",
+  "Come to stargaze? The skies are perfectly clear up here.",
+  "I've been tracking a faint object near the horizon. Probably nothing.",
+  "The telescope is calibrated. All the stars are exactly where they should be.",
+  "There's a lovely nebula visible this evening. Care to look?",
+];
+
+const ASTRO_UNEASY = [
+  "Something is off with the star charts. A few constellations seem… shifted.",
+  "I keep rechecking my calculations. There's an object that shouldn't be there.",
+  "The moon looks a touch bigger than my almanac says it should.",
+  "I've sent word to the other observatories. They've noticed it too.",
+  "My instruments aren't wrong. Something is moving toward us.",
+  "The readings were normal last week. Now they're anything but.",
+];
+
+const ASTRO_DREAD = [
+  "The moon is definitely closer. I can see new craters with the naked eye.",
+  "I haven't slept in days. The readings are getting worse every hour.",
+  "The tides have shifted. The ocean is pulling toward the sky.",
+  "I've never seen anything like this in thirty years of astronomy.",
+  "If my calculations are right… we have very little time.",
+  "The gravitational pull is increasing. My pendulum clock has stopped.",
+];
+
+const ASTRO_PANIC = [
+  "It's too late. The moon is falling. There's nothing we can do.",
+  "Get out of here! The sky is collapsing!",
+  "All my telescopes are shaking. The ground won't stop trembling.",
+  "I'm so sorry. I should have warned everyone sooner.",
+  "Look at the sky. That isn't the moon anymore. It's the end.",
+];
+
+/**
+ * Pick an observatory astronomer greeting based on moon progress.
+ * @param observatoryIndex Which observatory (0–2) — determines the resident NPC.
+ */
+export function pickObservatoryGreeting(
+  observatoryIndex: number,
+  moonProgress: number,
+): { npcName: string; line: string } {
+  const npcName = ASTRONOMER_NAMES[observatoryIndex % ASTRONOMER_NAMES.length]!;
+  let pool: readonly string[];
+  if (moonProgress >= 0.75) pool = ASTRO_PANIC;
+  else if (moonProgress >= 0.50) pool = ASTRO_DREAD;
+  else if (moonProgress >= 0.25) pool = ASTRO_UNEASY;
+  else pool = ASTRO_CALM;
+  const line = pool[Math.floor(Math.random() * pool.length)]!;
+  return { npcName, line };
+}
