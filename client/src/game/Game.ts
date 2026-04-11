@@ -883,11 +883,80 @@ export class Game {
     window.removeEventListener("resize", this.onResize);
   }
 
+  private static readonly MOON_CREDITS_FADE_IN_MS = 4000;
+  private static readonly MOON_CREDITS_HOLD_MS = 2500;
+  private static readonly MOON_CREDITS_FADE_OUT_MS = 4000;
+
+  /** Full-screen credits on black after moon ending, before teardown and lobby. */
+  private async showMoonCreditsOverlay(): Promise<void> {
+    const wrap = document.createElement("div");
+    wrap.setAttribute("aria-hidden", "true");
+    Object.assign(wrap.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "10000",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "none",
+      opacity: "0",
+      transition: `opacity ${Game.MOON_CREDITS_FADE_IN_MS}ms ease`,
+    });
+
+    const title = document.createElement("h1");
+    title.textContent = "Tiny Skies";
+    Object.assign(title.style, {
+      fontFamily: "'Inter', system-ui, sans-serif",
+      fontSize: "clamp(2.5rem, 10vw, 6rem)",
+      fontWeight: "800",
+      margin: "0",
+      color: "#ffffff",
+    });
+
+    const byline = document.createElement("p");
+    byline.textContent = "By Danny Limanseta";
+    Object.assign(byline.style, {
+      fontFamily: "'Inter', system-ui, sans-serif",
+      fontSize: "clamp(0.95rem, 2.5vw, 1.2rem)",
+      fontWeight: "500",
+      margin: "1.25rem 0 0",
+      color: "rgba(255, 255, 255, 0.9)",
+      letterSpacing: "0.04em",
+    });
+
+    wrap.appendChild(title);
+    wrap.appendChild(byline);
+    this.container.appendChild(wrap);
+
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    wrap.style.opacity = "1";
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      wrap.addEventListener("transitionend", done, { once: true });
+      setTimeout(done, Game.MOON_CREDITS_FADE_IN_MS + 200);
+    });
+
+    await new Promise<void>((r) => setTimeout(r, Game.MOON_CREDITS_HOLD_MS));
+
+    wrap.style.transition = `opacity ${Game.MOON_CREDITS_FADE_OUT_MS}ms ease`;
+    wrap.style.opacity = "0";
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      wrap.addEventListener("transitionend", done, { once: true });
+      setTimeout(done, Game.MOON_CREDITS_FADE_OUT_MS + 200);
+    });
+
+    wrap.remove();
+  }
+
   private async returnToMainMenuAfterMoonImpact() {
     if (this.returningToMenuAfterMoon) return;
     this.returningToMenuAfterMoon = true;
     this.running = false;
     window.removeEventListener("keydown", this.onDebugKey);
+
+    await this.showMoonCreditsOverlay();
 
     this.teardownGameplaySession();
 
@@ -1162,6 +1231,7 @@ export class Game {
 
     /* ── Moon impact cinematic phase ────────────────────── */
     if (this.gamePhase === "moonImpact") {
+      this.moonThreat?.update(dt);
       this.tickMoonImpactCinematic(dt);
       return;
     }
@@ -1431,6 +1501,20 @@ export class Game {
 
     this.landmarkDetector.update(this.localPlayer.qPosition);
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+
+    /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
+    this.moonThreat?.update(dt);
+    if (this.moonThreat) {
+      this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
+      if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
+        this.startMoonImpactCinematic();
+      }
+    }
+    if (this.gamePhase === "moonImpact") {
+      this.tickMoonImpactCinematic(dt);
+      return;
+    }
+
     if (this.packageQuest && this.moonThreat) {
       this.packageQuest.moonProgress = this.moonThreat.progress;
     }
@@ -1446,14 +1530,6 @@ export class Game {
       const engineVol =
         0.08 + (this.localPlayer as Plane).engineSpeedRatio * 0.25;
       this.audioManager.setLoopVolume("engine_biplane", engineVol);
-    }
-
-    this.moonThreat?.update(dt);
-    if (this.moonThreat) {
-      this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
-      if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
-        this.startMoonImpactCinematic();
-      }
     }
 
     const moonProg = this.moonThreat?.progress ?? 0;
@@ -1537,7 +1613,6 @@ export class Game {
 
   private tickMoonImpactCinematic(dt: number) {
     this.moonCinematicTimer += dt;
-    this.moonThreat?.update(dt);
     this.globe.update(dt);
 
     if (this.moonThreat) {
@@ -1628,6 +1703,9 @@ export class Game {
       case "done":
         break;
     }
+
+    /* fadeOutLoop / stopWhenSilent only advance in update(); flying tick skips this during moonImpact. */
+    this.audioManager.update(dt);
   }
 
   /* ── Campsite landing / takeoff ─────────────────────────────── */
