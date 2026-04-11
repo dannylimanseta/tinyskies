@@ -29,6 +29,12 @@ export class TransitionOverlay {
     });
   }
 
+  /** Set opacity instantly (no CSS transition). Useful for frame-by-frame control. */
+  setOpacity(v: number) {
+    this.el.style.transition = "none";
+    this.el.style.opacity = String(Math.max(0, Math.min(1, v)));
+  }
+
   dispose() {
     this.el.remove();
   }

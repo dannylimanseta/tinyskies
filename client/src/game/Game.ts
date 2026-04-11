@@ -1042,31 +1042,51 @@ export class Game {
     if (!this.transitionOverlay) return;
 
     const REWIND_SPEED = 4.5;
-    const REWIND_DUR = 4.0;
+    const FADE_IN = 1.2;   // seconds to reveal scene
+    const HOLD = 3.5;      // seconds of full-visibility rewind
+    const FADE_OUT = 1.2;  // seconds to go back to black
+    const TOTAL = FADE_IN + HOLD + FADE_OUT;
     const cam = this.moonCinematicCamera ?? this.cameraRig.camera;
 
-    // Fade in from black to reveal the 3D scene.
-    await this.transitionOverlay.fadeIn();
-
-    // Show the VHS overlay.
+    // Create VHS overlay (starts invisible — the rAF loop fades it in).
     this.vhsOverlay = this.createVhsOverlay();
+    this.vhsOverlay.style.opacity = "0";
 
     // Run a dedicated rAF loop — does not depend on this.running.
     let prevTime = performance.now();
-    let rewindTimer = 0;
+    let timer = 0;
     await new Promise<void>((resolve) => {
       const loop = () => {
         const now = performance.now();
         const dt = Math.min((now - prevTime) / 1000, 0.05);
         prevTime = now;
-        rewindTimer += dt;
+        timer += dt;
 
-        const rewindProgress = Math.min(1, rewindTimer / REWIND_DUR);
-        this.moonThreat?.rewindTick(dt, REWIND_SPEED, rewindProgress);
+        // Scene + overlay alpha: 0 → 1 → 1 → 0
+        let alpha: number;
+        if (timer < FADE_IN) {
+          alpha = timer / FADE_IN;
+        } else if (timer < FADE_IN + HOLD) {
+          alpha = 1;
+        } else {
+          alpha = 1 - (timer - FADE_IN - HOLD) / FADE_OUT;
+        }
+        alpha = Math.max(0, Math.min(1, alpha));
+
+        // Rewind physics runs across the whole visible window.
+        if (alpha > 0 && this.moonThreat) {
+          const rewindProgress = Math.min(1, Math.max(0, timer - FADE_IN / 2) / (HOLD + FADE_IN / 2));
+          this.moonThreat.rewindTick(dt, REWIND_SPEED, rewindProgress);
+        }
+
         this.globe.update(dt);
         this.renderer.render(this.scene, cam);
 
-        if (rewindTimer < REWIND_DUR) {
+        // Black overlay fades away as alpha rises, comes back as it falls.
+        this.transitionOverlay!.setOpacity(1 - alpha);
+        if (this.vhsOverlay) this.vhsOverlay.style.opacity = String(alpha);
+
+        if (timer < TOTAL) {
           requestAnimationFrame(loop);
         } else {
           resolve();
@@ -1075,15 +1095,16 @@ export class Game {
       requestAnimationFrame(loop);
     });
 
-    // Tear down VHS overlay then fade back to black.
+    // Ensure fully black before proceeding.
+    this.transitionOverlay.setOpacity(1);
+
+    // Restore CSS transition for any future use, then clean up.
     if (this.vhsGlitchInterval !== null) {
       clearInterval(this.vhsGlitchInterval);
       this.vhsGlitchInterval = null;
     }
-    this.vhsOverlay.remove();
+    this.vhsOverlay?.remove();
     this.vhsOverlay = null;
-
-    await this.transitionOverlay.fadeOut();
   }
 
   private async returnToMainMenuAfterMoonImpact() {
@@ -1906,24 +1927,24 @@ export class Game {
       animation: "vhs-flicker 0.18s step-end infinite",
     });
 
-    // Fine horizontal scan lines.
+    // Fine horizontal scan lines — kept subtle (≈30% of original opacity).
     const scanLines = document.createElement("div");
     Object.assign(scanLines.style, {
       position: "absolute",
       inset: "0",
       background:
-        "repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.18) 2px, rgba(0,0,0,0.18) 4px)",
+        "repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px)",
       backgroundSize: "100% 4px",
       animation: "vhs-scan 0.06s linear infinite",
     });
 
-    // Wider scrolling tracking bands — the classic VHS fast-forward look.
+    // Wider scrolling tracking bands — subtle.
     const bands = document.createElement("div");
     Object.assign(bands.style, {
       position: "absolute",
       inset: "0",
       background:
-        "repeating-linear-gradient(to bottom, transparent 0px, transparent 24px, rgba(255,255,255,0.05) 24px, rgba(255,255,255,0.05) 30px, transparent 30px, transparent 60px)",
+        "repeating-linear-gradient(to bottom, transparent 0px, transparent 24px, rgba(255,255,255,0.015) 24px, rgba(255,255,255,0.015) 30px, transparent 30px, transparent 60px)",
       backgroundSize: "100% 60px",
       animation: "vhs-bands 0.12s linear infinite",
     });
