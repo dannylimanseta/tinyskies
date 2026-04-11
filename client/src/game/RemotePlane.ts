@@ -6,6 +6,7 @@ import {
   CylinderGeometry,
   MeshPhongMaterial,
   MeshBasicMaterial,
+  Material,
   Quaternion,
   type Camera,
 } from "three";
@@ -80,6 +81,27 @@ function nextRemoteColor(): number {
   return c;
 }
 
+/** Scale mesh material opacities (stores base opacity in userData on first use). */
+function applyRemoteOpacity(root: Group, opacity: number) {
+  const o = Math.max(0, Math.min(1, opacity));
+  root.traverse((obj) => {
+    const mesh = obj as Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const mats: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mat of mats) {
+      if ("opacity" in mat) {
+        const m = mat as Material & { opacity: number; transparent: boolean; depthWrite: boolean };
+        if (m.userData.baseOpacity === undefined) {
+          m.userData.baseOpacity = m.opacity;
+        }
+        m.opacity = m.userData.baseOpacity * o;
+        m.transparent = m.opacity < 0.998 || m.userData.baseOpacity < 0.998;
+        m.depthWrite = m.opacity >= 0.998;
+      }
+    }
+  });
+}
+
 class RemotePlane {
   readonly id: string;
   private _name: string;
@@ -103,6 +125,12 @@ class RemotePlane {
   private wasDeadReckoning = false;
   private bobTime = Math.random() * Math.PI * 2;
   private hullColor: number;
+  private visibilityTarget = 1;
+  private visibilitySmooth = 1;
+
+  get visibilityOpacity(): number {
+    return this.visibilitySmooth;
+  }
 
   constructor(
     id: string,
@@ -149,6 +177,7 @@ class RemotePlane {
     }
     this.carrying = state.carrying ?? false;
     this.carryPackage.visible = this.carrying;
+    this.visibilityTarget = Math.max(0, Math.min(1, state.visibility ?? 1));
 
     if (this.wasDeadReckoning && this.lastRendered) {
       this.correcting = true;
@@ -200,6 +229,10 @@ class RemotePlane {
 
     this.lastRendered = computed;
     this.applyToMesh(computed, dt);
+
+    this.visibilitySmooth += (this.visibilityTarget - this.visibilitySmooth) * Math.min(1, dt * 10);
+    applyRemoteOpacity(this.group, this.visibilitySmooth);
+    this.beacon.setOpacityMultiplier(this.visibilitySmooth);
   }
 
   private tryInterpolate(renderTime: number): PartialState | null {
@@ -289,6 +322,8 @@ export interface RemotePlayerForLabel {
   name: string;
   group: Group;
   vehicleType: Vehicle;
+  /** Smoothed 0–1 for name pill / mesh fade (moon cutscene). */
+  visibilityOpacity: number;
 }
 
 export class RemotePlaneManager {
@@ -312,6 +347,7 @@ export class RemotePlaneManager {
         name: rp.name,
         group: rp.group,
         vehicleType: rp.vehicleType,
+        visibilityOpacity: rp.visibilityOpacity,
       });
     }
   }

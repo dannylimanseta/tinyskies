@@ -78,6 +78,11 @@ export class PlayerBeacon {
     this.material.uniforms.uColor.value = [col.r, col.g, col.b];
   }
 
+  /** Multiplies beam intensity (0 = off), for remote player moon-cutscene fade. */
+  setOpacityMultiplier(opacity: number) {
+    this.material.uniforms.uAlpha.value = Math.max(0, Math.min(1, opacity));
+  }
+
   /** Orient beam along surface normal, billboard around it to face camera. */
   update(camera: Camera) {
     camera.getWorldPosition(_camPos);

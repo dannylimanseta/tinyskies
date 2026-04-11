@@ -16,6 +16,8 @@ export type SyncablePlayer = {
   vehicle: Vehicle;
   hullColor: number;
   carrying?: boolean;
+  /** 0–1 for other clients (moon cutscene fade). Default 1 when omitted. */
+  visibility?: number;
 };
 
 export class StateSync {
@@ -59,6 +61,7 @@ export class StateSync {
       bankAngle: isBoat ? 0 : this.player.bankAngle + this.player.rollAngle,
       rollAngle: this.player.rollAngle,
       carrying: this.player.carrying,
+      visibility: this.player.visibility ?? 1,
       timestamp: Date.now(),
     });
   }

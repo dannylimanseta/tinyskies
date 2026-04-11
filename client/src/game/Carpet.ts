@@ -52,6 +52,8 @@ export class Carpet {
   bankAngle = 0;
   rollAngle = 0;
   isRolling = false;
+  /** Network fade 0–1 (moon cutscene); read by StateSync. */
+  visibility?: number;
 
   private globeRadius: number;
   private seed: number;

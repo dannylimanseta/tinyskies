@@ -886,6 +886,8 @@ export class Game {
   private static readonly MOON_CREDITS_FADE_IN_MS = 4000;
   private static readonly MOON_CREDITS_HOLD_MS = 2500;
   private static readonly MOON_CREDITS_FADE_OUT_MS = 4000;
+  /** Matches fadeOut1 so other players see us fade out instead of freezing in place. */
+  private static readonly MOON_NETWORK_VISIBILITY_FADE_SEC = 0.7;
 
   /** Full-screen credits on black after moon ending, before teardown and lobby. */
   private async showMoonCreditsOverlay(): Promise<void> {
@@ -1138,6 +1140,7 @@ export class Game {
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
     if (this.introActive) {
+      this.localPlayer.visibility = 1;
       this.introTimer += dt;
       const raw = Math.min(this.introTimer / Game.INTRO_DURATION, 1);
       const t = 1 - Math.pow(1 - raw, 3);
@@ -1209,6 +1212,7 @@ export class Game {
 
     /* ── Campsite phase ────────────────────────────────── */
     if (this.gamePhase === "campsite" && this.campsiteScene) {
+      this.localPlayer.visibility = 1;
       this.moonThreat?.update(dt);
       if (this.moonThreat?.isNearImpact || this.moonThreat?.hasImpacted) {
         this.campsiteScene.exit();
@@ -1238,6 +1242,7 @@ export class Game {
 
     const { turnRate, forward, brake, elevate, descend, barrelRoll, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
+    this.localPlayer.visibility = 1;
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll, descend);
 
     if (this.moonThreat && !this.moonThreat.hasImpacted) {
@@ -1510,7 +1515,8 @@ export class Game {
         this.startMoonImpactCinematic();
       }
     }
-    if (this.gamePhase === "moonImpact") {
+    /* String() avoids TS narrowing: startMoonImpactCinematic() can set phase to moonImpact this frame. */
+    if (String(this.gamePhase) === "moonImpact") {
       this.tickMoonImpactCinematic(dt);
       return;
     }
@@ -1613,6 +1619,14 @@ export class Game {
 
   private tickMoonImpactCinematic(dt: number) {
     this.moonCinematicTimer += dt;
+    if (this.moonCinematicStep === "fadeOut1") {
+      this.localPlayer.visibility = Math.max(
+        0,
+        1 - this.moonCinematicTimer / Game.MOON_NETWORK_VISIBILITY_FADE_SEC,
+      );
+    } else {
+      this.localPlayer.visibility = 0;
+    }
     this.globe.update(dt);
 
     if (this.moonThreat) {

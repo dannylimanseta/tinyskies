@@ -22,6 +22,8 @@ export interface PlayerState {
   carrying?: boolean;
   /** Primary hull RGB as 0xRRGGBB (synced so remotes match local paint). */
   vehicleColor?: number;
+  /** 0 = invisible, 1 = fully visible (e.g. moon cutscene fade). Omitted = 1. */
+  visibility?: number;
   timestamp: number;
 }
 

@@ -53,6 +53,8 @@ export class Plane {
   private rollPitchOffset = 0;
   /** Remaining time at `BOOST_SPEED` after `speedBoost()`; 0 when not boosting. */
   private boostTimer = 0;
+  /** Network fade 0–1 (moon cutscene); read by StateSync. */
+  visibility?: number;
   /** Smoothed yaw command (matches keyboard / stick after lag). */
   private turnInputSmoothed = 0;
   /** -1 = descend, 0 = cruise, 1 = climb — smoothed so pitch/height ease in. */

@@ -146,10 +146,16 @@ export class RemotePlayerNameLabels {
         return;
       }
 
+      if (player.visibilityOpacity < 0.04) {
+        el.classList.remove("hud-remote-name-pill--visible");
+        return;
+      }
+
       const x = (this.anchor.x * 0.5 + 0.5) * w;
       const y = (-this.anchor.y * 0.5 + 0.5) * h;
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
+      el.style.opacity = String(player.visibilityOpacity);
       el.classList.add("hud-remote-name-pill--visible");
     });
 
