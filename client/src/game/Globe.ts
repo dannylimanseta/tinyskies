@@ -1692,145 +1692,126 @@ transformed.z += sway2;`,
   }
 
   /**
-   * Build a low-poly stylised observatory inspired by real domed observatories:
-   * - Rectangular stone base building with a flat roof
-   * - Cylindrical tower rising from it
-   * - Hemispherical slit dome on top (rotatable look via the slit)
-   * - Flat observation platform with railing
-   * - Small secondary finder scope on the dome
-   * - Subtle window details and a door
+   * Low-poly observatory: wide 1-storey stone building, short cylindrical
+   * drum, and a large hemisphere dome with a prominent dark-grey slit
+   * running from the base of the dome up and over the top.
    */
   private buildObservatory(rand: () => number): Group {
     const g = new Group();
 
+    const S = 2.5; // global scale-up factor
+
     // ── Colour palette ──
     const COL_STONE    = new Color(0xd0c8b8);
     const COL_STONE_DK = new Color(0xa89880);
-    const COL_DOME     = new Color(0xc0c8d0);
-    const COL_DOME_SLIT = new Color(0x1a1a28);
+    const COL_DOME     = new Color(0xb0b8c4);
+    const COL_SLIT     = new Color(0x333340);
     const COL_WINDOW   = new Color(0x5a90b8);
     const COL_FRAME    = new Color(0x555555);
     const COL_DOOR     = new Color(0x5a4030);
-    const COL_RAIL     = new Color(0x555555);
-    const COL_FINDER   = new Color(0x888888);
     const COL_STEP     = new Color(0xb8b0a0);
+    const COL_FINDER   = new Color(0x777777);
 
-    // ── Base building (wider rectangular block) ──
-    const baseW = 0.065;
-    const baseD = 0.055;
-    const baseH = 0.04;
+    // ── Wide 1-storey base ──
+    const baseW = 0.10 * S;
+    const baseD = 0.08 * S;
+    const baseH = 0.025 * S;
     const baseGeo = new BoxGeometry(baseW, baseH, baseD);
     baseGeo.translate(0, baseH / 2, 0);
     g.add(new Mesh(baseGeo, new MeshPhongMaterial({ color: COL_STONE })));
 
-    // Stone step/plinth
-    const plinthGeo = new BoxGeometry(baseW + 0.008, 0.005, baseD + 0.008);
-    plinthGeo.translate(0, 0.0025, 0);
+    // Stone plinth
+    const plinthGeo = new BoxGeometry(baseW + 0.01 * S, 0.004 * S, baseD + 0.01 * S);
+    plinthGeo.translate(0, 0.002 * S, 0);
     g.add(new Mesh(plinthGeo, new MeshPhongMaterial({ color: COL_STEP })));
 
-    // Base roof (flat slab slightly larger)
-    const roofSlabGeo = new BoxGeometry(baseW + 0.004, 0.004, baseD + 0.004);
-    roofSlabGeo.translate(0, baseH + 0.002, 0);
-    g.add(new Mesh(roofSlabGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
+    // Flat roof slab
+    const roofGeo = new BoxGeometry(baseW + 0.005 * S, 0.003 * S, baseD + 0.005 * S);
+    roofGeo.translate(0, baseH + 0.0015 * S, 0);
+    g.add(new Mesh(roofGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
 
-    // Door on front face
-    const doorW = 0.014;
-    const doorH = 0.022;
-    const doorGeo = new BoxGeometry(doorW, doorH, 0.003);
-    doorGeo.translate(0, doorH / 2 + 0.002, baseD / 2 + 0.001);
+    // Door
+    const doorW = 0.016 * S;
+    const doorH = 0.018 * S;
+    const doorGeo = new BoxGeometry(doorW, doorH, 0.003 * S);
+    doorGeo.translate(0, doorH / 2 + 0.001 * S, baseD / 2 + 0.001 * S);
     g.add(new Mesh(doorGeo, new MeshPhongMaterial({ color: COL_DOOR })));
 
-    // Windows — two on each long side
-    const winSize = 0.008;
+    // Windows — 2 per long side
+    const winSize = 0.009 * S;
     for (const side of [-1, 1]) {
-      for (const xOff of [-0.015, 0.015]) {
-        const winGeo = new BoxGeometry(winSize, winSize, 0.003);
-        winGeo.translate(xOff, baseH * 0.55, (baseD / 2 + 0.001) * side);
+      for (const xOff of [-0.028 * S, 0.028 * S]) {
+        const winGeo = new BoxGeometry(winSize, winSize, 0.003 * S);
+        winGeo.translate(xOff, baseH * 0.52, (baseD / 2 + 0.001 * S) * side);
         g.add(new Mesh(winGeo, new MeshPhongMaterial({ color: COL_WINDOW })));
-        const frameGeo = new BoxGeometry(winSize + 0.003, winSize + 0.003, 0.002);
-        frameGeo.translate(xOff, baseH * 0.55, (baseD / 2 + 0.0015) * side);
+        const frameGeo = new BoxGeometry(winSize + 0.003 * S, winSize + 0.003 * S, 0.002 * S);
+        frameGeo.translate(xOff, baseH * 0.52, (baseD / 2 + 0.0015 * S) * side);
         g.add(new Mesh(frameGeo, new MeshPhongMaterial({ color: COL_FRAME })));
       }
     }
 
-    // ── Cylindrical tower ──
-    const towerR = 0.022;
-    const towerH = 0.07;
-    const towerGeo = new CylinderGeometry(towerR, towerR + 0.002, towerH, 12);
-    towerGeo.translate(0, baseH + towerH / 2, 0);
-    g.add(new Mesh(towerGeo, new MeshPhongMaterial({ color: COL_STONE })));
+    // ── Short cylindrical drum (sits on the roof) ──
+    const drumR = 0.04 * S;
+    const drumH = 0.012 * S;
+    const drumY = baseH + 0.003 * S;
+    const drumGeo = new CylinderGeometry(drumR, drumR + 0.002 * S, drumH, 16);
+    drumGeo.translate(0, drumY + drumH / 2, 0);
+    g.add(new Mesh(drumGeo, new MeshPhongMaterial({ color: COL_STONE })));
 
-    // Decorative band around tower mid-section
-    const bandGeo = new CylinderGeometry(towerR + 0.003, towerR + 0.003, 0.004, 12);
-    bandGeo.translate(0, baseH + towerH * 0.5, 0);
+    // Decorative band at drum top
+    const bandGeo = new CylinderGeometry(drumR + 0.003 * S, drumR + 0.003 * S, 0.003 * S, 16);
+    bandGeo.translate(0, drumY + drumH, 0);
     g.add(new Mesh(bandGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
 
-    // Band at tower top (transition to dome)
-    const topBandGeo = new CylinderGeometry(towerR + 0.003, towerR + 0.003, 0.003, 12);
-    topBandGeo.translate(0, baseH + towerH - 0.001, 0);
-    g.add(new Mesh(topBandGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
-
-    // ── Observation platform with railing ──
-    const platR = towerR + 0.008;
-    const platY = baseH + towerH;
-    const platGeo = new CylinderGeometry(platR, platR, 0.003, 12);
-    platGeo.translate(0, platY, 0);
-    g.add(new Mesh(platGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
-
-    // Railing posts around platform edge
-    const RAIL_POSTS = 10;
-    for (let i = 0; i < RAIL_POSTS; i++) {
-      const a = (i / RAIL_POSTS) * Math.PI * 2;
-      const px = Math.cos(a) * (platR - 0.001);
-      const pz = Math.sin(a) * (platR - 0.001);
-      const postGeo = new CylinderGeometry(0.001, 0.001, 0.008, 4);
-      postGeo.translate(px, platY + 0.005, pz);
-      g.add(new Mesh(postGeo, new MeshPhongMaterial({ color: COL_RAIL })));
-    }
-    // Railing ring
-    const railRingGeo = new CylinderGeometry(platR - 0.001, platR - 0.001, 0.002, 12, 1, true);
-    railRingGeo.translate(0, platY + 0.009, 0);
-    g.add(new Mesh(railRingGeo, new MeshPhongMaterial({ color: COL_RAIL })));
-
-    // ── Dome (hemisphere via LatheGeometry) ──
-    const domeR = towerR + 0.001;
-    const domeY = platY + 0.002;
-    const DOME_SEGS = 12;
+    // ── Large hemisphere dome ──
+    const domeR = drumR + 0.001 * S;
+    const domeY = drumY + drumH + 0.001 * S;
+    const DOME_SEGS = 14;
     const profilePoints: Vector2[] = [];
     for (let i = 0; i <= DOME_SEGS; i++) {
       const t = i / DOME_SEGS;
       const angle = t * Math.PI * 0.5;
       profilePoints.push(new Vector2(Math.cos(angle) * domeR, Math.sin(angle) * domeR));
     }
-    const domeGeo = new LatheGeometry(profilePoints, 16);
+    const domeGeo = new LatheGeometry(profilePoints, 20);
     domeGeo.translate(0, domeY, 0);
     g.add(new Mesh(domeGeo, new MeshPhongMaterial({ color: COL_DOME })));
 
-    // Dome slit (the opening for the telescope) — narrow box cut into the dome
-    const slitW = 0.006;
-    const slitH = domeR;
+    // ── Dome slit — dark grey strip from base through the apex ──
+    // Two narrow boxes form a cross-section through the dome centre.
     const slitAngle = rand() * Math.PI * 2;
-    const slitGeo = new BoxGeometry(slitW, slitH, domeR * 0.8);
-    slitGeo.translate(0, domeY + slitH * 0.45, 0);
-    slitGeo.rotateY(slitAngle);
-    g.add(new Mesh(slitGeo, new MeshPhongMaterial({ color: COL_DOME_SLIT })));
+    const slitW = 0.008 * S;
 
-    // ── Finder scope — small cylinder on the dome exterior ──
-    const finderLen = 0.018;
-    const finderR = 0.0025;
-    const finderAngle = slitAngle + 0.3;
-    const finderGeo = new CylinderGeometry(finderR, finderR * 0.8, finderLen, 6);
+    // Vertical slit panel (front half, base to apex)
+    const slitVH = domeR * 1.02;
+    const slitVGeo = new BoxGeometry(slitW, slitVH, 0.003 * S);
+    slitVGeo.translate(0, domeY + slitVH * 0.5, domeR * 0.3);
+    slitVGeo.rotateY(slitAngle);
+    g.add(new Mesh(slitVGeo, new MeshPhongMaterial({ color: COL_SLIT })));
+
+    // Horizontal slit panel (extends radially outward from dome center)
+    const slitHLen = domeR * 0.85;
+    const slitHGeo = new BoxGeometry(slitW, 0.003 * S, slitHLen);
+    slitHGeo.translate(0, domeY + domeR * 0.92, slitHLen * 0.35);
+    slitHGeo.rotateY(slitAngle);
+    g.add(new Mesh(slitHGeo, new MeshPhongMaterial({ color: COL_SLIT })));
+
+    // ── Finder scope on dome exterior ──
+    const finderLen = 0.02 * S;
+    const finderR = 0.003 * S;
+    const finderAngle = slitAngle + 0.35;
+    const finderGeo = new CylinderGeometry(finderR, finderR * 0.7, finderLen, 6);
     finderGeo.rotateZ(-Math.PI / 4);
     finderGeo.translate(
-      Math.cos(finderAngle) * (domeR * 0.5),
-      domeY + domeR * 0.65,
-      Math.sin(finderAngle) * (domeR * 0.5),
+      Math.cos(finderAngle) * (domeR * 0.55),
+      domeY + domeR * 0.62,
+      Math.sin(finderAngle) * (domeR * 0.55),
     );
     g.add(new Mesh(finderGeo, new MeshPhongMaterial({ color: COL_FINDER })));
 
-    // ── Small chimney / vent on the base building ──
-    const ventGeo = new CylinderGeometry(0.003, 0.004, 0.012, 6);
-    ventGeo.translate(baseW * 0.3, baseH + 0.006, -baseD * 0.25);
+    // ── Small chimney / vent on the base wing ──
+    const ventGeo = new CylinderGeometry(0.003 * S, 0.004 * S, 0.01 * S, 6);
+    ventGeo.translate(baseW * 0.32, baseH + 0.005 * S, -baseD * 0.28);
     g.add(new Mesh(ventGeo, new MeshPhongMaterial({ color: COL_STONE_DK })));
 
     return g;
