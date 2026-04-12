@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   CanvasTexture,
   CylinderGeometry,
+  BoxGeometry,
   DoubleSide,
   Group,
   NearestFilter,
@@ -24,6 +25,7 @@ import { BRAZIER_BURN_MS, BRAZIER_COUNT } from "@globefly/shared";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt } from "./TerrainSurface";
 import { isLand } from "./SimplexNoise";
 import { addRimLight } from "./RimLight";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 export { BRAZIER_COUNT };
 const BURN_DURATION_SEC = BRAZIER_BURN_MS / 1000;
@@ -250,16 +252,16 @@ export class Braziers {
   private scene: Scene;
 
   /* shared geometry */
-  private poleGeo!: CylinderGeometry;
-  private bowlGeo!: LatheGeometry;
-  private bowlCapGeo!: CylinderGeometry;
-  private rimGeo!: CylinderGeometry;
+  private ironGeo!: BufferGeometry;
+  private bowlGeo!: BufferGeometry;
+  private stoneGeo!: BufferGeometry;
   private flameGeo!: PlaneGeometry;
   private glowGeo!: PlaneGeometry;
 
   /* shared materials */
   private ironMat!: MeshPhongMaterial;
   private bowlMat!: MeshPhongMaterial;
+  private stoneMat!: MeshPhongMaterial;
 
   private emberTexture!: CanvasTexture;
   private emberMat!: ShaderMaterial;
@@ -355,17 +357,88 @@ export class Braziers {
   /* ── Shared geometry ─────────────────────────────────────────── */
 
   private buildSharedGeometry() {
-    this.poleGeo = new CylinderGeometry(0.012, 0.016, POLE_H, 8);
+    const ironParts: BufferGeometry[] = [];
+    const stoneParts: BufferGeometry[] = [];
 
-    /* Concave bowl — exponential flare from narrow base to wide rim */
+    // 1. Stone Base (Tiered)
+    const baseH1 = 0.015;
+    const baseW1 = 0.12;
+    const base1 = new BoxGeometry(baseW1, baseH1, baseW1);
+    base1.translate(0, baseH1 * 0.5, 0);
+    stoneParts.push(base1);
+
+    const baseH2 = 0.012;
+    const baseW2 = 0.09;
+    const base2 = new BoxGeometry(baseW2, baseH2, baseW2);
+    base2.translate(0, baseH1 + baseH2 * 0.5, 0);
+    stoneParts.push(base2);
+
+    const baseH3 = 0.01;
+    const baseW3 = 0.06;
+    const base3 = new BoxGeometry(baseW3, baseH3, baseW3);
+    base3.translate(0, baseH1 + baseH2 + baseH3 * 0.5, 0);
+    stoneParts.push(base3);
+
+    const stoneTop = baseH1 + baseH2 + baseH3;
+
+    // 2. Iron Pillar
+    const pillarH = POLE_H - stoneTop;
+    const pillar = new CylinderGeometry(0.012, 0.016, pillarH, 8);
+    pillar.translate(0, stoneTop + pillarH * 0.5, 0);
+    ironParts.push(pillar);
+
+    // Decorative ring on pillar
+    const ring = new CylinderGeometry(0.018, 0.018, 0.008, 12);
+    ring.translate(0, stoneTop + pillarH * 0.5, 0);
+    ironParts.push(ring);
+
+    // 3. Support Arms (4 angled struts)
+    const armW = 0.006;
+    const armD = 0.006;
+    const armL = 0.06;
+    for (let i = 0; i < 4; i++) {
+      const arm = new BoxGeometry(armW, armL, armD);
+      arm.translate(0, armL * 0.5, 0);
+      arm.rotateX(0.5); // Angle outwards
+      arm.translate(0, stoneTop + pillarH * 0.7, 0.01); // Position relative to center
+      arm.rotateY((i * Math.PI) / 2); // Rotate around pillar
+      ironParts.push(arm);
+    }
+
+    // 4. Concave bowl — exponential flare from narrow base to wide rim
     const profile: Vector2[] = [];
     for (let j = 0; j <= 10; j++) {
       const t = j / 10;
       profile.push(new Vector2(0.014 + (BOWL_RIM_R - 0.014) * Math.pow(t, 1.7), t * BOWL_H));
     }
-    this.bowlGeo    = new LatheGeometry(profile, 12);
-    this.bowlCapGeo = new CylinderGeometry(0.014, 0.014, 0.005, 10);
-    this.rimGeo     = new CylinderGeometry(RIM_RING_R + 0.004, RIM_RING_R, 0.010, 12);
+    this.bowlGeo = new LatheGeometry(profile, 12);
+    // Bowl interior is drawn separately so it can be DoubleSide
+
+    // Bowl Cap (bottom)
+    const bowlCap = new CylinderGeometry(0.014, 0.014, 0.005, 10);
+    bowlCap.translate(0, POLE_H + 0.0025, 0);
+    ironParts.push(bowlCap);
+
+    // 5. Thicker Rim with decorative teeth
+    const rimH = 0.012;
+    const rim = new CylinderGeometry(RIM_RING_R + 0.006, RIM_RING_R, rimH, 16);
+    rim.translate(0, POLE_H + BOWL_H, 0);
+    ironParts.push(rim);
+
+    // Teeth on the rim
+    const toothH = 0.015;
+    const toothW = 0.006;
+    const toothD = 0.006;
+    for (let i = 0; i < 8; i++) {
+      const tooth = new BoxGeometry(toothW, toothH, toothD);
+      tooth.translate(0, toothH * 0.5, RIM_RING_R + 0.002);
+      tooth.rotateY((i * Math.PI) / 4);
+      tooth.translate(0, POLE_H + BOWL_H + rimH * 0.5, 0);
+      ironParts.push(tooth);
+    }
+
+    this.ironGeo = mergeGeometries(ironParts, false)!;
+    this.stoneGeo = mergeGeometries(stoneParts, false)!;
 
     this.flameGeo = new PlaneGeometry(FLAME_W, FLAME_H);
     this.glowGeo  = new PlaneGeometry(FLAME_W * 2.8, FLAME_H * 1.6);
@@ -374,14 +447,18 @@ export class Braziers {
   /* ── Shared materials ────────────────────────────────────────── */
 
   private buildSharedMaterials() {
-    const iron = 0x4a4036;
-    this.ironMat = new MeshPhongMaterial({ color: iron, flatShading: true, shininess: 26 });
-    addRimLight(this.ironMat, 0xffaa77, 0.52, 2.45);
+    const iron = 0x2a241e; // Darker, richer iron
+    this.ironMat = new MeshPhongMaterial({ color: iron, flatShading: true, shininess: 35 });
+    addRimLight(this.ironMat, 0xffaa77, 0.6, 2.2);
 
     this.bowlMat = new MeshPhongMaterial({
-      color: iron, flatShading: true, shininess: 26, side: DoubleSide,
+      color: iron, flatShading: true, shininess: 30, side: DoubleSide,
     });
-    addRimLight(this.bowlMat, 0xffaa77, 0.52, 2.45);
+    addRimLight(this.bowlMat, 0xffaa77, 0.6, 2.2);
+
+    const stone = 0x8e8984; // Grey stone
+    this.stoneMat = new MeshPhongMaterial({ color: stone, flatShading: true });
+    addRimLight(this.stoneMat, 0xe8e0d8, 0.36, 2.75);
   }
 
   /* ── Brazier structural Group ────────────────────────────────── */
@@ -389,22 +466,22 @@ export class Braziers {
   private buildBrazierGroup(): Group {
     const g = new Group();
 
-    const pole = new Mesh(this.poleGeo, this.ironMat);
-    pole.position.y = POLE_H * 0.5;
-    g.add(pole);
+    const stoneBase = new Mesh(this.stoneGeo, this.stoneMat);
+    stoneBase.castShadow = true;
+    stoneBase.receiveShadow = true;
+    g.add(stoneBase);
+
+    const ironParts = new Mesh(this.ironGeo, this.ironMat);
+    ironParts.castShadow = true;
+    ironParts.receiveShadow = true;
+    g.add(ironParts);
 
     /* Concave bowl (DoubleSide so interior cavity is visible from above) */
     const bowl = new Mesh(this.bowlGeo, this.bowlMat);
     bowl.position.y = POLE_H;
+    bowl.castShadow = true;
+    bowl.receiveShadow = true;
     g.add(bowl);
-
-    const cap = new Mesh(this.bowlCapGeo, this.ironMat);
-    cap.position.y = POLE_H + 0.0025;
-    g.add(cap);
-
-    const rim = new Mesh(this.rimGeo, this.ironMat);
-    rim.position.y = POLE_H + BOWL_H;
-    g.add(rim);
 
     return g;
   }
@@ -724,14 +801,14 @@ export class Braziers {
   /* ── Dispose ─────────────────────────────────────────────────── */
 
   dispose() {
-    this.poleGeo.dispose();
+    this.ironGeo.dispose();
     this.bowlGeo.dispose();
-    this.bowlCapGeo.dispose();
-    this.rimGeo.dispose();
+    this.stoneGeo.dispose();
     this.flameGeo.dispose();
     this.glowGeo.dispose();
     this.ironMat.dispose();
     this.bowlMat.dispose();
+    this.stoneMat.dispose();
 
     this.emberMat.dispose();
     this.emberTexture.dispose();
