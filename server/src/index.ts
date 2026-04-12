@@ -31,18 +31,31 @@ function corsAllowedOrigins(): string[] {
 
 const corsOrigins = corsAllowedOrigins();
 
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // same-origin / non-browser
+  return corsOrigins.includes(origin);
+}
+
 const prisma = new PrismaClient();
 const app = express();
 const httpServer = createServer(app);
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
-    origin: corsOrigins,
+    origin: (origin, cb) => {
+      cb(null, isAllowedCorsOrigin(origin));
+    },
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: corsOrigins }));
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      cb(null, isAllowedCorsOrigin(origin));
+    },
+  }),
+);
 app.use(express.json());
 
 const roomManager = new RoomManager();
