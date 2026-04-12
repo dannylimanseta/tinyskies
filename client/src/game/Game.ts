@@ -1261,6 +1261,16 @@ export class Game {
       this.handleWorldFull();
     });
 
+    this.socketClient.onBrazierSync((payload) => {
+      this.braziers?.syncBrazierExpiries(payload.expiries);
+    });
+
+    this.socketClient.onBrazierLit((ev) => {
+      if (ev.playerId === this.socketClient?.id) return;
+      this.braziers?.applyServerBurnState(ev.index, ev.burnEndsAt);
+      this.hud.showBrazierRemoteLit(ev.playerName);
+    });
+
     this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle, this.reservationId);
 
     this.stateSync = new StateSync(this.socketClient, this.localPlayer);
@@ -1681,9 +1691,12 @@ export class Game {
 
     if (this.braziers) {
       const playerWorldPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
-      const { justLit, burnProgress } = this.braziers.update(dt, playerWorldPos);
-      if (justLit) {
+      const { newlyLitIndices, burnProgress } = this.braziers.update(dt, playerWorldPos);
+      if (newlyLitIndices.length > 0) {
         this.hud.showBrazierLit();
+        for (const idx of newlyLitIndices) {
+          this.socketClient?.emitBrazierIgnite(idx);
+        }
       }
       this.hud.updateBrazierStatus(burnProgress);
       this.lastBrazierProgress = burnProgress;

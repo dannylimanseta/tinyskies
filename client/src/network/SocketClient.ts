@@ -1,5 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import type {
+  BrazierLitEvent,
+  BrazierSyncPayload,
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
@@ -42,6 +44,10 @@ export class SocketClient {
     this.socket.emit("player:move", state);
   }
 
+  emitBrazierIgnite(index: number) {
+    this.socket.emit("brazier:ignite", index);
+  }
+
   onPlayerJoined(cb: (player: PlayerState) => void) {
     this.socket.on("player:joined", cb);
   }
@@ -60,6 +66,14 @@ export class SocketClient {
 
   onWorldFull(cb: (slug: string) => void) {
     this.socket.on("world:full", cb);
+  }
+
+  onBrazierSync(cb: (payload: BrazierSyncPayload) => void) {
+    this.socket.on("brazier:sync", cb);
+  }
+
+  onBrazierLit(cb: (event: BrazierLitEvent) => void) {
+    this.socket.on("brazier:lit", cb);
   }
 
   disconnect() {

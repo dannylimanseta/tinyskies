@@ -238,6 +238,17 @@ export class HUD {
     setTimeout(() => el.remove(), 2000);
   }
 
+  /** Floating banner when another player in this world lights a brazier. */
+  showBrazierRemoteLit(playerName: string) {
+    const el = document.createElement("div");
+    el.className = "hud-brazier-remote-lit";
+    el.textContent = `${playerName} lit a brazier`;
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-brazier-remote-lit-animate"));
+    setTimeout(() => el.remove(), 2200);
+  }
+
   /** Create the persistent flame-progress tracker (call once after braziers are ready). */
   initBrazierTracker(count: number) {
     if (this.brazierTrackerEl) this.disposeBrazierTracker();
@@ -881,6 +892,60 @@ export class HUD {
           transform: translate(-50%, calc(-50% - 58px));
         }
         .hud-brazier-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
+      .hud-brazier-remote-lit {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(180, 220, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        z-index: 14;
+        max-width: min(90vw, 520px);
+        text-align: center;
+        justify-content: center;
+      }
+      .hud-brazier-remote-lit::before,
+      .hud-brazier-remote-lit::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 2px;
+        flex-shrink: 0;
+      }
+      .hud-brazier-remote-lit::before {
+        background: linear-gradient(90deg, transparent, rgba(160, 200, 255, 0.55));
+      }
+      .hud-brazier-remote-lit::after {
+        background: linear-gradient(90deg, rgba(160, 200, 255, 0.55), transparent);
+      }
+      .hud-brazier-remote-lit-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-brazier-remote-lit {
+          transform: translate(-50%, calc(-50% - 58px));
+          font-size: 0.82rem;
+          gap: 8px;
+        }
+        .hud-brazier-remote-lit::before,
+        .hud-brazier-remote-lit::after { width: 24px; }
+        .hud-brazier-remote-lit-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }

@@ -20,12 +20,13 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import { BRAZIER_BURN_MS, BRAZIER_COUNT } from "@globefly/shared";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt } from "./TerrainSurface";
 import { isLand } from "./SimplexNoise";
 import { addRimLight } from "./RimLight";
 
-export const BRAZIER_COUNT = 5;
-const BURN_DURATION_SEC = 45;
+export { BRAZIER_COUNT };
+const BURN_DURATION_SEC = BRAZIER_BURN_MS / 1000;
 const FADE_IN_DUR       = 0.50; // seconds for pop-in
 const FADE_OUT_DUR      = 3.50; // seconds for slow extinguish
 const LIGHT_RADIUS      = 1.2;
@@ -220,7 +221,8 @@ interface BrazierState {
   /** Bowl-top world position — proximity trigger centre. */
   worldPos: Vector3;
   lit: boolean;
-  burnTimer: number;
+  /** Wall-clock ms when burn ends; null when unlit — matches server + multiplayer sync. */
+  burnEndsAtMs: number | null;
   time: number;
   /** 0 → 1 over FADE_IN_DUR on ignition; drives pop-in. */
   fadeInT: number;
@@ -345,7 +347,7 @@ export class Braziers {
         emberCol: ember.col,
         emberOpacity: ember.opacity,
         worldPos,
-        lit: false, burnTimer: 0, time: 0, fadeInT: 0, fadeOutT: 1,
+        lit: false, burnEndsAtMs: null, time: 0, fadeInT: 0, fadeOutT: 1,
       });
     }
   }
@@ -599,30 +601,70 @@ export class Braziers {
 
   /* ── Per-frame update ────────────────────────────────────────── */
 
-  update(dt: number, playerWorldPos: Vector3): { justLit: boolean; burnProgress: number[] } {
-    let justLit = false;
+  /**
+   * Apply authoritative burn end from the server (local + remote ignitions).
+   */
+  applyServerBurnState(index: number, burnEndsAt: number) {
+    const s = this.states[index];
+    if (!s) return;
+    const remainMs = burnEndsAt - Date.now();
+    if (remainMs <= 0) {
+      s.lit = false;
+      s.burnEndsAtMs = null;
+      s.fadeInT = 0;
+      s.fadeOutT = 1;
+    } else {
+      s.lit = true;
+      s.burnEndsAtMs = burnEndsAt;
+      s.fadeInT = 0;
+      s.fadeOutT = 0;
+    }
+  }
 
-    for (const s of this.states) {
+  /** Full snapshot when joining a world (server expiries are ms epoch). */
+  syncBrazierExpiries(expiries: (number | null)[]) {
+    const now = Date.now();
+    for (let i = 0; i < this.states.length; i++) {
+      const t = expiries[i];
+      const s = this.states[i]!;
+      if (t == null || t <= now) {
+        s.lit = false;
+        s.burnEndsAtMs = null;
+        s.fadeInT = 0;
+        s.fadeOutT = 1;
+      } else {
+        s.lit = true;
+        s.burnEndsAtMs = t;
+        s.fadeInT = 0;
+        s.fadeOutT = 0;
+      }
+    }
+  }
+
+  update(dt: number, playerWorldPos: Vector3): { newlyLitIndices: number[]; burnProgress: number[] } {
+    const newlyLitIndices: number[] = [];
+
+    for (let i = 0; i < this.states.length; i++) {
+      const s = this.states[i]!;
       s.time += dt;
 
-      if (s.lit) {
-        s.burnTimer -= dt;
-        s.fadeInT    = Math.min(1, s.fadeInT + dt / FADE_IN_DUR);
-
-        if (s.burnTimer <= 0) {
-          s.lit       = false;
-          s.burnTimer = 0;
-          s.fadeOutT  = 0;
+      if (s.lit && s.burnEndsAtMs != null) {
+        s.fadeInT = Math.min(1, s.fadeInT + dt / FADE_IN_DUR);
+        const remainSec = (s.burnEndsAtMs - Date.now()) / 1000;
+        if (remainSec <= 0) {
+          s.lit = false;
+          s.burnEndsAtMs = null;
+          s.fadeOutT = 0;
         }
-      } else if (s.fadeOutT < 1) {
+      } else if (!s.lit && s.fadeOutT < 1) {
         s.fadeOutT = Math.min(1, s.fadeOutT + dt / FADE_OUT_DUR);
       } else {
         if (playerWorldPos.distanceTo(s.worldPos) < LIGHT_RADIUS) {
-          s.lit       = true;
-          s.burnTimer = BURN_DURATION_SEC;
-          s.fadeInT   = 0;
-          s.fadeOutT  = 0;
-          justLit     = true;
+          s.lit = true;
+          s.burnEndsAtMs = Date.now() + BRAZIER_BURN_MS;
+          s.fadeInT = 0;
+          s.fadeOutT = 0;
+          newlyLitIndices.push(i);
         }
       }
 
@@ -646,15 +688,15 @@ export class Braziers {
     }
 
     return {
-      justLit,
+      newlyLitIndices,
       // 1.0 = just lit / full burn, linearly decreasing to 0.0 = extinguished.
       // Includes smooth ramp-in during FADE_IN_DUR so the progress bar
       // doesn't jump straight to the full-width value.
-      burnProgress: this.states.map(s =>
-        s.lit
-          ? (s.burnTimer / BURN_DURATION_SEC) * easeOutQuad(s.fadeInT)
-          : 0,
-      ),
+      burnProgress: this.states.map((s) => {
+        if (!s.lit || s.burnEndsAtMs == null) return 0;
+        const remainSec = Math.max(0, (s.burnEndsAtMs - Date.now()) / 1000);
+        return (remainSec / BURN_DURATION_SEC) * easeOutQuad(s.fadeInT);
+      }),
     };
   }
 

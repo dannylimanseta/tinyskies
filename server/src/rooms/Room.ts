@@ -1,10 +1,16 @@
 import type { Socket } from "socket.io";
 import type {
+  BrazierLitEvent,
+  BrazierSyncPayload,
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
   Vehicle,
 } from "@globefly/shared";
+
+/** Must match `BRAZIER_COUNT` / `BRAZIER_BURN_MS` in `@globefly/shared`. */
+const BRAZIER_COUNT = 5;
+const BRAZIER_BURN_MS = 45_000;
 
 interface ConnectedPlayer {
   socket: Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -16,6 +22,11 @@ export const MAX_PLAYERS = 15;
 export class Room {
   readonly slug: string;
   private players = new Map<string, ConnectedPlayer>();
+  /** Per-index wall-clock burn end (ms), or null — shared by everyone in this world room. */
+  private brazierBurnEndsAt: (number | null)[] = Array.from(
+    { length: BRAZIER_COUNT },
+    () => null,
+  );
 
   constructor(slug: string) {
     this.slug = slug;
@@ -79,6 +90,37 @@ export class Room {
 
     for (const [, player] of this.players) {
       player.socket.emit("player:left", socketId);
+    }
+  }
+
+  /** Current burn schedule for clients that just joined (expired slots → null). */
+  getBrazierSyncPayload(): BrazierSyncPayload {
+    const now = Date.now();
+    return {
+      expiries: this.brazierBurnEndsAt.map((t) =>
+        t != null && t > now ? t : null,
+      ),
+    };
+  }
+
+  /** A player lit a brazier (proximity) — broadcast to the whole room. */
+  igniteBrazier(socketId: string, index: number) {
+    if (!Number.isInteger(index) || index < 0 || index >= BRAZIER_COUNT) return;
+    const player = this.players.get(socketId);
+    if (!player) return;
+
+    const burnEndsAt = Date.now() + BRAZIER_BURN_MS;
+    this.brazierBurnEndsAt[index] = burnEndsAt;
+
+    const payload: BrazierLitEvent = {
+      index,
+      playerId: socketId,
+      playerName: player.state.name,
+      burnEndsAt,
+    };
+
+    for (const [, p] of this.players) {
+      p.socket.emit("brazier:lit", payload);
     }
   }
 

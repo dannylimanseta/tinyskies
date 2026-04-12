@@ -38,6 +38,24 @@ export interface WorldConfig {
   terrainType: string;
 }
 
+/** Matches client `Braziers` placement count. */
+export const BRAZIER_COUNT = 5;
+/** Brazier burn duration — keep in sync with client flame timer. */
+export const BRAZIER_BURN_MS = 45_000;
+
+export interface BrazierSyncPayload {
+  /** ms epoch when burn ends, or null if unlit */
+  expiries: (number | null)[];
+}
+
+export interface BrazierLitEvent {
+  index: number;
+  playerId: string;
+  playerName: string;
+  /** ms epoch when this brazier's burn ends */
+  burnEndsAt: number;
+}
+
 export interface ServerToClientEvents {
   "player:joined": (player: PlayerState) => void;
   "player:left": (playerId: string) => void;
@@ -45,6 +63,8 @@ export interface ServerToClientEvents {
   "world:state": (players: PlayerState[]) => void;
   "world:config": (config: WorldConfig) => void;
   "world:full": (slug: string) => void;
+  "brazier:sync": (payload: BrazierSyncPayload) => void;
+  "brazier:lit": (event: BrazierLitEvent) => void;
 }
 
 export interface ClientToServerEvents {
@@ -55,4 +75,5 @@ export interface ClientToServerEvents {
     vehicle?: Vehicle,
     reservationId?: string,
   ) => void;
+  "brazier:ignite": (index: number) => void;
 }

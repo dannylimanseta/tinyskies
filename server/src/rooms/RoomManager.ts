@@ -74,8 +74,14 @@ export class RoomManager {
       return;
     }
 
+    socket.emit("brazier:sync", room.getBrazierSyncPayload());
+
     socket.on("player:move", (moveState) => {
       room.updatePlayer(socket.id, moveState);
+    });
+
+    socket.on("brazier:ignite", (index: number) => {
+      room.igniteBrazier(socket.id, index);
     });
 
     socket.on("disconnect", () => {
