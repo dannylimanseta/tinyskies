@@ -2,6 +2,7 @@ import {
   Mesh,
   InstancedMesh,
   SphereGeometry,
+  PlaneGeometry,
   BoxGeometry,
   CylinderGeometry,
   MeshPhongMaterial,
@@ -3368,6 +3369,69 @@ transformed.z += sway2;`,
       lanternGeo.translate(0, lanternY + lanternH / 2, 0);
       const lanternMat = new MeshPhongMaterial({ color: 0xfff8dd, emissive: 0xffdd44, emissiveIntensity: 0.8, transparent: true, opacity: 0.9 });
       lighthouse.add(new Mesh(lanternGeo, lanternMat));
+      
+      // Soft warm glow around the lantern (billboard-like sprite)
+      const glowSize = lanternR * 12.0;
+      const glowGeo = new PlaneGeometry(glowSize, glowSize);
+      const glowMat = new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            // Billboard to camera
+            vec4 mvPosition = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+            mvPosition.xy += position.xy;
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          void main() {
+            float dist = distance(vUv, vec2(0.5));
+            float alpha = smoothstep(0.5, 0.0, dist);
+            // Warm orange-yellow glow
+            vec3 color = vec3(1.0, 0.7, 0.2);
+            // Quadratic falloff for softer edge
+            gl_FragColor = vec4(color, alpha * alpha * 0.6);
+          }
+        `
+      });
+      const glowMesh = new Mesh(glowGeo, glowMat);
+      glowMesh.position.set(0, lanternY + lanternH / 2, 0);
+      lighthouse.add(glowMesh);
+      
+      // Soft warm glow on the ground (baked light decal)
+      const groundGlowSize = baseR * 8.0;
+      const groundGlowGeo = new PlaneGeometry(groundGlowSize, groundGlowSize);
+      const groundGlowMat = new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          void main() {
+            float dist = distance(vUv, vec2(0.5));
+            float alpha = smoothstep(0.5, 0.0, dist);
+            vec3 color = vec3(1.0, 0.6, 0.1); // Warm orange
+            gl_FragColor = vec4(color, alpha * alpha * 0.4);
+          }
+        `
+      });
+      const groundGlowMesh = new Mesh(groundGlowGeo, groundGlowMat);
+      groundGlowMesh.rotation.x = -Math.PI / 2;
+      groundGlowMesh.position.set(0, 0.001, 0); // Just above ground
+      lighthouse.add(groundGlowMesh);
       
       // Lantern struts
       const strutGeo = new CylinderGeometry(0.001, 0.001, lanternH, 4);
