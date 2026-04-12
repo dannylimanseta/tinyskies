@@ -1086,86 +1086,123 @@ transformed.z += sway2;`,
   }
 
   private createHouseGeo(type: number): BufferGeometry {
-    const wallColor = new Color(0xf0ece4);
-    const domeColors = [new Color(0x2866b0), new Color(0x3478c0), new Color(0x1e5898), new Color(0x4088c8)];
+    const wallColor = new Color(0xf4f0e8); // Slightly warmer/brighter plaster
+    const domeColors = [
+      new Color(0x2866b0), // Classic blue
+      new Color(0x3478c0), // Lighter blue
+      new Color(0x1e5898), // Darker blue
+      new Color(0xc04040), // Terracotta red accent
+    ];
     const domeColor = domeColors[type % domeColors.length];
     const flatRoofColor = new Color(0xe8e4dc);
-    const doorColor = new Color(0x4a7ab5);
-    const windowColor = new Color(0x5090c0);
+    const doorColor = new Color(0x5a4030); // Wood door
+    const windowColor = new Color(0x1a2530); // Dark glass
+    const frameColor = new Color(0x8e8984); // Stone window/door frames
 
     const parts: { geo: BufferGeometry; color: Color }[] = [];
 
+    // Helper to add framed windows
+    const addWindow = (w: number, h: number, d: number, px: number, py: number, pz: number) => {
+      const frameThick = 0.04;
+      const frameDepth = d * 1.2;
+      const frame = new BoxGeometry(w + frameThick * 2, h + frameThick * 2, frameDepth);
+      frame.translate(px, py, pz);
+      parts.push({ geo: frame, color: frameColor });
+
+      const win = new BoxGeometry(w, h, d * 1.4); // slightly deeper so it sticks out of frame
+      win.translate(px, py, pz);
+      parts.push({ geo: win, color: windowColor });
+    };
+
+    // Helper to add framed doors
+    const addDoor = (w: number, h: number, d: number, px: number, py: number, pz: number) => {
+      const frameThick = 0.05;
+      const frameDepth = d * 1.2;
+      const frame = new BoxGeometry(w + frameThick * 2, h + frameThick, frameDepth);
+      frame.translate(px, py + frameThick * 0.5, pz);
+      parts.push({ geo: frame, color: frameColor });
+
+      const door = new BoxGeometry(w, h, d * 1.4);
+      door.translate(px, py, pz);
+      parts.push({ geo: door, color: doorColor });
+    };
+
     if (type === 0) {
+      // Square house with dome
       const wall = new BoxGeometry(1, 0.8, 1);
       wall.translate(0, 0.4, 0);
       parts.push({ geo: wall, color: wallColor });
 
-      const dome = new SphereGeometry(0.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      // Roof trim/cornice
+      const cornice = new BoxGeometry(1.08, 0.06, 1.08);
+      cornice.translate(0, 0.8, 0);
+      parts.push({ geo: cornice, color: flatRoofColor });
+
+      const dome = new SphereGeometry(0.45, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
       dome.translate(0, 0.8, 0);
       parts.push({ geo: dome, color: domeColor });
 
-      const door = new BoxGeometry(0.22, 0.36, 0.05);
-      door.translate(0, 0.18, 0.525);
-      parts.push({ geo: door, color: doorColor });
+      // Dome finial
+      const finial = new CylinderGeometry(0.02, 0.04, 0.15, 6);
+      finial.translate(0, 1.3, 0);
+      parts.push({ geo: finial, color: frameColor });
 
-      const winL = new BoxGeometry(0.05, 0.16, 0.16);
-      winL.translate(-0.525, 0.5, 0);
-      parts.push({ geo: winL, color: windowColor });
-      const winR = new BoxGeometry(0.05, 0.16, 0.16);
-      winR.translate(0.525, 0.5, 0);
-      parts.push({ geo: winR, color: windowColor });
+      addDoor(0.22, 0.36, 0.05, 0, 0.18, 0.5);
+      addWindow(0.16, 0.22, 0.05, -0.5, 0.45, 0);
+      addWindow(0.16, 0.22, 0.05, 0.5, 0.45, 0);
+
     } else if (type === 1) {
+      // L-shaped or stepped house
       const base = new BoxGeometry(1.2, 0.6, 0.9);
       base.translate(0, 0.3, 0);
       parts.push({ geo: base, color: wallColor });
 
-      const roof = new BoxGeometry(1.3, 0.08, 1.0);
+      const roof = new BoxGeometry(1.28, 0.08, 0.98);
       roof.translate(0, 0.64, 0);
       parts.push({ geo: roof, color: flatRoofColor });
 
-      const upper = new BoxGeometry(0.6, 0.45, 0.5);
-      upper.translate(0.2, 0.925, 0);
+      const upper = new BoxGeometry(0.6, 0.45, 0.6);
+      upper.translate(0.2, 0.925, 0.05);
       parts.push({ geo: upper, color: wallColor });
 
-      const upperRoof = new BoxGeometry(0.7, 0.06, 0.6);
-      upperRoof.translate(0.2, 1.18, 0);
+      const upperRoof = new BoxGeometry(0.68, 0.06, 0.68);
+      upperRoof.translate(0.2, 1.18, 0.05);
       parts.push({ geo: upperRoof, color: flatRoofColor });
 
-      const door = new BoxGeometry(0.22, 0.3, 0.05);
-      door.translate(-0.2, 0.15, 0.475);
-      parts.push({ geo: door, color: doorColor });
-
-      const win1 = new BoxGeometry(0.14, 0.14, 0.05);
-      win1.translate(0.25, 0.4, 0.475);
-      parts.push({ geo: win1, color: windowColor });
-      const win2 = new BoxGeometry(0.14, 0.14, 0.05);
-      win2.translate(0.2, 0.85, 0.275);
-      parts.push({ geo: win2, color: windowColor });
-    } else if (type === 2) {
-      const wall = new BoxGeometry(0.7, 1.0, 0.7);
-      wall.translate(0, 0.5, 0);
-      parts.push({ geo: wall, color: wallColor });
-
-      const dome = new SphereGeometry(0.4, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-      dome.translate(0, 1.0, 0);
+      // Small dome on upper roof
+      const dome = new SphereGeometry(0.25, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.translate(0.2, 1.18, 0.05);
       parts.push({ geo: dome, color: domeColor });
 
-      const door = new BoxGeometry(0.18, 0.4, 0.05);
-      door.translate(0, 0.2, 0.375);
-      parts.push({ geo: door, color: doorColor });
+      addDoor(0.22, 0.3, 0.05, -0.2, 0.15, 0.45);
+      addWindow(0.16, 0.2, 0.05, 0.3, 0.35, 0.45);
+      addWindow(0.14, 0.18, 0.05, 0.2, 0.9, 0.35);
 
-      const winF = new BoxGeometry(0.12, 0.2, 0.05);
-      winF.translate(0, 0.7, 0.375);
-      parts.push({ geo: winF, color: windowColor });
-      const winB = new BoxGeometry(0.12, 0.2, 0.05);
-      winB.translate(0, 0.7, -0.375);
-      parts.push({ geo: winB, color: windowColor });
+    } else if (type === 2) {
+      // Tall tower house
+      const wall = new BoxGeometry(0.7, 1.1, 0.7);
+      wall.translate(0, 0.55, 0);
+      parts.push({ geo: wall, color: wallColor });
+
+      const cornice = new BoxGeometry(0.78, 0.06, 0.78);
+      cornice.translate(0, 1.1, 0);
+      parts.push({ geo: cornice, color: flatRoofColor });
+
+      const dome = new SphereGeometry(0.35, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.translate(0, 1.1, 0);
+      parts.push({ geo: dome, color: domeColor });
+
+      addDoor(0.18, 0.4, 0.05, 0, 0.2, 0.35);
+      addWindow(0.14, 0.24, 0.05, 0, 0.75, 0.35);
+      addWindow(0.14, 0.24, 0.05, 0, 0.75, -0.35);
+
     } else {
+      // Complex multi-level house
       const base = new BoxGeometry(0.9, 0.5, 0.8);
       base.translate(0, 0.25, 0);
       parts.push({ geo: base, color: wallColor });
 
-      const baseRoof = new BoxGeometry(1.0, 0.06, 0.9);
+      const baseRoof = new BoxGeometry(0.98, 0.06, 0.88);
       baseRoof.translate(0, 0.53, 0);
       parts.push({ geo: baseRoof, color: flatRoofColor });
 
@@ -1173,7 +1210,7 @@ transformed.z += sway2;`,
       mid.translate(-0.1, 0.785, 0.05);
       parts.push({ geo: mid, color: wallColor });
 
-      const midRoof = new BoxGeometry(0.65, 0.06, 0.65);
+      const midRoof = new BoxGeometry(0.63, 0.06, 0.63);
       midRoof.translate(-0.1, 1.04, 0.05);
       parts.push({ geo: midRoof, color: flatRoofColor });
 
@@ -1181,20 +1218,13 @@ transformed.z += sway2;`,
       top.translate(0.05, 1.245, 0);
       parts.push({ geo: top, color: wallColor });
 
-      const dome = new SphereGeometry(0.22, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      const dome = new SphereGeometry(0.22, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
       dome.translate(0.05, 1.42, 0);
       parts.push({ geo: dome, color: domeColor });
 
-      const door = new BoxGeometry(0.2, 0.28, 0.05);
-      door.translate(0.15, 0.14, 0.425);
-      parts.push({ geo: door, color: doorColor });
-
-      const win1 = new BoxGeometry(0.12, 0.12, 0.05);
-      win1.translate(-0.2, 0.35, 0.425);
-      parts.push({ geo: win1, color: windowColor });
-      const win2 = new BoxGeometry(0.05, 0.12, 0.12);
-      win2.translate(-0.375, 0.7, 0.05);
-      parts.push({ geo: win2, color: windowColor });
+      addDoor(0.2, 0.28, 0.05, 0.15, 0.14, 0.4);
+      addWindow(0.14, 0.16, 0.05, -0.2, 0.35, 0.4);
+      addWindow(0.12, 0.16, 0.05, -0.375, 0.75, 0.05);
     }
 
     return this.mergeColoredParts(parts);
