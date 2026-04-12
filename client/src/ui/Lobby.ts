@@ -1,5 +1,4 @@
 import type { Vehicle } from "@globefly/shared";
-import { CAMPSITE_HOME_ENABLED } from "../config/features";
 
 /* ── Whimsical Name Generator ──────────────────────────────────────── */
 
@@ -40,7 +39,6 @@ export class Lobby {
   private container: HTMLElement;
   private el: HTMLDivElement;
   private options: LobbyOptions;
-  private selectedVehicle: Vehicle = "plane";
 
   constructor(container: HTMLElement, options: LobbyOptions) {
     this.container = container;
@@ -50,7 +48,7 @@ export class Lobby {
     this.buildUI();
   }
 
-  /** Enter fullscreen on the GO click (user gesture). Browser Esc exits fullscreen. */
+  /** Enter fullscreen on Start (user gesture). Browser Esc exits fullscreen. */
   private static requestFullscreen(): void {
     const el = document.documentElement as HTMLElement & {
       webkitRequestFullscreen?: () => Promise<void>;
@@ -67,50 +65,10 @@ export class Lobby {
         <div class="lobby-header">
           <h1 class="lobby-title">Tiny Skies</h1>
           <p class="lobby-username">Hello, <span class="lobby-name" contenteditable="true" spellcheck="false">${this.options.playerName}</span><button type="button" class="lobby-edit-btn" aria-label="Edit name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button></p>
-        </div>
-        <div class="lobby-bar">
-          <div class="lobby-vehicles">
-            <div class="lobby-vehicle-rg" role="radiogroup" aria-label="Vehicle">
-              <button type="button" class="lobby-vbtn active" data-vehicle="plane" aria-checked="true">
-                <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
-                <span class="lobby-vlabel">Plane</span>
-              </button>
-              <button type="button" class="lobby-vbtn" data-vehicle="boat" aria-checked="false">
-                <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></svg></span>
-                <span class="lobby-vlabel">Boat</span>
-              </button>
-              <button type="button" class="lobby-vbtn" data-vehicle="carpet" aria-checked="false">
-                <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5Q12 15.5 21 17.5L20 11.5Q12 9 4 11.5Z"/><path d="M12 10v7"/><path d="M8 13.5h8"/><path d="M5 17.5v2M9 17.5v2M12 17.5v2M15 17.5v2M19 17.5v2"/><path d="M20 4.5v2M19 5.5h2"/><path d="M5 6v1.5M4.25 6.75h1.5"/><path d="M15.5 7v1M15 7.5h1"/></svg></span>
-                <span class="lobby-vlabel">Carpet</span>
-              </button>
-            </div>
-            ${
-              CAMPSITE_HOME_ENABLED
-                ? `<button type="button" class="lobby-vbtn lobby-home" id="btn-camp" aria-label="Start at campsite">
-              <span class="lobby-vicon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 20h18Z"/><path d="M9 20v-6l3-2 3 2v6"/></svg></span>
-              <span class="lobby-vlabel">Home</span>
-            </button>`
-                : ""
-            }
-          </div>
-          <button type="button" class="lobby-fly" id="btn-fly">GO</button>
+          <button type="button" class="lobby-start" id="btn-start">START GAME</button>
         </div>
       </div>
     `;
-
-    this.el.querySelectorAll(".lobby-vbtn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const v = (btn as HTMLButtonElement).dataset.vehicle as Vehicle;
-        if (v === "plane" || v === "boat" || v === "carpet") {
-          this.selectedVehicle = v;
-          this.el.querySelectorAll(".lobby-vbtn").forEach((b) => {
-            const active = (b as HTMLElement).dataset.vehicle === v;
-            b.classList.toggle("active", active);
-            b.setAttribute("aria-checked", active ? "true" : "false");
-          });
-        }
-      });
-    });
 
     const nameEl = this.el.querySelector(".lobby-name") as HTMLElement;
     const editBtn = this.el.querySelector(".lobby-edit-btn") as HTMLElement;
@@ -159,24 +117,12 @@ export class Lobby {
       });
     }
 
-    const flyBtn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
-    const campBtn = this.el.querySelector("#btn-camp") as HTMLButtonElement | null;
+    const startBtn = this.el.querySelector("#btn-start") as HTMLButtonElement;
 
-    const lockLobbyButtons = () => {
-      flyBtn.disabled = true;
-      if (campBtn) campBtn.disabled = true;
-    };
-
-    campBtn?.addEventListener("click", () => {
-      lockLobbyButtons();
+    startBtn.addEventListener("click", () => {
+      startBtn.disabled = true;
       Lobby.requestFullscreen();
-      this.options.onPlay(this.selectedVehicle, { startAtCampsite: true });
-    });
-
-    flyBtn.addEventListener("click", () => {
-      lockLobbyButtons();
-      Lobby.requestFullscreen();
-      this.options.onPlay(this.selectedVehicle);
+      this.options.onPlay("plane");
     });
 
     this.applyStyles();
@@ -186,7 +132,6 @@ export class Lobby {
     this.container.appendChild(this.el);
     requestAnimationFrame(() => {
       this.el.querySelector(".lobby-header")?.classList.add("visible");
-      this.el.querySelector(".lobby-bar")?.classList.add("visible");
     });
   }
 
@@ -232,7 +177,11 @@ export class Lobby {
       /* ── Header ─────────────────────────────────────── */
       .lobby-header {
         position: fixed;
-        top: 15vh; left: 0; right: 0;
+        top: 24vh;
+        left: 0; right: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         text-align: center;
         pointer-events: auto;
         opacity: 0;
@@ -253,6 +202,7 @@ export class Lobby {
       }
       .lobby-username {
         margin: 8px 0 0;
+        width: 100%;
         font-size: 1.2rem;
         font-weight: 400;
         color: rgba(255, 255, 255, 1.0);
@@ -289,137 +239,77 @@ export class Lobby {
         color: rgba(255, 255, 255, 0.8);
       }
 
-      /* ── Bottom Bar ─────────────────────────────────── */
-      .lobby-bar {
-        position: fixed;
-        bottom: max(62px, calc(46px + env(safe-area-inset-bottom)));
-        left: 50%;
-        transform: translateX(-50%) translateY(30px);
-        max-width: 480px;
-        width: calc(100% - 48px);
-        padding: 10px 12px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(32px) saturate(120%);
-        -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-        pointer-events: auto;
-        opacity: 0;
-        transition: opacity 0.6s ease-out, transform 0.6s ease-out;
-        transition-delay: 0.6s;
-      }
-      .lobby-bar.visible {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-      }
-      .lobby-overlay.fade-out .lobby-bar {
-        transform: translateX(-50%) translateY(20px);
-      }
-
-      /* ── Vehicle row (+ optional Home): equal columns, even gaps (rg uses display:contents) ─ */
-      .lobby-vehicles {
-        display: flex;
-        gap: 4px;
-        flex: 1;
-        min-width: 0;
-        align-items: stretch;
-      }
-      .lobby-vehicle-rg {
-        display: contents;
-      }
-      .lobby-vbtn {
-        flex: 1;
-        min-width: 0;
-        display: flex; flex-direction: column; align-items: center; gap: 4px;
-        padding: 10px 12px;
-        border: 2px solid transparent;
-        border-radius: 10px;
+      .lobby-start {
+        margin: 2.85rem 0 0;
+        padding: 6px 8px;
+        border: none;
+        border-radius: 0;
         background: transparent;
         color: #ffffff;
-        cursor: pointer;
-        transition: background 0.2s, color 0.2s, box-shadow 0.2s, border-color 0.2s;
         font-family: inherit;
-      }
-      .lobby-vbtn:hover:not(.active):not(:disabled) {
-        background: rgba(255, 255, 255, 0.12);
-        color: #ffffff;
-      }
-      .lobby-vbtn.active {
-        background: rgba(255, 255, 255, 1.0);
-        color: rgba(20, 30, 50, 0.9);
-      }
-      .lobby-vbtn:disabled {
-        opacity: 0.5;
-        cursor: default;
-      }
-      .lobby-vicon {
-        display: flex;
+        font-size: clamp(1rem, 4vw, 1.15rem);
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        cursor: pointer;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        line-height: 0;
+        gap: 12px;
+        white-space: nowrap;
+        transition: transform 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
       }
-      .lobby-vicon svg {
-        width: 24px;
-        height: 24px;
+      /* Match HUD floating text (.hud-xp-popup) — lines hidden until hover / press / focus. */
+      .lobby-start::before,
+      .lobby-start::after {
+        content: '';
+        display: block;
+        width: 48px;
+        height: 2px;
         flex-shrink: 0;
+        opacity: 0;
+        transition: opacity 0.3s ease-out;
       }
-      .lobby-vlabel {
-        font-size: 0.85rem;
-        font-weight: 600;
-        letter-spacing: 0.03em;
+      .lobby-start::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5));
       }
-
-      /* ── FLY Button ─────────────────────────────────── */
-      .lobby-fly {
-        align-self: stretch;
-        padding: 0 32px;
-        border: none;
-        border-radius: 10px;
-        background: #000000;
-        color: #ffffff;
-        font-family: inherit;
-        font-size: 1rem;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        cursor: pointer;
-        transition: background 0.2s, transform 0.15s, box-shadow 0.3s;
-        animation: fly-pulse 2s ease-in-out infinite;
+      .lobby-start::after {
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.5), transparent);
       }
-      .lobby-fly:hover {
-        background: #1a1a1a;
-        transform: scale(1.04);
+      .lobby-start:hover:not(:disabled)::before,
+      .lobby-start:hover:not(:disabled)::after,
+      .lobby-start:active:not(:disabled)::before,
+      .lobby-start:active:not(:disabled)::after,
+      .lobby-start:focus-visible:not(:disabled)::before,
+      .lobby-start:focus-visible:not(:disabled)::after {
+        opacity: 1;
       }
-      .lobby-fly:active {
-        transform: scale(0.97);
+      .lobby-start:active:not(:disabled) {
+        transform: scale(0.98);
       }
-      .lobby-fly:disabled {
-        opacity: 0.6;
+      .lobby-start:disabled {
+        opacity: 0.45;
         cursor: default;
-        animation: none;
-        transform: none;
       }
-      @keyframes fly-pulse {
-        0%, 100% { box-shadow: 0 0 8px rgba(0, 0, 0, 0.35); }
-        50% { box-shadow: 0 0 18px rgba(0, 0, 0, 0.55); }
+      .lobby-start:disabled::before,
+      .lobby-start:disabled::after {
+        opacity: 0 !important;
       }
 
       @media (max-width: 480px) {
+        .lobby-header { top: max(22vh, calc(env(safe-area-inset-top, 0px) + 16vh)); }
         .lobby-username { font-size: 1rem; }
         .lobby-edit-btn { padding: 8px 12px; min-width: 44px; min-height: 44px; }
-        .lobby-bar {
-          bottom: max(46px, calc(38px + env(safe-area-inset-bottom)));
-          padding: 8px 10px;
-          width: calc(100% - 32px);
-          gap: 6px;
+        .lobby-start {
+          margin-top: 2.6rem;
+          padding: 10px 12px;
+          min-height: 44px;
+          font-size: 0.95rem;
+          gap: 8px;
         }
-        .lobby-vbtn { padding: 10px 6px; min-height: 44px; }
-        .lobby-vicon svg { width: 22px; height: 22px; }
-        .lobby-vlabel { font-size: 0.75rem; }
-        .lobby-fly { padding: 0 20px; font-size: 0.9rem; min-height: 44px; }
+        .lobby-start::before,
+        .lobby-start::after { width: 32px; }
       }
     `;
     document.head.appendChild(style);

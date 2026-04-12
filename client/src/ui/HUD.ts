@@ -435,7 +435,7 @@ export class HUD {
         content: '';
         display: block;
         width: 48px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-xp-popup::before {
@@ -478,7 +478,7 @@ export class HUD {
         content: '';
         display: block;
         width: 36px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-flock-celebration::before {
@@ -525,7 +525,7 @@ export class HUD {
         content: '';
         display: block;
         width: 36px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-rainbow-celebration::before {
@@ -572,7 +572,7 @@ export class HUD {
         content: '';
         display: block;
         width: 36px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-lantern-celebration::before {
@@ -638,7 +638,7 @@ export class HUD {
         content: '';
         display: block;
         width: 36px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-firefly-celebration::before {
@@ -685,7 +685,7 @@ export class HUD {
         content: '';
         display: block;
         width: 36px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-volcano-celebration::before {
@@ -727,7 +727,7 @@ export class HUD {
         content: '';
         display: block;
         width: 64px;
-        height: 1px;
+        height: 2px;
         flex-shrink: 0;
       }
       .hud-levelup::before {
