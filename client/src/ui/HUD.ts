@@ -260,6 +260,17 @@ export class HUD {
     setTimeout(() => el.remove(), 3200);
   }
 
+  /** After shield pause ends — moon approach advances again. */
+  showBrazierMoonResumed() {
+    const el = document.createElement("div");
+    el.className = "hud-brazier-moon-resumed";
+    el.textContent = "The moon has resumed its movement.";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-brazier-moon-resumed-animate"));
+    setTimeout(() => el.remove(), 3200);
+  }
+
   /** Create the persistent flame-progress tracker (call once after braziers are ready). */
   initBrazierTracker(count: number) {
     if (this.brazierTrackerEl) this.disposeBrazierTracker();
@@ -992,6 +1003,41 @@ export class HUD {
           font-size: 0.82rem;
         }
         .hud-brazier-moon-slowed-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
+      .hud-brazier-moon-resumed {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.92rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.35;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(160, 210, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        transition: opacity 0.4s ease-out, transform 0.8s ease-out;
+        pointer-events: none;
+        white-space: normal;
+        max-width: min(92vw, 420px);
+        text-align: center;
+        padding: 0 12px;
+        z-index: 14;
+      }
+      .hud-brazier-moon-resumed-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-brazier-moon-resumed {
+          transform: translate(-50%, calc(-50% - 58px));
+          font-size: 0.82rem;
+        }
+        .hud-brazier-moon-resumed-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }

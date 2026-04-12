@@ -58,6 +58,8 @@ export class MoonThreat {
   readonly group = new Group();
   /** Fired once when impact shockwave rings are created (moon hits globe). */
   onShockwaveSpawn?: () => void;
+  /** Fired once when brazier-shield approach pause ends and the moon advances again. */
+  onApproachPauseEnd?: () => void;
   private elapsed = 0;
   private loaded = false;
   private baseScale = 1;
@@ -591,8 +593,12 @@ if (uMolten > 0.01) {
     }
 
     if (this.approachPauseRemaining > 0) {
+      const beforePause = this.approachPauseRemaining;
       this.approachPauseRemaining = Math.max(0, this.approachPauseRemaining - dt);
       this.applyPreImpactApproach(dt, false);
+      if (beforePause > 0 && this.approachPauseRemaining <= 0) {
+        this.onApproachPauseEnd?.();
+      }
       return;
     }
 

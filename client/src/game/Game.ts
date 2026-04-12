@@ -541,6 +541,9 @@ export class Game {
     this.moonThreat.onShockwaveSpawn = () => {
       this.audioManager.playSFX(EXPLOSION_SFX_NAME, EXPLOSION_SFX_VOLUME);
     };
+    this.moonThreat.onApproachPauseEnd = () => {
+      this.hud.showBrazierMoonResumed();
+    };
     this.moonThreat.addTo(this.scene);
 
     this.starfield = new Starfield();
