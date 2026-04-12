@@ -64,7 +64,15 @@ export class Lobby {
       <div class="lobby-overlay">
         <div class="lobby-header">
           <h1 class="lobby-title">Tiny Skies</h1>
-          <p class="lobby-username">Hello, <span class="lobby-name" contenteditable="true" spellcheck="false">${this.options.playerName}</span><button type="button" class="lobby-edit-btn" aria-label="Edit name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button></p>
+          <div class="lobby-username">
+            <div class="lobby-greeting-row">
+              <span class="lobby-greeting-hi">Hello, </span>
+              <span class="lobby-name-wrap">
+                <span class="lobby-name" contenteditable="true" spellcheck="false">${this.options.playerName}</span>
+                <button type="button" class="lobby-edit-btn" aria-label="Edit name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+              </span>
+            </div>
+          </div>
           <button type="button" class="lobby-start" id="btn-start">START GAME</button>
         </div>
       </div>
@@ -177,7 +185,7 @@ export class Lobby {
       /* ── Header ─────────────────────────────────────── */
       .lobby-header {
         position: fixed;
-        top: 24vh;
+        top: 32vh;
         left: 0; right: 0;
         display: flex;
         flex-direction: column;
@@ -203,21 +211,37 @@ export class Lobby {
       .lobby-username {
         margin: 8px 0 0;
         width: 100%;
+        padding: 0 40px;
+        box-sizing: border-box;
         font-size: 1.2rem;
         font-weight: 400;
         color: rgba(255, 255, 255, 1.0);
         display: flex;
-        align-items: center;
         justify-content: center;
-        gap: 0;
+        align-items: center;
+      }
+      .lobby-greeting-row {
+        display: inline-flex;
+        align-items: baseline;
+        flex-wrap: nowrap;
+        max-width: calc(100% - 48px);
+      }
+      .lobby-greeting-hi {
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .lobby-name-wrap {
+        position: relative;
+        display: inline-block;
+        min-width: 40px;
       }
       .lobby-name {
         font-weight: 600;
         color: rgba(255, 255, 255, 1.0);
         outline: none;
-        border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+        border-bottom: 2px dashed rgba(255, 255, 255, 0.5);
         padding: 0 2px;
-        min-width: 40px;
+        min-width: 32px;
         cursor: text;
         transition: border-color 0.2s;
       }
@@ -225,11 +249,16 @@ export class Lobby {
         border-bottom-color: rgba(255, 255, 255, 0.7);
       }
       .lobby-edit-btn {
+        position: absolute;
+        left: 100%;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-left: 6px;
         background: none;
         border: none;
         color: rgba(255, 255, 255, 0.4);
         cursor: pointer;
-        padding: 0 6px;
+        padding: 4px 6px;
         transition: color 0.2s;
         line-height: 1;
         display: inline-flex;
@@ -298,8 +327,8 @@ export class Lobby {
       }
 
       @media (max-width: 480px) {
-        .lobby-header { top: max(22vh, calc(env(safe-area-inset-top, 0px) + 16vh)); }
-        .lobby-username { font-size: 1rem; }
+        .lobby-header { top: max(28vh, calc(env(safe-area-inset-top, 0px) + 20vh)); }
+        .lobby-username { font-size: 1rem; padding: 0 20px; }
         .lobby-edit-btn { padding: 8px 12px; min-width: 44px; min-height: 44px; }
         .lobby-start {
           margin-top: 2.6rem;
