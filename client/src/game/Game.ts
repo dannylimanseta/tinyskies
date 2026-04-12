@@ -57,6 +57,7 @@ import { RainbowArch, RAINBOW_COUNT, RAINBOW_XP } from "./RainbowArch";
 import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingLanterns";
 import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
+import { Braziers, BRAZIER_COUNT } from "./Braziers";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper } from "./PackageDialogue";
@@ -199,6 +200,7 @@ export class Game {
   private lanternClusters: FloatingLanterns[] = [];
   private fireflyClusters: FireflyCluster[] = [];
   private volcanoes: Volcano[] = [];
+  private braziers: Braziers | null = null;
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -761,6 +763,9 @@ export class Game {
       this.fireflyClusters.push(new FireflyCluster(this.scene, globeRadius, seed, terrainType, fi));
     }
 
+    this.braziers = new Braziers(this.scene, globeRadius, seed, terrainType);
+    this.hud.initBrazierTracker(BRAZIER_COUNT);
+
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     landmarkRegistry.registerLighthouses(this.globe.lighthouseCenters, seed);
@@ -909,6 +914,9 @@ export class Game {
     this.lanternClusters = [];
     for (const f of this.fireflyClusters) f.dispose();
     this.fireflyClusters = [];
+    this.braziers?.dispose();
+    this.braziers = null;
+    this.hud.disposeBrazierTracker();
     this.campsiteScene?.dispose();
     this.campsiteScene = null;
     this.flockFormationHUD?.dispose();
@@ -1658,6 +1666,15 @@ export class Game {
           this.cameraRig.shake();
         }
       }
+    }
+
+    if (this.braziers) {
+      const playerWorldPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      const { justLit, burnProgress } = this.braziers.update(dt, playerWorldPos);
+      if (justLit) {
+        this.hud.showBrazierLit();
+      }
+      this.hud.updateBrazierStatus(burnProgress);
     }
 
     /* ── Campsite landing detection ─────────────────────── */

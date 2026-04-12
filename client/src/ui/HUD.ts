@@ -23,6 +23,11 @@ export class HUD {
   private entranceDone = false;
   private campsitePromptEl: HTMLDivElement | null = null;
 
+  private brazierTrackerEl: HTMLElement | null = null;
+  private brazierIconEls: HTMLElement[] = [];
+  private brazierFillEls: Element[] = [];
+  private brazierTrackerShown = false;
+
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
     this.el.id = "hud";
@@ -221,6 +226,82 @@ export class HUD {
 
     requestAnimationFrame(() => el.classList.add("hud-volcano-celebration-animate"));
     setTimeout(() => el.remove(), 1600);
+  }
+
+  showBrazierLit() {
+    const el = document.createElement("div");
+    el.className = "hud-brazier-celebration";
+    el.textContent = "Brazier lit!";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-brazier-celebration-animate"));
+    setTimeout(() => el.remove(), 2000);
+  }
+
+  /** Create the persistent flame-progress tracker (call once after braziers are ready). */
+  initBrazierTracker(count: number) {
+    if (this.brazierTrackerEl) this.disposeBrazierTracker();
+
+    const flamePath = `M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z`;
+    const svgHtml = (cls: string) =>
+      `<svg viewBox="0 0 24 24" fill="currentColor" class="${cls}" aria-hidden="true"><path d="${flamePath}"/></svg>`;
+
+    const tracker = document.createElement("div");
+    tracker.className = "hud-brazier-tracker";
+    tracker.setAttribute("aria-label", "Brazier status");
+
+    this.brazierIconEls = [];
+    this.brazierFillEls = [];
+
+    for (let i = 0; i < count; i++) {
+      const icon = document.createElement("span");
+      icon.className = "hud-brazier-tracker-icon";
+      // Ghost = always-visible dim outline; fill = clipped bright layer driven by JS
+      icon.innerHTML = svgHtml("hud-bt-ghost") + svgHtml("hud-bt-fill");
+      tracker.appendChild(icon);
+      this.brazierIconEls.push(icon);
+      this.brazierFillEls.push(icon.querySelector(".hud-bt-fill")!);
+    }
+
+    this.el.appendChild(tracker);
+    this.brazierTrackerEl = tracker;
+    this.brazierTrackerShown = false;
+  }
+
+  /**
+   * Update each flame icon's height-fill to show burn progress (0–1).
+   * Called every game tick; clips the bright fill SVG from the top so the
+   * flame appears to shrink as the timer drains.
+   * Fades the whole tracker in the first time any brazier is lit.
+   */
+  updateBrazierStatus(burnProgress: number[]) {
+    if (!this.brazierTrackerEl) return;
+
+    let anyLit = false;
+    for (let i = 0; i < burnProgress.length; i++) {
+      const p = Math.max(0, Math.min(1, burnProgress[i] ?? 0));
+      const fill = this.brazierFillEls[i] as HTMLElement | undefined;
+      if (!fill) continue;
+
+      // clip-path inset from the top: 0% = full flame, 100% = no flame
+      const clipTop = ((1 - p) * 100).toFixed(1);
+      fill.style.clipPath = `inset(${clipTop}% 0 0 0)`;
+
+      if (p > 0) anyLit = true;
+    }
+
+    if (anyLit && !this.brazierTrackerShown) {
+      this.brazierTrackerEl.classList.add("visible");
+      this.brazierTrackerShown = true;
+    }
+  }
+
+  disposeBrazierTracker() {
+    this.brazierTrackerEl?.remove();
+    this.brazierTrackerEl = null;
+    this.brazierIconEls = [];
+    this.brazierFillEls = [];
+    this.brazierTrackerShown = false;
   }
 
   showCampsitePrompt(visible: boolean) {
@@ -704,6 +785,102 @@ export class HUD {
           transform: translate(-50%, calc(-50% - 58px));
         }
         .hud-volcano-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
+      /* ── Brazier status tracker ─────────────────────────── */
+      .hud-brazier-tracker {
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        opacity: 0;
+        transition: opacity 0.7s ease;
+        pointer-events: none;
+        z-index: 14;
+      }
+      .hud-brazier-tracker.visible { opacity: 1; }
+
+      /* Each icon is a stacking context for the two SVG layers */
+      .hud-brazier-tracker-icon {
+        position: relative;
+        width: 18px;
+        height: 22px;
+        display: block;
+        flex-shrink: 0;
+      }
+
+      /* Ghost layer — dim white, always full-height */
+      .hud-bt-ghost {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        fill: white;
+        opacity: 0.25;
+      }
+
+      /* Fill layer — bright white, clipped by JS each frame */
+      .hud-bt-fill {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        fill: white;
+        opacity: 1;
+        clip-path: inset(100% 0 0 0); /* JS overrides this every tick */
+        filter: drop-shadow(0 0 5px rgba(255, 140, 30, 0.9))
+                drop-shadow(0 0 10px rgba(255, 80, 0, 0.55));
+      }
+
+      /* ── Brazier notification popup ─────────────────────── */
+      .hud-brazier-celebration {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(255, 140, 30, 0.65), 0 0 28px rgba(255, 80, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        z-index: 14;
+      }
+      .hud-brazier-celebration::before,
+      .hud-brazier-celebration::after {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 2px;
+        flex-shrink: 0;
+      }
+      .hud-brazier-celebration::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 140, 30, 0.65));
+      }
+      .hud-brazier-celebration::after {
+        background: linear-gradient(90deg, rgba(255, 140, 30, 0.65), transparent);
+      }
+      .hud-brazier-celebration-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-brazier-celebration {
+          transform: translate(-50%, calc(-50% - 58px));
+        }
+        .hud-brazier-celebration-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }
