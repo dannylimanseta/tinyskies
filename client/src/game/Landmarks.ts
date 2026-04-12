@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from "three";
 
-export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill" | "observatory" | "stonehenge";
+export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill" | "observatory" | "stonehenge" | "shrine";
 
 export interface Landmark {
   type: LandmarkType;
@@ -76,6 +76,15 @@ const STONEHENGE_SUFFIXES = [
   " Stones", " Circle", " Ring", " Henge", " Monoliths", " Pillars", " Ruins", " Altar",
 ];
 
+const SHRINE_PREFIXES = [
+  "Quiet", "Moss", "Cedar", "Pine", "Bamboo", "Stone", "Red", "Morning", "Evening", "Lotus",
+  "Willow", "Maple", "Silver", "Hidden", "Ancient", "Peaceful", "Misty", "River", "Hill", "Forest",
+];
+
+const SHRINE_SUFFIXES = [
+  " Shrine", " Gate", " Sanctuary", " Grove", " Rest", " Torii", " Path", " Garden",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
   village:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   peak:         { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
@@ -86,6 +95,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   windmill:     { prefixes: WINDMILL_PREFIXES, suffixes: WINDMILL_SUFFIXES },
   observatory:  { prefixes: OBSERVATORY_PREFIXES, suffixes: OBSERVATORY_SUFFIXES },
   stonehenge:   { prefixes: STONEHENGE_PREFIXES,  suffixes: STONEHENGE_SUFFIXES },
+  shrine:       { prefixes: SHRINE_PREFIXES,      suffixes: SHRINE_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -198,6 +208,22 @@ export class LandmarkRegistry {
         type: "stonehenge",
         name: names[i]!,
         normal: stonehenges[i]!.normal.clone().normalize(),
+        enterDot: 0.995,
+        exitDot: 0.991,
+      });
+    }
+  }
+
+  registerShrines(
+    shrines: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, shrines.length, "shrine");
+    for (let i = 0; i < shrines.length; i++) {
+      this.landmarks.push({
+        type: "shrine",
+        name: names[i]!,
+        normal: shrines[i]!.normal.clone().normalize(),
         enterDot: 0.995,
         exitDot: 0.991,
       });

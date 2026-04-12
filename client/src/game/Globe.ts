@@ -107,6 +107,10 @@ export class Globe {
   readonly observatoryCenters: { normal: Vector3 }[] = [];
   readonly stonehengeCenters: { normal: Vector3 }[] = [];
   readonly stonehengeGroups: Group[] = [];
+  readonly shrineCenters: { normal: Vector3 }[] = [];
+
+  /** Shared teardrop geometry for shrine-tree InstancedMeshes (one buffer, many draws). */
+  private shrineTeardropGeo: LatheGeometry | null = null;
 
   /** Floating tree clusters (panic-phase effect). */
   private floatingTreeMesh: InstancedMesh | null = null;   // single mesh → 1 draw call
@@ -140,6 +144,16 @@ export class Globe {
     sarsen: MeshPhongMaterial; lintel: MeshPhongMaterial; altar: MeshPhongMaterial;
   } | null = null;
 
+  /** Torii / stone / wood + instanced teardrop canopy material for zen shrines. */
+  private shrineMaterials: {
+    torii: MeshPhongMaterial;
+    stone: MeshPhongMaterial;
+    wood: MeshPhongMaterial;
+    roof: MeshPhongMaterial;
+    accent: MeshPhongMaterial;
+    tree: MeshPhongMaterial;
+  } | null = null;
+
   private segments: number;
 
   constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb, cloudOpacity: number = 0.2, segments: number = 256) {
@@ -162,6 +176,7 @@ export class Globe {
     this.createWindmills();
     this.createObservatories();
     this.createStonehenges();
+    this.createShrines();
     this.createFloatingTreeClusters();
     this.createBalloons();
     this.createClouds();
@@ -1825,6 +1840,391 @@ transformed.z += sway2;`,
       this.group.add(stonehenge);
       this.stonehengeGroups.push(stonehenge);
     }
+  }
+
+  /** Std-dev of normalized land elevation on a small ring — lower = flatter ground. */
+  private terrainRingElevationRoughness(
+    normal: Vector3,
+    noise: ReturnType<typeof createNoise3D>,
+    params: ReturnType<typeof getTerrainParams>,
+    ringDist: number,
+  ): number {
+    const ref = Math.abs(normal.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+    const tang = new Vector3().crossVectors(normal, ref).normalize();
+    const bitang = new Vector3().crossVectors(normal, tang).normalize();
+    const values: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const cn = normal.clone()
+        .addScaledVector(tang, Math.cos(a) * ringDist)
+        .addScaledVector(bitang, Math.sin(a) * ringDist)
+        .normalize();
+      const v = terrainNoise(
+        noise, cn.x, cn.y, cn.z,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (v <= params.threshold) return 999;
+      values.push((v - params.threshold) / (1 - params.threshold));
+    }
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    return Math.sqrt(values.reduce((s, x) => s + (x - mean) ** 2, 0) / values.length);
+  }
+
+  private createShrines() {
+    const SHRINE_COUNT = 5;
+    const MIN_ELEVATION = 0.02;
+    const MAX_ELEVATION = 0.28;
+    const MIN_SEPARATION_DOT = 0.88;
+    const INLAND_CHECKS = 12;
+    const INLAND_CHECK_DIST = 0.10;
+    const MAX_WATER_RATIO = 0.10;
+    const ROUGH_RING_DIST = 0.09;
+    const MAX_ROUGHNESS = 0.055;
+
+    const rand = seededRandom(7777 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const forestNoise = createNoise3D(this.seed + 999);
+    const params = getTerrainParams(this.terrainType);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 2000 && candidates.length < 60) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const forest = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
+      if (forest > 0.2) continue; // Ensure it's in open lands, away from dense forests
+
+      const normal = new Vector3(nx, ny, nz);
+
+      const tangent = new Vector3(-ny, nx, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+      let waterCount = 0;
+      for (let c = 0; c < INLAND_CHECKS; c++) {
+        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
+        const cn = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
+          .normalize();
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) waterCount++;
+      }
+      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, noise, params, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    candidates.sort((a, b) => a.elevation - b.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= SHRINE_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+
+    for (const normal of chosen) {
+      this.shrineCenters.push({ normal: normal.clone() });
+
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+      const shrine = this.buildShrineGroup(rand);
+      shrine.position.copy(normal.clone().multiplyScalar(surfaceR));
+      shrine.quaternion.setFromUnitVectors(REF_UP, normal);
+      shrine.rotateY(rand() * Math.PI * 2);
+      shrine.castShadow = true;
+      this.group.add(shrine);
+    }
+  }
+
+  private ensureShrineMaterials() {
+    if (this.shrineMaterials) return;
+    const torii = new MeshPhongMaterial({ color: 0xc42828, flatShading: true });
+    addRimLight(torii, 0xff8866, 0.42, 2.65);
+    const stone = new MeshPhongMaterial({ color: 0x8e8984, flatShading: true });
+    addRimLight(stone, 0xe8e0d8, 0.36, 2.75);
+    const wood = new MeshPhongMaterial({ color: 0x3d2c1f, flatShading: true });
+    addRimLight(wood, 0xffccaa, 0.32, 2.85);
+    const roof = new MeshPhongMaterial({ color: 0x2a3b32, flatShading: true });
+    addRimLight(roof, 0x668877, 0.35, 2.8);
+    const accent = new MeshPhongMaterial({ color: 0xd4af37, flatShading: true });
+    addRimLight(accent, 0xffeebb, 0.5, 3.0);
+    const tree = new MeshPhongMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
+    addRimLight(tree, 0xffeeaa, 0.55, 3.0);
+    this.shrineMaterials = { torii, stone, wood, roof, accent, tree };
+  }
+
+  private getShrineTreeSharedGeo(): LatheGeometry {
+    if (!this.shrineTeardropGeo) {
+      this.shrineTeardropGeo = this.createTeardropGeo(1, 1);
+    }
+    return this.shrineTeardropGeo;
+  }
+
+  /** Zen-style shrine: red torii, stone plinth, small wooden hall, instanced teardrop trees. */
+  private buildShrineGroup(rand: () => number): Group {
+    this.ensureShrineMaterials();
+    const m = this.shrineMaterials!;
+    const S = 1.175; // Reduced by 50% from 2.35
+    const g = new Group();
+
+    const toriiParts: BufferGeometry[] = [];
+    const stoneParts: BufferGeometry[] = [];
+    const woodParts: BufferGeometry[] = [];
+    const roofParts: BufferGeometry[] = [];
+    const accentParts: BufferGeometry[] = [];
+
+    // 1. Stone Base & Path
+    const platW = 0.22 * S;
+    const platD = 0.26 * S;
+    const platH = 0.015 * S;
+    const plat = new BoxGeometry(platW, platH, platD);
+    plat.translate(0, platH * 0.5, -0.02 * S);
+    stoneParts.push(plat);
+
+    const pathW = 0.06 * S;
+    const pathD = 0.18 * S;
+    const path = new BoxGeometry(pathW, platH * 0.8, pathD);
+    path.translate(0, platH * 0.4, 0.12 * S);
+    stoneParts.push(path);
+
+    // 2. Torii Gate (Red)
+    const toriiZ = 0.14 * S;
+    const postH = 0.11 * S;
+    const postR = 0.007 * S;
+    const toriiSpan = 0.045 * S;
+
+    const postGeo = new CylinderGeometry(postR * 0.8, postR, postH, 8);
+    postGeo.translate(0, platH + postH * 0.5, 0);
+
+    const postL = postGeo.clone();
+    postL.translate(-toriiSpan, 0, toriiZ);
+    postL.rotateZ(-0.04);
+    toriiParts.push(postL);
+
+    const postR_geo = postGeo.clone();
+    postR_geo.translate(toriiSpan, 0, toriiZ);
+    postR_geo.rotateZ(0.04);
+    toriiParts.push(postR_geo);
+
+    const kasagiW = toriiSpan * 2 + 0.04 * S;
+    const kasagiH = 0.012 * S;
+    const kasagiD = 0.012 * S;
+    const kasagiY = platH + postH;
+    const kasagi = new BoxGeometry(kasagiW, kasagiH, kasagiD);
+    kasagi.translate(0, kasagiY, toriiZ);
+    toriiParts.push(kasagi);
+
+    const kasagiTop = new BoxGeometry(kasagiW * 1.05, kasagiH * 0.4, kasagiD * 0.8);
+    kasagiTop.translate(0, kasagiY + kasagiH * 0.7, toriiZ);
+    toriiParts.push(kasagiTop);
+
+    const nukiW = toriiSpan * 2 + 0.02 * S;
+    const nukiH = 0.008 * S;
+    const nukiY = platH + postH * 0.75;
+    const nuki = new BoxGeometry(nukiW, nukiH, kasagiD * 0.8);
+    nuki.translate(0, nukiY, toriiZ);
+    toriiParts.push(nuki);
+
+    const gakuzuka = new BoxGeometry(0.006 * S, kasagiY - nukiY, 0.008 * S);
+    gakuzuka.translate(0, (kasagiY + nukiY) * 0.5, toriiZ);
+    toriiParts.push(gakuzuka);
+
+    // 3. Stone Lanterns (Toro)
+    const buildLantern = (lx: number, lz: number) => {
+      const base = new BoxGeometry(0.018 * S, 0.01 * S, 0.018 * S);
+      base.translate(lx, platH + 0.005 * S, lz);
+      stoneParts.push(base);
+
+      const stem = new CylinderGeometry(0.005 * S, 0.006 * S, 0.03 * S, 6);
+      stem.translate(lx, platH + 0.02 * S, lz);
+      stoneParts.push(stem);
+
+      const house = new BoxGeometry(0.014 * S, 0.014 * S, 0.014 * S);
+      house.translate(lx, platH + 0.042 * S, lz);
+      stoneParts.push(house);
+
+      const lRoof = new CylinderGeometry(0, 0.022 * S, 0.012 * S, 4);
+      lRoof.rotateY(Math.PI / 4);
+      lRoof.translate(lx, platH + 0.055 * S, lz);
+      stoneParts.push(lRoof);
+
+      const jewel = new SphereGeometry(0.004 * S, 4, 4);
+      jewel.translate(lx, platH + 0.063 * S, lz);
+      stoneParts.push(jewel);
+    };
+    buildLantern(-0.05 * S, 0.18 * S);
+    buildLantern(0.05 * S, 0.18 * S);
+
+    // 4. Main Hall (Honden)
+    const hallZ = -0.04 * S;
+    const deckW = 0.14 * S;
+    const deckD = 0.12 * S;
+    const deckH = 0.008 * S;
+    const deckY = platH + 0.015 * S;
+
+    const deck = new BoxGeometry(deckW, deckH, deckD);
+    deck.translate(0, deckY, hallZ);
+    woodParts.push(deck);
+
+    const stairW = 0.04 * S;
+    for (let i = 0; i < 3; i++) {
+      const st = new BoxGeometry(stairW, 0.005 * S, 0.01 * S);
+      st.translate(0, platH + 0.0025 * S + i * 0.005 * S, hallZ + deckD/2 + 0.01 * S - i * 0.008 * S);
+      woodParts.push(st);
+    }
+
+    const wallW = 0.10 * S;
+    const wallD = 0.08 * S;
+    const wallH = 0.055 * S;
+    const wallY = deckY + deckH * 0.5 + wallH * 0.5;
+    const walls = new BoxGeometry(wallW, wallH, wallD);
+    walls.translate(0, wallY, hallZ);
+    woodParts.push(walls);
+
+    const pillarR = 0.004 * S;
+    const pillarH = wallH + deckH;
+    const px = wallW * 0.5 + 0.002 * S;
+    const pz = wallD * 0.5 + 0.002 * S;
+    const pY = deckY + pillarH * 0.5 - deckH * 0.5;
+    for (const dx of [-1, 1]) {
+      for (const dz of [-1, 1]) {
+        const pil = new CylinderGeometry(pillarR, pillarR, pillarH, 6);
+        pil.translate(dx * px, pY, hallZ + dz * pz);
+        woodParts.push(pil);
+      }
+    }
+
+    const roofW = 0.15 * S;
+    const roofSlopeL = 0.075 * S;
+    const roofThick = 0.012 * S;
+    const roofAngle = 0.6;
+    const roofYBase = wallY + wallH * 0.5 - 0.005 * S;
+
+    const roofFront = new BoxGeometry(roofW, roofThick, roofSlopeL);
+    roofFront.translate(0, 0, roofSlopeL * 0.5);
+    roofFront.rotateX(roofAngle);
+    roofFront.translate(0, roofYBase, hallZ);
+    roofParts.push(roofFront);
+
+    const roofBack = new BoxGeometry(roofW, roofThick, roofSlopeL);
+    roofBack.translate(0, 0, -roofSlopeL * 0.5);
+    roofBack.rotateX(-roofAngle);
+    roofBack.translate(0, roofYBase, hallZ);
+    roofParts.push(roofBack);
+
+    const ridgeY = roofYBase + Math.sin(roofAngle) * roofSlopeL * 0.5 + 0.005 * S;
+    const ridge = new CylinderGeometry(0.006 * S, 0.006 * S, roofW * 0.95, 6);
+    ridge.rotateZ(Math.PI / 2);
+    ridge.translate(0, ridgeY, hallZ);
+    accentParts.push(ridge);
+
+    const chigiL = 0.05 * S;
+    const chigiW = 0.004 * S;
+    const chigiD = 0.006 * S;
+    for (const side of [-1, 1]) {
+      const cx = side * (roofW * 0.4);
+      const chigi1 = new BoxGeometry(chigiW, chigiL, chigiD);
+      chigi1.translate(0, chigiL * 0.2, 0);
+      chigi1.rotateX(0.7);
+      chigi1.translate(cx, ridgeY - 0.005 * S, hallZ);
+      woodParts.push(chigi1);
+
+      const chigi2 = new BoxGeometry(chigiW, chigiL, chigiD);
+      chigi2.translate(0, chigiL * 0.2, 0);
+      chigi2.rotateX(-0.7);
+      chigi2.translate(cx, ridgeY - 0.005 * S, hallZ);
+      woodParts.push(chigi2);
+    }
+
+    const kCount = 5;
+    for (let i = 0; i < kCount; i++) {
+      const kx = -roofW * 0.3 + (i / (kCount - 1)) * roofW * 0.6;
+      const kat = new CylinderGeometry(0.005 * S, 0.005 * S, 0.025 * S, 8);
+      kat.rotateX(Math.PI / 2);
+      kat.translate(kx, ridgeY + 0.004 * S, hallZ);
+      accentParts.push(kat);
+    }
+
+    const mergeBucket = (parts: BufferGeometry[], mat: MeshPhongMaterial) => {
+      if (parts.length === 0) return;
+      const merged = mergeGeometries(parts, false);
+      if (merged) {
+        const mesh = new Mesh(merged, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        g.add(mesh);
+      }
+      for (const p of parts) p.dispose();
+    };
+
+    mergeBucket(toriiParts, m.torii);
+    mergeBucket(stoneParts, m.stone);
+    mergeBucket(woodParts, m.wood);
+    mergeBucket(roofParts, m.roof);
+    mergeBucket(accentParts, m.accent);
+
+    const TREE_N = 14;
+    const trees = new InstancedMesh(this.getShrineTreeSharedGeo(), m.tree, TREE_N);
+    trees.castShadow = true;
+    trees.receiveShadow = false;
+    const dummy = new Object3D();
+    const greenShades = [0x4a9a3a, 0x55a545, 0x48953a, 0x8aaa35, 0xb59a30];
+    const shadeColors = greenShades.map((h) => new Color(h));
+
+    for (let i = 0; i < TREE_N; i++) {
+      const angle = -Math.PI * 0.8 + (i / (TREE_N - 1)) * Math.PI * 1.6;
+      const r = 0.12 * S + rand() * 0.04 * S;
+      const x = Math.sin(angle) * r;
+      const z = hallZ + Math.cos(angle) * r * 0.8;
+
+      const sc = (0.012 + rand() * 0.010) * S;
+      dummy.position.set(x, platH, z);
+      dummy.scale.set(sc, sc * 2.45, sc);
+      dummy.rotation.y = rand() * Math.PI * 2;
+      dummy.updateMatrix();
+      trees.setMatrixAt(i, dummy.matrix);
+
+      const color = shadeColors[Math.floor(rand() * shadeColors.length)]!;
+      trees.setColorAt(i, color);
+    }
+    trees.instanceMatrix.needsUpdate = true;
+    if (trees.instanceColor) trees.instanceColor.needsUpdate = true;
+    g.add(trees);
+
+    return g;
   }
 
   // ── Floating tree clusters (panic phase) — single InstancedMesh → 1 draw call ───

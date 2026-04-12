@@ -794,6 +794,7 @@ export class Game {
     landmarkRegistry.registerWindmills(this.globe.windmillCenters, seed);
     landmarkRegistry.registerObservatories(this.globe.observatoryCenters, seed);
     landmarkRegistry.registerStonehenges(this.globe.stonehengeCenters, seed);
+    landmarkRegistry.registerShrines(this.globe.shrineCenters, seed);
     this.landmarkDetector = new LandmarkDetector(landmarkRegistry);
     this.landmarkHUD = new LandmarkHUD(this.hud.root);
     this.hud.registerLandmarkHUD(this.landmarkHUD);
