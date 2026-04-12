@@ -2670,48 +2670,80 @@ transformed.z += sway2;`,
     add(corniceGeo, "stoneDk");
 
     // ── Wide 1-storey base ──
-    const baseW = 0.10 * S, baseD = 0.08 * S, baseH = 0.025 * S;
+    const baseW = 0.12 * S, baseD = 0.10 * S, baseH = 0.03 * S;
     const baseGeo = new BoxGeometry(baseW, baseH, baseD);
     baseGeo.translate(0, baseH / 2, 0);
     add(baseGeo, "stone");
 
-    // Stone step at the entrance
-    const plinthGeo = new BoxGeometry(0.028 * S, 0.004 * S, 0.012 * S);
-    plinthGeo.translate(0, 0.002 * S, baseD / 2 + 0.006 * S);
-    add(plinthGeo, "step");
+    // Corner pillars (buttresses)
+    const pillarW = 0.018 * S;
+    for (const dx of [-1, 1]) {
+      for (const dz of [-1, 1]) {
+        const pillar = new BoxGeometry(pillarW, baseH + 0.004 * S, pillarW);
+        pillar.translate(dx * (baseW / 2), baseH / 2, dz * (baseD / 2));
+        add(pillar, "stoneDk");
+      }
+    }
+
+    // Stairs at the entrance
+    const stairW = 0.03 * S;
+    for (let i = 0; i < 3; i++) {
+      const step = new BoxGeometry(stairW, 0.004 * S, 0.008 * S);
+      step.translate(0, 0.002 * S + i * 0.004 * S, baseD / 2 + 0.015 * S - i * 0.006 * S);
+      add(step, "step");
+    }
 
     // Flat roof slab
-    const roofGeo = new BoxGeometry(baseW + 0.005 * S, 0.003 * S, baseD + 0.005 * S);
+    const roofGeo = new BoxGeometry(baseW + 0.01 * S, 0.003 * S, baseD + 0.01 * S);
     roofGeo.translate(0, baseH + 0.0015 * S, 0);
     add(roofGeo, "stoneDk");
 
+    // Balcony railing
+    const railH = 0.008 * S;
+    const railT = 0.002 * S;
+    for (const dz of [-1, 1]) {
+      const rail = new BoxGeometry(baseW + 0.01 * S, railH, railT);
+      rail.translate(0, baseH + 0.003 * S + railH / 2, dz * (baseD / 2 + 0.004 * S));
+      add(rail, "frame");
+    }
+    for (const dx of [-1, 1]) {
+      const rail = new BoxGeometry(railT, railH, baseD + 0.01 * S);
+      rail.translate(dx * (baseW / 2 + 0.004 * S), baseH + 0.003 * S + railH / 2, 0);
+      add(rail, "frame");
+    }
+
     // Door
-    const doorW = 0.016 * S, doorH = 0.018 * S;
-    const doorGeo = new BoxGeometry(doorW, doorH, 0.003 * S);
-    doorGeo.translate(0, doorH / 2 + 0.001 * S, baseD / 2 + 0.001 * S);
+    const doorW = 0.018 * S, doorH = 0.022 * S;
+    const doorGeo = new BoxGeometry(doorW, doorH, 0.004 * S);
+    doorGeo.translate(0, doorH / 2 + 0.012 * S, baseD / 2 + 0.001 * S);
     add(doorGeo, "door");
+    
+    // Door frame
+    const dFrameGeo = new BoxGeometry(doorW + 0.004 * S, doorH + 0.002 * S, 0.002 * S);
+    dFrameGeo.translate(0, doorH / 2 + 0.013 * S, baseD / 2 + 0.002 * S);
+    add(dFrameGeo, "frame");
 
     // Windows — 2 per long side (4 windows + 4 frames)
-    const winSize = 0.009 * S;
+    const winSize = 0.012 * S;
     for (const side of [-1, 1]) {
-      for (const xOff of [-0.028 * S, 0.028 * S]) {
+      for (const xOff of [-0.035 * S, 0.035 * S]) {
         const winGeo = new BoxGeometry(winSize, winSize, 0.003 * S);
-        winGeo.translate(xOff, baseH * 0.52, (baseD / 2 + 0.001 * S) * side);
+        winGeo.translate(xOff, baseH * 0.55, (baseD / 2 + 0.001 * S) * side);
         add(winGeo, "window");
-        const frameGeo = new BoxGeometry(winSize + 0.003 * S, winSize + 0.003 * S, 0.002 * S);
-        frameGeo.translate(xOff, baseH * 0.52, (baseD / 2 + 0.0015 * S) * side);
+        const frameGeo = new BoxGeometry(winSize + 0.004 * S, winSize + 0.004 * S, 0.002 * S);
+        frameGeo.translate(xOff, baseH * 0.55, (baseD / 2 + 0.002 * S) * side);
         add(frameGeo, "frame");
       }
     }
 
     // ── Short cylindrical drum ──
-    const drumR = 0.04 * S, drumH = 0.012 * S, drumY = baseH + 0.003 * S;
-    const drumGeo = new CylinderGeometry(drumR, drumR + 0.002 * S, drumH, 16);
+    const drumR = 0.045 * S, drumH = 0.015 * S, drumY = baseH + 0.003 * S;
+    const drumGeo = new CylinderGeometry(drumR, drumR + 0.002 * S, drumH, 24);
     drumGeo.translate(0, drumY + drumH / 2, 0);
     add(drumGeo, "stone");
 
     // Decorative band at drum top
-    const bandGeo = new CylinderGeometry(drumR + 0.003 * S, drumR + 0.003 * S, 0.003 * S, 16);
+    const bandGeo = new CylinderGeometry(drumR + 0.003 * S, drumR + 0.003 * S, 0.003 * S, 24);
     bandGeo.translate(0, drumY + drumH, 0);
     add(bandGeo, "stoneDk");
 
@@ -2719,17 +2751,17 @@ transformed.z += sway2;`,
     const domeR = drumR + 0.001 * S;
     const domeY = drumY + drumH + 0.001 * S;
     const profilePoints: Vector2[] = [];
-    for (let i = 0; i <= 14; i++) {
-      const angle = (i / 14) * Math.PI * 0.5;
+    for (let i = 0; i <= 16; i++) {
+      const angle = (i / 16) * Math.PI * 0.5;
       profilePoints.push(new Vector2(Math.cos(angle) * domeR, Math.sin(angle) * domeR));
     }
-    const domeGeo = new LatheGeometry(profilePoints, 20);
+    const domeGeo = new LatheGeometry(profilePoints, 24);
     domeGeo.translate(0, domeY, 0);
     add(domeGeo, "dome");
 
     // ── Dark grey stripe across the dome surface — 16 segments merged into 1 ──
     const slitAngle = rand() * Math.PI * 2;
-    const stripeW = 0.008 * S;
+    const stripeW = 0.01 * S;
     for (let i = 0; i < 16; i++) {
       const a0 = (i / 16) * Math.PI, a1 = ((i + 1) / 16) * Math.PI;
       const y0 = domeY + Math.sin(a0) * domeR, y1 = domeY + Math.sin(a1) * domeR;
@@ -2743,23 +2775,43 @@ transformed.z += sway2;`,
     }
 
     // ── Telescope tube ──
-    const scopeR = 0.006 * S;
-    const scopeGeo = new CylinderGeometry(scopeR, scopeR * 0.85, domeR * 1.1, 8);
+    const scopeR = 0.007 * S;
+    const scopeGeo = new CylinderGeometry(scopeR, scopeR * 0.85, domeR * 1.2, 12);
     scopeGeo.rotateX(-(Math.PI * 0.30));
     scopeGeo.translate(0, domeY + domeR * 0.42, domeR * 0.22);
     scopeGeo.rotateY(slitAngle);
     add(scopeGeo, "finder");
 
     // Telescope dew shield (merged into slit bucket — same dark colour)
-    const shieldGeo = new CylinderGeometry(scopeR * 1.3, scopeR * 1.1, 0.008 * S, 8);
+    const shieldGeo = new CylinderGeometry(scopeR * 1.3, scopeR * 1.1, 0.012 * S, 12);
     shieldGeo.rotateX(-(Math.PI * 0.30));
-    shieldGeo.translate(0, domeY + domeR * 0.65, domeR * 0.38);
+    shieldGeo.translate(0, domeY + domeR * 0.68, domeR * 0.40);
     shieldGeo.rotateY(slitAngle);
     add(shieldGeo, "slit");
+    
+    // Telescope counterweight / mount detail
+    const mountGeo = new BoxGeometry(0.01 * S, 0.015 * S, 0.01 * S);
+    mountGeo.translate(0, domeY + domeR * 0.25, domeR * 0.1);
+    mountGeo.rotateY(slitAngle);
+    add(mountGeo, "frame");
+
+    // ── Secondary small dome (Transit room) ──
+    const secW = 0.035 * S;
+    const secGeo = new BoxGeometry(secW, 0.02 * S, secW);
+    secGeo.translate(-baseW * 0.35, baseH + 0.01 * S, -baseD * 0.35);
+    add(secGeo, "stone");
+    
+    const secDome = new SphereGeometry(secW * 0.45, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    secDome.translate(-baseW * 0.35, baseH + 0.02 * S, -baseD * 0.35);
+    add(secDome, "dome");
+    
+    const secSlit = new BoxGeometry(0.004 * S, secW * 0.5, 0.004 * S);
+    secSlit.translate(-baseW * 0.35, baseH + 0.025 * S, -baseD * 0.35 + secW * 0.2);
+    add(secSlit, "slit");
 
     // ── Small chimney / vent ──
-    const ventGeo = new CylinderGeometry(0.003 * S, 0.004 * S, 0.01 * S, 6);
-    ventGeo.translate(baseW * 0.32, baseH + 0.005 * S, -baseD * 0.28);
+    const ventGeo = new CylinderGeometry(0.003 * S, 0.004 * S, 0.015 * S, 6);
+    ventGeo.translate(baseW * 0.35, baseH + 0.0075 * S, baseD * 0.35);
     add(ventGeo, "stoneDk");
 
     // ── Merge each bucket into a single Mesh ──
