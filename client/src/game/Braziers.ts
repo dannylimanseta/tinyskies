@@ -621,6 +621,27 @@ export class Braziers {
     }
   }
 
+  /** Extinguish every brazier immediately (e.g. all-five shield). */
+  extinguishAll() {
+    for (const s of this.states) {
+      s.lit = false;
+      s.burnEndsAtMs = null;
+      s.fadeInT = 0;
+      s.fadeOutT = 1;
+    }
+  }
+
+  /** Debug: force every brazier lit with a full burn (visual + progress). */
+  debugLightAll() {
+    const end = Date.now() + BRAZIER_BURN_MS;
+    for (const s of this.states) {
+      s.lit = true;
+      s.burnEndsAtMs = end;
+      s.fadeInT = 0;
+      s.fadeOutT = 0;
+    }
+  }
+
   /** Full snapshot when joining a world (server expiries are ms epoch). */
   syncBrazierExpiries(expiries: (number | null)[]) {
     const now = Date.now();

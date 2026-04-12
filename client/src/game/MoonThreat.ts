@@ -82,6 +82,8 @@ export class MoonThreat {
   private debrisMesh: InstancedMesh | null = null;
   private debrisVelocities: Vector3[] = [];
   private impactTime = 0;
+  /** Seconds left in brazier-shield approach pause (local only; does not sync moon phase). */
+  private approachPauseRemaining = 0;
 
   get progress() {
     return Math.min(this.elapsed / MOON_CYCLE_DURATION, 1);
@@ -112,6 +114,15 @@ export class MoonThreat {
   jumpTo(pct: number) {
     if (this.impacted) return;
     this.elapsed = MOON_CYCLE_DURATION * Math.min(pct, 0.999);
+  }
+
+  /**
+   * Pause moon approach (freeze `elapsed`) while keeping spin; stacks by max remaining time.
+   */
+  beginApproachPause(remainingMs: number) {
+    if (this.impacted) return;
+    const sec = remainingMs / 1000;
+    this.approachPauseRemaining = Math.max(this.approachPauseRemaining, sec);
   }
 
   /** World-space position of the moon centre. */
@@ -538,21 +549,10 @@ if (uMolten > 0.01) {
 
   /* ── Per-frame update ───────────────────────────────────── */
 
-  update(dt: number) {
-    if (this.impacted) {
-      this.group.position.addScaledVector(
-        _negApproach,
-        POST_IMPACT_SPEED * dt,
-      );
-      if (this.loaded) {
-        this.group.rotation.y += MOON_ROTATION_SPEED * dt;
-      }
-      this.updateEmbers(dt, 1.0);
-      this.updateImpactVFX(dt);
-      return;
+  private applyPreImpactApproach(dt: number, advanceElapsed: boolean) {
+    if (advanceElapsed) {
+      this.elapsed += dt;
     }
-
-    this.elapsed += dt;
     const t = this.progress;
 
     const dist = MOON_START_DISTANCE + (MOON_END_DISTANCE - MOON_START_DISTANCE) * t;
@@ -574,6 +574,29 @@ if (uMolten > 0.01) {
     if (t >= 1.0 && !this.impacted) {
       this.triggerImpact();
     }
+  }
+
+  update(dt: number) {
+    if (this.impacted) {
+      this.group.position.addScaledVector(
+        _negApproach,
+        POST_IMPACT_SPEED * dt,
+      );
+      if (this.loaded) {
+        this.group.rotation.y += MOON_ROTATION_SPEED * dt;
+      }
+      this.updateEmbers(dt, 1.0);
+      this.updateImpactVFX(dt);
+      return;
+    }
+
+    if (this.approachPauseRemaining > 0) {
+      this.approachPauseRemaining = Math.max(0, this.approachPauseRemaining - dt);
+      this.applyPreImpactApproach(dt, false);
+      return;
+    }
+
+    this.applyPreImpactApproach(dt, true);
   }
 
   getShakeTrauma(): number {
@@ -835,6 +858,7 @@ if (uMolten > 0.01) {
     this.elapsed = 0;
     this.impacted = false;
     this.impactTime = 0;
+    this.approachPauseRemaining = 0;
     this.group.position.copy(MOON_APPROACH_DIR).multiplyScalar(MOON_START_DISTANCE);
     this.group.rotation.y = 0;
     for (const w of this.shockwaveWaves) {

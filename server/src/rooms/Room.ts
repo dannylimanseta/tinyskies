@@ -1,6 +1,7 @@
 import type { Socket } from "socket.io";
 import type {
   BrazierLitEvent,
+  BrazierMoonPausePayload,
   BrazierSyncPayload,
   PlayerState,
   ServerToClientEvents,
@@ -8,9 +9,10 @@ import type {
   Vehicle,
 } from "@globefly/shared";
 
-/** Must match `BRAZIER_COUNT` / `BRAZIER_BURN_MS` in `@globefly/shared`. */
+/** Must match `BRAZIER_COUNT` / `BRAZIER_BURN_MS` / `BRAZIER_MOON_PAUSE_MS` in `@globefly/shared`. */
 const BRAZIER_COUNT = 5;
 const BRAZIER_BURN_MS = 45_000;
+const BRAZIER_MOON_PAUSE_MS = 60_000;
 
 interface ConnectedPlayer {
   socket: Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -27,6 +29,8 @@ export class Room {
     { length: BRAZIER_COUNT },
     () => null,
   );
+  /** Wall-clock ms when shared moon-pause shield ends; null if not active. */
+  private brazierMoonPauseEndsAt: number | null = null;
 
   constructor(slug: string) {
     this.slug = slug;
@@ -103,6 +107,22 @@ export class Room {
     };
   }
 
+  /** Remaining shield pause for a client that just joined, or null if none / expired. */
+  getMoonPauseRemainingMsIfActive(): number | null {
+    const end = this.brazierMoonPauseEndsAt;
+    if (end == null) return null;
+    const now = Date.now();
+    if (end <= now) {
+      this.brazierMoonPauseEndsAt = null;
+      return null;
+    }
+    return end - now;
+  }
+
+  private allBraziersActive(now: number): boolean {
+    return this.brazierBurnEndsAt.every((t) => t != null && t > now);
+  }
+
   /** A player lit a brazier (proximity) — broadcast to the whole room. */
   igniteBrazier(socketId: string, index: number) {
     if (!Number.isInteger(index) || index < 0 || index >= BRAZIER_COUNT) return;
@@ -121,6 +141,24 @@ export class Room {
 
     for (const [, p] of this.players) {
       p.socket.emit("brazier:lit", payload);
+    }
+
+    const now = Date.now();
+    if (!this.allBraziersActive(now)) return;
+
+    for (let i = 0; i < BRAZIER_COUNT; i++) {
+      this.brazierBurnEndsAt[i] = null;
+    }
+    this.brazierMoonPauseEndsAt = now + BRAZIER_MOON_PAUSE_MS;
+
+    const syncPayload = this.getBrazierSyncPayload();
+    const moonPausePayload: BrazierMoonPausePayload = {
+      remainingMs: BRAZIER_MOON_PAUSE_MS,
+    };
+
+    for (const [, p] of this.players) {
+      p.socket.emit("brazier:sync", syncPayload);
+      p.socket.emit("brazier:moonPause", moonPausePayload);
     }
   }
 

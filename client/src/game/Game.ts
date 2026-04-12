@@ -18,7 +18,13 @@ import {
   Quaternion,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
-import { getVehicleFeatures, type Vehicle, type VehicleGameFeatures, type WorldConfig } from "@globefly/shared";
+import {
+  BRAZIER_MOON_PAUSE_MS,
+  getVehicleFeatures,
+  type Vehicle,
+  type VehicleGameFeatures,
+  type WorldConfig,
+} from "@globefly/shared";
 import { DayNightCycle } from "./DayNightCycle";
 import { AudioManager } from "../audio/AudioManager";
 import { Globe } from "./Globe";
@@ -222,6 +228,8 @@ export class Game {
   private brazierInRange: boolean[] = [];
   private brazierCooldown: number[] = [];
   private lastBrazierProgress: number[] = [];
+  /** Offline-only edge detect for all-five shield (no server). */
+  private prevAllFiveBraziers = false;
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
@@ -1232,6 +1240,13 @@ export class Game {
   private worldFullRetries = 0;
   private static readonly MAX_WORLD_FULL_RETRIES = 3;
 
+  /** All-five brazier shield: shared room event or offline-only detection. */
+  private applyBrazierMoonShield(remainingMs: number) {
+    this.braziers?.extinguishAll();
+    this.moonThreat?.beginApproachPause(remainingMs);
+    this.hud.showBrazierMoonSlowed();
+  }
+
   private initNetworking(slug: string) {
     const serverUrl = this.getServerUrl();
     this.socketClient = new SocketClient(serverUrl);
@@ -1269,6 +1284,10 @@ export class Game {
       if (ev.playerId === this.socketClient?.id) return;
       this.braziers?.applyServerBurnState(ev.index, ev.burnEndsAt);
       this.hud.showBrazierRemoteLit(ev.playerName);
+    });
+
+    this.socketClient.onBrazierMoonPause((payload) => {
+      this.applyBrazierMoonShield(payload.remainingMs);
     });
 
     this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle, this.reservationId);
@@ -1700,6 +1719,15 @@ export class Game {
       }
       this.hud.updateBrazierStatus(burnProgress);
       this.lastBrazierProgress = burnProgress;
+      if (!this.socketClient?.connected) {
+        const allFive =
+          burnProgress.length >= BRAZIER_COUNT &&
+          burnProgress.every((p) => p > 0);
+        if (allFive && !this.prevAllFiveBraziers) {
+          this.applyBrazierMoonShield(BRAZIER_MOON_PAUSE_MS);
+        }
+        this.prevAllFiveBraziers = allFive;
+      }
     }
 
     /* ── Campsite landing detection ─────────────────────── */
@@ -1845,6 +1873,13 @@ export class Game {
   private onDebugKey = (e: KeyboardEvent) => {
     if (e.key === "q" || e.key === "Q") {
       this.moonThreat?.jumpTo(0.90);
+    }
+    if (e.key === "r" || e.key === "R") {
+      if (!this.braziers) return;
+      this.braziers.debugLightAll();
+      for (let i = 0; i < BRAZIER_COUNT; i++) {
+        this.socketClient?.emitBrazierIgnite(i);
+      }
     }
   };
 

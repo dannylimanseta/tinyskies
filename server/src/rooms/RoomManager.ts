@@ -75,6 +75,10 @@ export class RoomManager {
     }
 
     socket.emit("brazier:sync", room.getBrazierSyncPayload());
+    const moonPauseRemain = room.getMoonPauseRemainingMsIfActive();
+    if (moonPauseRemain != null && moonPauseRemain > 0) {
+      socket.emit("brazier:moonPause", { remainingMs: moonPauseRemain });
+    }
 
     socket.on("player:move", (moveState) => {
       room.updatePlayer(socket.id, moveState);

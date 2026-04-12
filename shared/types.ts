@@ -42,6 +42,8 @@ export interface WorldConfig {
 export const BRAZIER_COUNT = 5;
 /** Brazier burn duration — keep in sync with client flame timer. */
 export const BRAZIER_BURN_MS = 45_000;
+/** When all five braziers burn together, moon approach pauses for this long (per client). */
+export const BRAZIER_MOON_PAUSE_MS = 60_000;
 
 export interface BrazierSyncPayload {
   /** ms epoch when burn ends, or null if unlit */
@@ -56,6 +58,11 @@ export interface BrazierLitEvent {
   burnEndsAt: number;
 }
 
+/** Tells each client to pause its local moon approach for `remainingMs`. */
+export interface BrazierMoonPausePayload {
+  remainingMs: number;
+}
+
 export interface ServerToClientEvents {
   "player:joined": (player: PlayerState) => void;
   "player:left": (playerId: string) => void;
@@ -65,6 +72,7 @@ export interface ServerToClientEvents {
   "world:full": (slug: string) => void;
   "brazier:sync": (payload: BrazierSyncPayload) => void;
   "brazier:lit": (event: BrazierLitEvent) => void;
+  "brazier:moonPause": (payload: BrazierMoonPausePayload) => void;
 }
 
 export interface ClientToServerEvents {

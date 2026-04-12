@@ -249,6 +249,17 @@ export class HUD {
     setTimeout(() => el.remove(), 2200);
   }
 
+  /** All-five brazier shield: moon approach pauses locally for a short time. */
+  showBrazierMoonSlowed() {
+    const el = document.createElement("div");
+    el.className = "hud-brazier-moon-slowed";
+    el.textContent = "The braziers have slowed the moon — for a little while.";
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-brazier-moon-slowed-animate"));
+    setTimeout(() => el.remove(), 3200);
+  }
+
   /** Create the persistent flame-progress tracker (call once after braziers are ready). */
   initBrazierTracker(count: number) {
     if (this.brazierTrackerEl) this.disposeBrazierTracker();
@@ -946,6 +957,41 @@ export class HUD {
         .hud-brazier-remote-lit::before,
         .hud-brazier-remote-lit::after { width: 24px; }
         .hud-brazier-remote-lit-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
+      .hud-brazier-moon-slowed {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        font-size: 0.92rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.35;
+        color: rgba(255, 255, 255, 0.95);
+        text-shadow: 0 0 14px rgba(255, 200, 120, 0.45), 0 2px 8px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        transition: opacity 0.4s ease-out, transform 0.8s ease-out;
+        pointer-events: none;
+        white-space: normal;
+        max-width: min(92vw, 420px);
+        text-align: center;
+        padding: 0 12px;
+        z-index: 14;
+      }
+      .hud-brazier-moon-slowed-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-brazier-moon-slowed {
+          transform: translate(-50%, calc(-50% - 58px));
+          font-size: 0.82rem;
+        }
+        .hud-brazier-moon-slowed-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }
