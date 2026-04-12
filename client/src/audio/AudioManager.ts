@@ -289,6 +289,24 @@ export class AudioManager {
     if (loop) loop.targetVolume = volume;
   }
 
+  /**
+   * Set loop output gain immediately (no smoothing). Use when gain is driven by an external
+   * animation (e.g. moon rewind overlay alpha).
+   */
+  setLoopGainImmediate(name: string, gain: number) {
+    const loop = this.loopingSources.get(name);
+    if (!loop) return;
+    const v = Math.max(0, Math.min(1, gain));
+    loop.gain.gain.value = v;
+    loop.targetVolume = v;
+  }
+
+  resumeContextIfNeeded() {
+    if (this.ctx?.state === "suspended") {
+      void this.ctx.resume();
+    }
+  }
+
   /** Fade loop to silence, then stop the source (used for dialogue bed). */
   fadeOutLoop(name: string) {
     const loop = this.loopingSources.get(name);

@@ -151,6 +151,10 @@ const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
 const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
 const LEVELUP_SFX_VOLUME = 0.42;
 
+const GONG_SFX_VOLUME = 0.55;
+/** Max gain for rewind SFX loop; multiplied by scene alpha during moon rewind. */
+const REWIND_LOOP_VOLUME = 0.38;
+
 const GLOBAL_LANTERN_GOAL = 1_000_000;
 
 export class Game {
@@ -1047,8 +1051,19 @@ export class Game {
     wrap.appendChild(byline);
     this.container.appendChild(wrap);
 
+    if (!this.audioManager.muted) {
+      if (!this.audioManager.hasSFX("gong")) {
+        await this.audioManager.loadSFX("gong", "/audio/sfx/gong.mp3");
+      }
+      this.audioManager.resumeContextIfNeeded();
+    }
+
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     wrap.style.opacity = "1";
+    if (!this.audioManager.muted) {
+      this.audioManager.playSFX("gong", GONG_SFX_VOLUME);
+    }
+
     await new Promise<void>((resolve) => {
       const done = () => resolve();
       wrap.addEventListener("transitionend", done, { once: true });
@@ -1078,6 +1093,14 @@ export class Game {
     const FADE_OUT = 2.2;  // seconds to go back to black
     const TOTAL = FADE_IN + HOLD + FADE_OUT;
     const cam = this.moonCinematicCamera ?? this.cameraRig.camera;
+
+    if (!this.audioManager.muted) {
+      if (!this.audioManager.hasSFX("rewind")) {
+        await this.audioManager.loadSFX("rewind", "/audio/sfx/rewind.mp3");
+      }
+      this.audioManager.resumeContextIfNeeded();
+      this.audioManager.startLoop("rewind", 0);
+    }
 
     // Create VHS overlay (starts invisible — the rAF loop fades it in).
     this.vhsOverlay = this.createVhsOverlay();
@@ -1117,6 +1140,10 @@ export class Game {
         this.transitionOverlay!.setOpacity(1 - alpha);
         if (this.vhsOverlay) this.vhsOverlay.style.opacity = String(alpha);
 
+        if (!this.audioManager.muted && this.audioManager.hasSFX("rewind")) {
+          this.audioManager.setLoopGainImmediate("rewind", alpha * REWIND_LOOP_VOLUME);
+        }
+
         if (timer < TOTAL) {
           requestAnimationFrame(loop);
         } else {
@@ -1125,6 +1152,8 @@ export class Game {
       };
       requestAnimationFrame(loop);
     });
+
+    this.audioManager.stopLoop("rewind");
 
     // Ensure fully black before proceeding.
     this.transitionOverlay.setOpacity(1);
