@@ -157,6 +157,35 @@ export class Globe {
 
   private segments: number;
 
+  private sharedGroundGlowMat: ShaderMaterial | null = null;
+
+  private getSharedGroundGlowMat(): ShaderMaterial {
+    if (!this.sharedGroundGlowMat) {
+      this.sharedGroundGlowMat = new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          void main() {
+            float dist = distance(vUv, vec2(0.5));
+            float alpha = smoothstep(0.5, 0.0, dist);
+            vec3 color = vec3(1.0, 0.6, 0.1); // Warm orange
+            gl_FragColor = vec4(color, alpha * alpha * 0.4);
+          }
+        `
+      });
+    }
+    return this.sharedGroundGlowMat;
+  }
+
   constructor(radius: number = 5, seed: number = 42, terrainType: string = "default", atmosphereGlow: number = 0xeeddbb, oceanShallow: number = 0x2a8ca0, oceanDeep: number = 0x1560a0, foamColor: number = 0xb3ffff, rimColor: number = 0xffeebb, cloudOpacity: number = 0.2, segments: number = 256) {
     this.radius = radius;
     this.seed = seed;
@@ -1272,6 +1301,7 @@ transformed.z += sway2;`,
     const houseGeos = Array.from({ length: HOUSE_TYPES }, (_, i) => this.createHouseGeo(i));
     const transformsByType: Matrix4[][] = Array.from({ length: HOUSE_TYPES }, () => []);
     const gardenTreeTransforms: Matrix4[] = [];
+    const allHouseTransforms: Matrix4[] = [];
     const dummy = new Object3D();
 
     for (const center of villageCenters) {
@@ -1319,6 +1349,7 @@ transformed.z += sway2;`,
         dummy.updateMatrix();
 
         transformsByType[houseType].push(dummy.matrix.clone());
+        allHouseTransforms.push(dummy.matrix.clone());
 
         const treesAround = 2 + Math.floor(rand() * 3);
         for (let tr = 0; tr < treesAround; tr++) {
@@ -2227,6 +2258,14 @@ transformed.z += sway2;`,
     mergeBucket(roofParts, m.roof);
     mergeBucket(accentParts, m.accent);
 
+    // Soft warm glow on the ground
+    const glowSize = platW * 3.5;
+    const glowGeo = new PlaneGeometry(glowSize, glowSize);
+    const glowMesh = new Mesh(glowGeo, this.getSharedGroundGlowMat());
+    glowMesh.rotation.x = -Math.PI / 2;
+    glowMesh.position.set(0, 0.001, hallZ + 0.02 * S);
+    g.add(glowMesh);
+
     const TREE_N = 14;
     const trees = new InstancedMesh(this.getShrineTreeSharedGeo(), m.tree, TREE_N);
     trees.castShadow = true;
@@ -2825,6 +2864,15 @@ transformed.z += sway2;`,
       // Source geometries consumed — dispose them.
       for (const geo of geos) geo.dispose();
     }
+    
+    // Soft warm glow on the ground
+    const glowSize = baseW * 3.5;
+    const glowGeo = new PlaneGeometry(glowSize, glowSize);
+    const glowMesh = new Mesh(glowGeo, this.getSharedGroundGlowMat());
+    glowMesh.rotation.x = -Math.PI / 2;
+    glowMesh.position.set(0, 0.001, 0);
+    g.add(glowMesh);
+
     return g;
   }
 
@@ -3407,28 +3455,7 @@ transformed.z += sway2;`,
       // Soft warm glow on the ground (baked light decal)
       const groundGlowSize = baseR * 8.0;
       const groundGlowGeo = new PlaneGeometry(groundGlowSize, groundGlowSize);
-      const groundGlowMat = new ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        vertexShader: `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          varying vec2 vUv;
-          void main() {
-            float dist = distance(vUv, vec2(0.5));
-            float alpha = smoothstep(0.5, 0.0, dist);
-            vec3 color = vec3(1.0, 0.6, 0.1); // Warm orange
-            gl_FragColor = vec4(color, alpha * alpha * 0.4);
-          }
-        `
-      });
-      const groundGlowMesh = new Mesh(groundGlowGeo, groundGlowMat);
+      const groundGlowMesh = new Mesh(groundGlowGeo, this.getSharedGroundGlowMat());
       groundGlowMesh.rotation.x = -Math.PI / 2;
       groundGlowMesh.position.set(0, 0.001, 0); // Just above ground
       lighthouse.add(groundGlowMesh);
