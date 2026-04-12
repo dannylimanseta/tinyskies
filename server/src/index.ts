@@ -14,7 +14,22 @@ import { createLanternsRouter } from "./routes/lanterns.js";
 import { generateUniqueWorldName } from "./utils/worldNames.js";
 
 const PORT = Number(process.env.PORT) || 3001;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+/** Origins for REST + Socket.io. Always allow known Vercel deploys + local dev; merge CLIENT_URL (comma-separated for extras). */
+function corsAllowedOrigins(): string[] {
+  const defaults = [
+    "http://localhost:5173",
+    "https://tinyskies.vercel.app",
+    "https://globefly.vercel.app",
+  ];
+  const fromEnv = process.env.CLIENT_URL;
+  const extra = fromEnv
+    ? fromEnv.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  return [...new Set([...defaults, ...extra])];
+}
+
+const corsOrigins = corsAllowedOrigins();
 
 const prisma = new PrismaClient();
 const app = express();
@@ -22,12 +37,12 @@ const httpServer = createServer(app);
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
-    origin: CLIENT_URL,
+    origin: corsOrigins,
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: CLIENT_URL }));
+app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 
 const roomManager = new RoomManager();
