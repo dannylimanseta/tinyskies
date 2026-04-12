@@ -26,6 +26,7 @@ import {
   tangentFrame,
 } from "./SphericalMath";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt } from "./TerrainSurface";
+import { addRimLight } from "./RimLight";
 
 export const VOLCANO_COUNT = 2;
 export const VOLCANO_XP = 40;
@@ -273,6 +274,7 @@ export class Volcano {
   private lavaMat: ShaderMaterial;
   private smokeMat: ShaderMaterial;
   private skirtMat: ShaderMaterial;
+  private volcanoBodyMat: MeshPhongMaterial;
   private volcanoGeo: LatheGeometry;
   private craterGeo: CircleGeometry;
   private lavaSphereGeo: SphereGeometry;
@@ -311,14 +313,15 @@ export class Volcano {
 
     /* ── Volcano body ──────────────────────────────────────────── */
     this.volcanoGeo = buildVolcanoGeometry();
-    const volcanoMat = new MeshPhongMaterial({
+    this.volcanoBodyMat = new MeshPhongMaterial({
       vertexColors: true,
       flatShading: true,
       emissive: 0x2a0a00,
       shininess: 5,
       side: DoubleSide,
     });
-    const bodyMesh = new Mesh(this.volcanoGeo, volcanoMat);
+    addRimLight(this.volcanoBodyMat, 0xff5533, 0.52, 2.55);
+    const bodyMesh = new Mesh(this.volcanoGeo, this.volcanoBodyMat);
     bodyMesh.castShadow = true;
     this.group.add(bodyMesh);
 
@@ -656,6 +659,7 @@ export class Volcano {
 
   dispose() {
     this.volcanoGeo.dispose();
+    this.volcanoBodyMat.dispose();
     this.craterGeo.dispose();
     this.craterGlowMat.dispose();
     this.lavaSphereGeo.dispose();

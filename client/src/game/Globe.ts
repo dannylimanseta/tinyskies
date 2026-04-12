@@ -2025,6 +2025,10 @@ transformed.z += sway2;`,
         lintel: new MeshPhongMaterial({ color: 0xb0a898 }),
         altar:  new MeshPhongMaterial({ color: 0x706860 }),
       };
+      const sh = this.stonehengeMats;
+      addRimLight(sh.sarsen, 0xffe8d0, 0.42, 2.8);
+      addRimLight(sh.lintel, 0xfff0dd, 0.4, 2.75);
+      addRimLight(sh.altar, 0xd8d0c4, 0.35, 2.85);
     }
     const m = this.stonehengeMats;
 
@@ -2200,6 +2204,17 @@ transformed.z += sway2;`,
         step:    new MeshPhongMaterial({ color: 0xb8b0a0 }),
         finder:  new MeshPhongMaterial({ color: 0x777777 }),
       };
+      const om = this.obsMaterials;
+      // Cool moonlight rim — matches night-sky props; slit kept subtle so it stays dark.
+      addRimLight(om.stone, 0xc8d8f0, 0.42, 2.65);
+      addRimLight(om.stoneDk, 0xb8c8e0, 0.38, 2.7);
+      addRimLight(om.dome, 0xd0e0f8, 0.48, 2.4);
+      addRimLight(om.slit, 0x8899aa, 0.22, 3.2);
+      addRimLight(om.window, 0x88c8f8, 0.45, 2.5);
+      addRimLight(om.frame, 0xccd0dd, 0.35, 2.8);
+      addRimLight(om.door, 0xffccb8, 0.32, 2.75);
+      addRimLight(om.step, 0xd8d0c8, 0.36, 2.65);
+      addRimLight(om.finder, 0xccd0dd, 0.38, 2.7);
     }
     const m = this.obsMaterials;
 

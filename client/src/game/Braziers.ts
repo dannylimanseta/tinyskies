@@ -374,12 +374,12 @@ export class Braziers {
   private buildSharedMaterials() {
     const iron = 0x4a4036;
     this.ironMat = new MeshPhongMaterial({ color: iron, flatShading: true, shininess: 26 });
-    addRimLight(this.ironMat, 0xff8855, 0.42, 2.7);
+    addRimLight(this.ironMat, 0xffaa77, 0.52, 2.45);
 
     this.bowlMat = new MeshPhongMaterial({
       color: iron, flatShading: true, shininess: 26, side: DoubleSide,
     });
-    addRimLight(this.bowlMat, 0xff8855, 0.42, 2.7);
+    addRimLight(this.bowlMat, 0xffaa77, 0.52, 2.45);
   }
 
   /* ── Brazier structural Group ────────────────────────────────── */
