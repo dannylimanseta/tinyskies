@@ -10,6 +10,7 @@ import {
   Fog,
   PointLight,
   Vector3,
+  Mesh,
   MeshPhongMaterial,
   VSMShadowMap,
   CanvasTexture,
@@ -200,6 +201,7 @@ export class Game {
   private balloonGreetCooldown: number[] = [];
   private balloonGreetSalt = 0;
   private balloonPosScratch = new Vector3();
+  private gameTime = 0;
   private observatoryInRange: boolean[] = [];
   private observatoryCooldown: number[] = [];
   private observatoryWorldPositions: Vector3[] = [];
@@ -1322,6 +1324,7 @@ export class Game {
     requestAnimationFrame(this.tick);
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
+    this.gameTime += dt;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
@@ -1724,6 +1727,7 @@ export class Game {
     this.updateBalloonGreetings(dt, questPlayerPos);
       this.updateObservatoryGreetings(dt, questPlayerPos);
       this.updateStonehengeWhispers(dt, questPlayerPos);
+      this.updateStonehengeFloat();
 
     if (this.playerVehicle === "plane") {
       const engineVol =
@@ -2381,6 +2385,30 @@ export class Game {
         }
       } else if (dist > STONEHENGE_WHISPER_EXIT_DIST) {
         this.stonehengeInRange[i] = false;
+      }
+    }
+  }
+
+  private updateStonehengeFloat() {
+    const moonProg = this.moonThreat?.progress ?? 0;
+    // Ease in from 50 % → 65 % moon progress; stay at 1 thereafter.
+    const t = Math.max(0, Math.min(1, (moonProg - 0.50) / 0.15));
+
+    for (const group of this.globe.stonehengeGroups) {
+      for (const child of group.children) {
+        const ud = child.userData;
+        if (!ud.isFloating) continue;
+        const mesh = child as Mesh;
+        if (t <= 0) {
+          mesh.position.y = ud.baseY;
+          mesh.rotation.x = 0;
+          mesh.rotation.z = 0;
+        } else {
+          const bob = Math.sin(this.gameTime * ud.speed + ud.phase) * ud.amp * 0.45;
+          mesh.position.y = ud.baseY + ud.amp * t + bob * t;
+          mesh.rotation.x = ud.tiltX * t;
+          mesh.rotation.z = ud.tiltZ * t;
+        }
       }
     }
   }

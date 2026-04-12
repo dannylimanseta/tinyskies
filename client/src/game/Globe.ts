@@ -105,6 +105,7 @@ export class Globe {
   private windmillBlades: { pivot: Group; speed: number }[] = [];
   readonly observatoryCenters: { normal: Vector3 }[] = [];
   readonly stonehengeCenters: { normal: Vector3 }[] = [];
+  readonly stonehengeGroups: Group[] = [];
 
   /** Shared material palette for all observatories (created once, reused across 3 instances). */
   private obsMaterials: {
@@ -1800,10 +1801,19 @@ transformed.z += sway2;`,
       stonehenge.rotateY(rand() * Math.PI * 2);
       stonehenge.castShadow = true;
       this.group.add(stonehenge);
+      this.stonehengeGroups.push(stonehenge);
     }
   }
 
-  /** Low-poly Stonehenge: outer sarsen ring, inner horseshoe trilithons, altar, heel stone. */
+  /** Low-poly Stonehenge: outer sarsen ring, inner horseshoe trilithons, altar, heel stone.
+   *
+   *  Standing stones are kept as individual Mesh objects so Game.ts can animate their
+   *  Y-position and tilt when the moon enters the dread/panic phase. Each such mesh
+   *  carries `userData` with float parameters:
+   *    { isFloating, baseY, amp, speed, phase, baseTiltX, baseTiltZ, tiltX, tiltZ }
+   *
+   *  Fallen/ground stones are merged into a single static mesh per material.
+   */
   private buildStonehenge(rand: () => number): Group {
     if (!this.stonehengeMats) {
       this.stonehengeMats = {
@@ -1814,72 +1824,86 @@ transformed.z += sway2;`,
     }
     const m = this.stonehengeMats;
 
-    const buckets: Record<keyof typeof m, BufferGeometry[]> = {
+    // Fallen / ground-level geometry is merged for efficiency.
+    const staticBuckets: Record<keyof typeof m, BufferGeometry[]> = {
       sarsen: [], lintel: [], altar: [],
     };
-    const add = (geo: BufferGeometry, key: keyof typeof m) => buckets[key].push(geo);
 
     const S = 2.2;
 
-    const R_OUT      = 0.095 * S;   // outer sarsen ring radius
-    const R_IN       = 0.056 * S;   // inner horseshoe radius
-    const OUTER_H    = 0.040 * S;   // outer upright height
-    const OUTER_W    = 0.012 * S;   // outer upright width
-    const OUTER_D    = 0.010 * S;   // outer upright depth
-    const INNER_H    = 0.054 * S;   // inner trilithon upright height
-    const INNER_W    = 0.014 * S;   // inner upright width
-    const INNER_D    = 0.012 * S;   // inner upright depth
-    const LINTEL_H   = 0.009 * S;   // lintel height
-    const LINTEL_D   = 0.011 * S;   // lintel depth (radial thickness)
-    const HALF_GAP   = 0.009 * S;   // half-gap between trilithon uprights
+    const R_OUT      = 0.095 * S;
+    const R_IN       = 0.056 * S;
+    const OUTER_H    = 0.040 * S;
+    const OUTER_W    = 0.012 * S;
+    const OUTER_D    = 0.010 * S;
+    const INNER_H    = 0.054 * S;
+    const INNER_W    = 0.014 * S;
+    const INNER_D    = 0.012 * S;
+    const LINTEL_H   = 0.009 * S;
+    const LINTEL_D   = 0.011 * S;
+    const HALF_GAP   = 0.009 * S;
 
-    // Outer chord: arc length between adjacent sarsens × slight overhang
-    const OUTER_CHORD = 2 * R_OUT * Math.sin(Math.PI / 10) * 1.08;
-    // Inner lintel width: spans both uprights + slight overhang
+    const OUTER_CHORD    = 2 * R_OUT * Math.sin(Math.PI / 10) * 1.08;
     const INNER_LINTEL_W = INNER_W * 2 + HALF_GAP * 2 + 0.004 * S;
 
-    // ── Pre-compute wear randomness (fixed calls so sequence is deterministic) ──
-    // ~28% of outer uprights are fallen, each with a slight yaw twist.
+    // ── Pre-compute wear randomness ──
     const outerFallen  = Array.from({ length: 10 }, () => rand() < 0.28);
     const outerYaw     = Array.from({ length: 10 }, () => (rand() - 0.5) * 0.35);
-    // ~10% of lintels missing from wear alone (independent of fallen stones).
     const skipLintel   = Array.from({ length: 10 }, () => rand() < 0.10);
-    // Inner horseshoe: ~45% chance one trilithon has a fallen upright.
     const innerFallenTri  = Math.floor(rand() * 5);
     const innerHasFallen  = rand() < 0.45;
     const innerFallenSign = rand() < 0.5 ? -1 : 1;
 
+    // ── Helper: attach float userData to a standing mesh ──
+    const tagFloat = (mesh: Mesh, baseY: number) => {
+      mesh.userData.isFloating = true;
+      mesh.userData.baseY      = baseY;
+      mesh.userData.amp        = (0.006 + rand() * 0.010) * S;
+      mesh.userData.speed      = 0.55 + rand() * 0.55;
+      mesh.userData.phase      = rand() * Math.PI * 2;
+      mesh.userData.tiltX      = (rand() - 0.5) * 0.18;
+      mesh.userData.tiltZ      = (rand() - 0.5) * 0.18;
+    };
+
+    const g = new Group();
+
     // ── 1. Outer sarsen ring — 10 uprights ──
-    // Fallen geometry: rotateX(PI/2) tips the stone along +Z (outward), then
-    // rotateY(a) aligns that outward direction with the radial at angle a.
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2;
-      const geo = new BoxGeometry(OUTER_W, OUTER_H, OUTER_D);
+      const px = Math.sin(a) * R_OUT;
+      const pz = Math.cos(a) * R_OUT;
       if (outerFallen[i]) {
-        geo.translate(0, OUTER_H / 2, 0);          // base at y = 0
-        geo.rotateX(Math.PI / 2);                  // tip now along +Z
-        geo.translate(0, OUTER_D / 2, 0);          // rest on ground
-        geo.rotateY(a + outerYaw[i]);              // align fall radially + slight twist
-        geo.translate(Math.sin(a) * R_OUT, 0, Math.cos(a) * R_OUT);
-      } else {
+        const geo = new BoxGeometry(OUTER_W, OUTER_H, OUTER_D);
         geo.translate(0, OUTER_H / 2, 0);
-        geo.translate(Math.sin(a) * R_OUT, 0, Math.cos(a) * R_OUT);
+        geo.rotateX(Math.PI / 2);
+        geo.translate(0, OUTER_D / 2, 0);
+        geo.rotateY(a + outerYaw[i]);
+        geo.translate(px, 0, pz);
+        staticBuckets.sarsen.push(geo);
+      } else {
+        const geo = new BoxGeometry(OUTER_W, OUTER_H, OUTER_D);
+        const mesh = new Mesh(geo, m.sarsen);
+        mesh.position.set(px, OUTER_H / 2, pz);
+        tagFloat(mesh, OUTER_H / 2);
+        g.add(mesh);
       }
-      add(geo, "sarsen");
     }
 
-    // ── 2. Outer lintels — skip if adjacent upright is fallen or random wear ──
+    // ── 2. Outer lintels ──
     for (let i = 0; i < 10; i++) {
       const j = (i + 1) % 10;
       if (outerFallen[i] || outerFallen[j] || skipLintel[i]) continue;
       const midA = ((i + 0.5) / 10) * Math.PI * 2;
+      const baseY = OUTER_H + LINTEL_H / 2;
       const geo = new BoxGeometry(OUTER_CHORD, LINTEL_H, LINTEL_D);
-      geo.rotateY(midA);
-      geo.translate(Math.sin(midA) * R_OUT, OUTER_H + LINTEL_H / 2, Math.cos(midA) * R_OUT);
-      add(geo, "lintel");
+      const mesh = new Mesh(geo, m.lintel);
+      mesh.rotation.y = midA;
+      mesh.position.set(Math.sin(midA) * R_OUT, baseY, Math.cos(midA) * R_OUT);
+      tagFloat(mesh, baseY);
+      g.add(mesh);
     }
 
-    // ── 3. Inner horseshoe — 5 trilithons spanning ~288° (opening toward +Z) ──
+    // ── 3. Inner horseshoe — 5 trilithons ──
     for (let i = 0; i < 5; i++) {
       const a = -Math.PI * 0.8 + (i / 4) * Math.PI * 1.6;
       const rx = Math.sin(a) * R_IN;
@@ -1890,50 +1914,66 @@ transformed.z += sway2;`,
       const thisFallen = innerHasFallen && i === innerFallenTri;
 
       for (const sign of [-1, 1] as const) {
-        const geo = new BoxGeometry(INNER_W, INNER_H, INNER_D);
+        const px = rx + tx * sign * HALF_GAP;
+        const pz = rz + tz * sign * HALF_GAP;
         if (thisFallen && sign === innerFallenSign) {
-          // Fallen inward: tip points toward the altar (opposite radial).
+          const geo = new BoxGeometry(INNER_W, INNER_H, INNER_D);
           geo.translate(0, INNER_H / 2, 0);
           geo.rotateX(Math.PI / 2);
           geo.translate(0, INNER_D / 2, 0);
           geo.rotateY(a + Math.PI);
-          geo.translate(rx + tx * sign * HALF_GAP, 0, rz + tz * sign * HALF_GAP);
+          geo.translate(px, 0, pz);
+          staticBuckets.sarsen.push(geo);
         } else {
-          geo.translate(0, INNER_H / 2, 0);
-          geo.translate(rx + tx * sign * HALF_GAP, 0, rz + tz * sign * HALF_GAP);
+          const geo = new BoxGeometry(INNER_W, INNER_H, INNER_D);
+          const mesh = new Mesh(geo, m.sarsen);
+          mesh.position.set(px, INNER_H / 2, pz);
+          tagFloat(mesh, INNER_H / 2);
+          g.add(mesh);
         }
-        add(geo, "sarsen");
       }
 
-      // No lintel if this trilithon has a collapsed upright.
       if (!thisFallen) {
-        const lintelGeo = new BoxGeometry(INNER_LINTEL_W, LINTEL_H, LINTEL_D);
-        lintelGeo.rotateY(a);
-        lintelGeo.translate(rx, INNER_H + LINTEL_H / 2, rz);
-        add(lintelGeo, "lintel");
+        const baseY = INNER_H + LINTEL_H / 2;
+        const geo = new BoxGeometry(INNER_LINTEL_W, LINTEL_H, LINTEL_D);
+        const mesh = new Mesh(geo, m.lintel);
+        mesh.rotation.y = a;
+        mesh.position.set(rx, baseY, rz);
+        tagFloat(mesh, baseY);
+        g.add(mesh);
       }
     }
 
-    // ── 4. Central altar stone — flat slab on the ground ──
-    const altarGeo = new BoxGeometry(0.022 * S, 0.005 * S, 0.013 * S);
-    altarGeo.translate(0, 0.0025 * S, 0);
-    add(altarGeo, "altar");
+    // ── 4. Central altar stone — flat slab (floats gently) ──
+    {
+      const baseY = 0.0025 * S;
+      const geo = new BoxGeometry(0.022 * S, 0.005 * S, 0.013 * S);
+      const mesh = new Mesh(geo, m.altar);
+      mesh.position.set(0, baseY, 0);
+      tagFloat(mesh, baseY);
+      g.add(mesh);
+    }
 
-    // ── 5. Heel stone — single tapered stone just outside the ring, slightly leaning ──
-    const heelGeo = new CylinderGeometry(0.005 * S, 0.008 * S, OUTER_H * 0.85, 5);
-    heelGeo.rotateZ(0.13);  // slight lean toward center
-    heelGeo.translate(0, OUTER_H * 0.43, R_OUT + 0.032 * S);
-    add(heelGeo, "altar");
+    // ── 5. Heel stone (floats + leans more dramatically) ──
+    {
+      const baseY = OUTER_H * 0.43;
+      const geo = new CylinderGeometry(0.005 * S, 0.008 * S, OUTER_H * 0.85, 5);
+      const mesh = new Mesh(geo, m.altar);
+      mesh.rotation.z = 0.13;
+      mesh.position.set(0, baseY, R_OUT + 0.032 * S);
+      tagFloat(mesh, baseY);
+      g.add(mesh);
+    }
 
-    // ── Merge each material bucket into one mesh ──
-    const g = new Group();
-    for (const key of Object.keys(buckets) as (keyof typeof m)[]) {
-      const geos = buckets[key];
+    // ── Merge static (fallen/ground) geometry ──
+    for (const key of Object.keys(staticBuckets) as (keyof typeof m)[]) {
+      const geos = staticBuckets[key];
       if (geos.length === 0) continue;
       const merged = mergeGeometries(geos, false);
       if (merged) g.add(new Mesh(merged, m[key]));
       for (const geo of geos) geo.dispose();
     }
+
     return g;
   }
 
