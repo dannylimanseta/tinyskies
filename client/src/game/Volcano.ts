@@ -57,7 +57,7 @@ function buildVolcanoGeometry(seed: number): LatheGeometry {
   // Exterior slopes
   for (let i = 1; i <= steps; i++) {
     const t = i / steps; // 0 at top, 1 at bottom
-    const r = 0.24 * S + Math.pow(t, 1.6) * 1.38 * S;
+    const r = 0.24 * S + Math.pow(t, 1.6) * 1.15 * S; // Reduced base width from 1.38 to 1.15
     const y = (1.0 - t) * 0.98 * S * H;
     profile.push(new Vector2(r, y));
   }
