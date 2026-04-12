@@ -2404,8 +2404,8 @@ export class Game {
           mesh.rotation.x = 0;
           mesh.rotation.z = 0;
         } else {
-          const bob = Math.sin(this.gameTime * ud.speed + ud.phase) * ud.amp * 0.45;
-          mesh.position.y = ud.baseY + ud.amp * t + bob * t;
+          const bob = Math.sin(this.gameTime * ud.speed + ud.phase) * ud.amp * 0.35;
+          mesh.position.y = ud.baseY + ud.amp * 3.0 * t + bob * t;
           mesh.rotation.x = ud.tiltX * t;
           mesh.rotation.z = ud.tiltZ * t;
         }

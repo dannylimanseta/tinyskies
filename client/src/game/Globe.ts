@@ -1856,13 +1856,13 @@ transformed.z += sway2;`,
 
     // ── Helper: attach float userData to a standing mesh ──
     const tagFloat = (mesh: Mesh, baseY: number) => {
-      mesh.userData.isFloating = true;
+      mesh.userData.isFloating = rand() > 0.35;   // ~65% of stones float, rest stay grounded
       mesh.userData.baseY      = baseY;
-      mesh.userData.amp        = (0.006 + rand() * 0.010) * S;
+      mesh.userData.amp        = (0.016 + rand() * 0.022) * S;
       mesh.userData.speed      = 0.55 + rand() * 0.55;
       mesh.userData.phase      = rand() * Math.PI * 2;
-      mesh.userData.tiltX      = (rand() - 0.5) * 0.18;
-      mesh.userData.tiltZ      = (rand() - 0.5) * 0.18;
+      mesh.userData.tiltX      = (rand() - 0.5) * 1.2;
+      mesh.userData.tiltZ      = (rand() - 0.5) * 1.2;
     };
 
     const g = new Group();
