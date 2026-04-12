@@ -1,8 +1,13 @@
 import {
   AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
   CylinderGeometry,
   DoubleSide,
   Group,
+  NearestFilter,
+  NormalBlending,
   InstancedMesh,
   LatheGeometry,
   Mesh,
@@ -10,6 +15,7 @@ import {
   Object3D,
   PlaneGeometry,
   PointLight,
+  Points,
   Quaternion,
   Scene,
   ShaderMaterial,
@@ -33,7 +39,10 @@ const BOWL_RIM_R = 0.065;
 const RIM_RING_R = 0.070;
 const FLAME_W    = 0.14;
 const FLAME_H    = 0.22;
-const FLAME_Y    = POLE_H + BOWL_H + FLAME_H * 0.42;
+/** Raised so the flame quad clears the bowl rim — reduces the straight “crop” line. */
+const FLAME_Y = POLE_H + BOWL_H + FLAME_H * 0.58;
+const FLAME_GLOW_Y = FLAME_Y - FLAME_H * 0.18;
+const FLAME_LIGHT_Y = FLAME_Y - FLAME_H * 0.28;
 
 /* Tree ring — same scales / geometry style as Globe.ts forest */
 const TREES_PER_BRAZIER = 7;
@@ -57,15 +66,27 @@ const MIN_SEP_DOT_FALLBACK = Math.cos(38 * (Math.PI / 180)); // ~0.788
 
 const REF_UP = new Vector3(0, 1, 0);
 
+/** Orange ember particles per brazier — rise through the flame column */
+const EMBER_COUNT = 36;
+/** Aligned to flame base (just above bottom of flame quad) — moves up with FLAME_Y. */
+const EMBER_ORIGIN_Y = FLAME_Y - FLAME_H * 0.5 + 0.012;
+/** Local Y travel: past the flame tip so embers keep rising well above the fire */
+const EMBER_RISE_MAX = (FLAME_Y + FLAME_H * 0.5) - EMBER_ORIGIN_Y + FLAME_H * 1.05;
+
+/** Bright orange (RGB) — opacity handles fade, not these */
+const EMBER_ORANGE = { r: 1.0, g: 0.72, b: 0.22 } as const;
+
 /* ── Billboard shaders — vertical axis locked to globe surface normal ── */
 
 /*
  * Cylindrical billboard: horizontal tracks camera; vertical stays locked to the
  * globe surface normal (model-matrix Y column). uBurnScale drives the pop-in.
+ * uTime adds sway / flutter so the flame feels alive.
  */
 const billboardVert = /* glsl */ `
 varying vec2 vUv;
 uniform float uBurnScale;
+uniform float uTime;
 void main() {
   vUv = uv;
   vec3 upAxis     = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
@@ -73,8 +94,12 @@ void main() {
   vec3 toCamera   = normalize(cameraPosition - worldCenter);
   vec3 forward    = normalize(toCamera - dot(toCamera, upAxis) * upAxis);
   vec3 right      = normalize(cross(upAxis, forward));
+  float h = position.y + 0.52;
+  float sway   = sin(uTime * 7.8  + h * 16.0) * 0.018 * h * h;
+  float sway2  = sin(uTime * 15.2 - h * 22.0) * 0.008 * h * h;
+  float flutter = sin(uTime * 21.0 + position.x * 38.0) * 0.005 * h;
   vec3 vertPos = worldCenter
-    + right  * (position.x * uBurnScale)
+    + right  * (position.x * uBurnScale + sway + sway2 + flutter)
     + upAxis * (position.y * uBurnScale);
   gl_Position = projectionMatrix * viewMatrix * vec4(vertPos, 1.0);
 }
@@ -86,8 +111,14 @@ uniform float uBurn;
 varying vec2 vUv;
 
 void main() {
-  float cx = vUv.x - 0.5;
   float cy = vUv.y;
+  // Turbulent wobble — stronger toward the flame tip
+  float tip = cy * cy;
+  float turbX = sin(uTime * 10.5 + cy * 20.0) * 0.045 * tip
+              + sin(uTime * 17.0 - cy * 28.0) * 0.028 * tip;
+  float turbY = sin(uTime * 8.2 + vUv.x * 12.0) * 0.012 * tip;
+  float cx = vUv.x - 0.5 + turbX;
+  cy = clamp(cy + turbY, 0.0, 1.0);
 
   float taper = mix(0.45, 0.06, cy * cy);
   float d = abs(cx) / max(taper, 0.001);
@@ -96,12 +127,16 @@ void main() {
   float halo = 1.0 - smoothstep(0.0, 1.5, d);
 
   float heightFade = 1.0 - smoothstep(0.28, 1.0, cy);
-  float baseFade   = smoothstep(0.0, 0.07, cy);
+  /* Soft, wavy bottom — the flame quad is a rectangle; without this, alpha hits the bowl along one
+   * straight UV row and reads as a hard “crop”. Wobble + wide smoothstep breaks that line. */
+  float baseWobble = 0.052 * sin(vUv.x * 18.0 + uTime * 4.5) + 0.034 * sin(vUv.x * 31.0 - uTime * 3.0);
+  float baseFade   = smoothstep(0.0, 0.32, cy + baseWobble);
 
   float f1 = sin(uTime * 7.1  + vUv.x * 9.0 + vUv.y * 4.5) * 0.5 + 0.5;
   float f2 = sin(uTime * 13.7 - vUv.x * 6.0 + vUv.y * 8.2) * 0.5 + 0.5;
   float f3 = sin(uTime * 19.3 + vUv.x * 3.5 - vUv.y * 11.0) * 0.5 + 0.5;
-  float flicker = f1 * 0.5 + f2 * 0.3 + f3 * 0.2;
+  float f4 = sin(uTime * 24.0 + cy * 30.0) * 0.5 + 0.5;
+  float flicker = f1 * 0.42 + f2 * 0.26 + f3 * 0.18 + f4 * 0.14;
 
   vec3 red    = vec3(0.88, 0.12, 0.0);
   vec3 orange = vec3(1.00, 0.42, 0.02);
@@ -109,13 +144,14 @@ void main() {
 
   vec3 col = mix(orange, red,    smoothstep(0.4, 1.0, cy));
   col      = mix(col,    yellow, core * (1.0 - cy * 0.8));
-  col     += vec3(0.35, 0.12, 0.0) * flicker * core;
+  col     += vec3(0.38, 0.14, 0.02) * flicker * core;
+  col     += vec3(0.12, 0.05, 0.0) * sin(uTime * 31.0 + cy * 40.0) * core;
 
   float alpha = (core * 0.92 + halo * 0.18) * heightFade * baseFade;
-  alpha *= 0.82 + flicker * 0.18;
+  alpha *= 0.78 + flicker * 0.22;
   alpha *= uBurn;
 
-  gl_FragColor = vec4(col * 2.8, alpha);
+  gl_FragColor = vec4(col * 2.85, alpha);
 }
 `;
 
@@ -125,12 +161,46 @@ uniform float uBurn;
 varying vec2 vUv;
 
 void main() {
-  float d = distance(vUv, vec2(0.5, 0.30)) * 2.2;
+  vec2 gc = vUv - vec2(0.5, 0.30);
+  gc.x += sin(uTime * 5.5 + vUv.y * 8.0) * 0.04 * vUv.y;
+  float d = length(gc) * 2.2;
   float glow = 1.0 - smoothstep(0.0, 1.0, d);
-  float pulse = 0.75 + 0.25 * sin(uTime * 3.1);
-  vec3 col = vec3(1.0, 0.38, 0.04);
-  float alpha = glow * glow * pulse * uBurn * 0.52;
+  float pulse = 0.72 + 0.28 * sin(uTime * 3.1) + 0.08 * sin(uTime * 11.0);
+  vec3 col = vec3(1.0, 0.14, 0.12);
+  float glowBase = smoothstep(0.0, 0.34, vUv.y + 0.045 * sin(vUv.x * 15.0 + uTime * 4.2));
+  float alpha = glow * glow * pulse * uBurn * 0.52 * glowBase;
   gl_FragColor = vec4(col * 2.0, alpha);
+}
+`;
+
+/* PointsMaterial only multiplies RGB — sparks never faded to transparent. Per-particle alpha here. */
+const emberVert = /* glsl */ `
+attribute vec3 color;
+attribute float opacity;
+varying vec3 vColor;
+varying float vOpacity;
+uniform float size;
+uniform float scale;
+void main() {
+  vColor = color;
+  vOpacity = opacity;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = size * (scale / max(-mvPosition.z, 1e-3));
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+const emberFrag = /* glsl */ `
+uniform sampler2D map;
+varying vec3 vColor;
+varying float vOpacity;
+void main() {
+  vec4 tex = texture2D(map, gl_PointCoord);
+  if (tex.a < 0.01) discard;
+  float a = tex.a * vOpacity;
+  if (a < 0.0005) discard;
+  vec3 rgb = min(vColor * tex.rgb * 1.12, vec3(1.0));
+  gl_FragColor = vec4(rgb, a);
 }
 `;
 
@@ -143,6 +213,15 @@ interface BrazierState {
   flameMat: ShaderMaterial;
   glowMat: ShaderMaterial;
   light: PointLight;
+  emberPoints: Points;
+  emberGeo: BufferGeometry;
+  emberPos: Float32Array;
+  emberBaseX: Float32Array;
+  emberBaseZ: Float32Array;
+  emberSpd: Float32Array;
+  emberPhase: Float32Array;
+  emberCol: Float32Array;
+  emberOpacity: Float32Array;
   /** Bowl-top world position — proximity trigger centre. */
   worldPos: Vector3;
   lit: boolean;
@@ -190,11 +269,29 @@ export class Braziers {
   /* tree instanced mesh */
   private treeMesh!: InstancedMesh;
 
+  private emberTexture!: CanvasTexture;
+  private emberMat!: ShaderMaterial;
+
   constructor(scene: Scene, globeRadius: number, worldSeed: number, terrainType: string) {
     this.scene = scene;
 
     this.buildSharedGeometry();
     this.buildSharedMaterials();
+    this.emberTexture = this.buildEmberTexture();
+    const emberScale = typeof window !== "undefined" ? window.innerHeight * 0.5 : 400;
+    this.emberMat = new ShaderMaterial({
+      uniforms: {
+        map: { value: this.emberTexture },
+        size: { value: 0.044 },
+        scale: { value: emberScale },
+      },
+      vertexShader: emberVert,
+      fragmentShader: emberFrag,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: NormalBlending,
+    });
 
     const totalTrees = BRAZIER_COUNT * TREES_PER_BRAZIER;
     this.treeMesh = new InstancedMesh(this.treeGeo, this.treeMat, totalTrees);
@@ -240,18 +337,31 @@ export class Braziers {
       group.add(flameMesh);
 
       const glowMesh = new Mesh(this.glowGeo, glowMat);
-      glowMesh.position.y = POLE_H + BOWL_H + FLAME_H * 0.20;
+      glowMesh.position.y = FLAME_GLOW_Y;
       glowMesh.frustumCulled = false;
       group.add(glowMesh);
 
-      const light = new PointLight(0xff6600, 0, 3.5);
-      light.position.y = POLE_H + BOWL_H + 0.04;
+      const light = new PointLight(0xff3a32, 0, 3.5);
+      light.position.y = FLAME_LIGHT_Y;
       group.add(light);
+
+      const ember = this.createEmberPoints(worldSeed, i);
+      group.add(ember.points);
 
       const worldPos = group.position.clone().addScaledVector(normal, POLE_H + BOWL_H);
 
       this.states.push({
-        group, flameMesh, glowMesh, flameMat, glowMat, light, worldPos,
+        group, flameMesh, glowMesh, flameMat, glowMat, light,
+        emberPoints: ember.points,
+        emberGeo: ember.geo,
+        emberPos: ember.pos,
+        emberBaseX: ember.baseX,
+        emberBaseZ: ember.baseZ,
+        emberSpd: ember.spd,
+        emberPhase: ember.phase,
+        emberCol: ember.col,
+        emberOpacity: ember.opacity,
+        worldPos,
         lit: false, burnTimer: 0, time: 0, fadeInT: 0, fadeOutT: 1,
       });
 
@@ -450,6 +560,112 @@ export class Braziers {
     return ((n >> 16) ^ n) & 0xffffff;
   }
 
+  /** Bowl-top world positions for all braziers — used by Game.ts for proximity whispers. */
+  get worldPositions(): readonly Vector3[] {
+    return this.states.map(s => s.worldPos);
+  }
+
+  /** Hard-edged spark (no soft glow) — color comes from vertexColors (orange). */
+  private buildEmberTexture(): CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, 16, 16);
+    const cx = 8;
+    const cy = 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    const tex = new CanvasTexture(canvas);
+    tex.magFilter = NearestFilter;
+    tex.minFilter = NearestFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  private createEmberPoints(seed: number, brazierIndex: number) {
+    const pos = new Float32Array(EMBER_COUNT * 3);
+    const col = new Float32Array(EMBER_COUNT * 3);
+    const opacity = new Float32Array(EMBER_COUNT);
+    const baseX = new Float32Array(EMBER_COUNT);
+    const baseZ = new Float32Array(EMBER_COUNT);
+    const spd = new Float32Array(EMBER_COUNT);
+    const phase = new Float32Array(EMBER_COUNT);
+
+    for (let i = 0; i < EMBER_COUNT; i++) {
+      const h = this.hashInt(seed * 9999 + brazierIndex * 127 + i * 31);
+      const r1 = (h & 0xffff) / 0xffff;
+      const r2 = ((h >> 16) & 0xffff) / 0xffff;
+      baseX[i] = (r1 - 0.5) * FLAME_W * 0.42;
+      baseZ[i] = (r2 - 0.5) * FLAME_W * 0.34;
+      spd[i] = 0.11 + ((this.hashInt(seed + i * 17 + brazierIndex) & 0xff) / 255) * 0.14;
+      phase[i] = ((this.hashInt(seed * 2 + i + brazierIndex * 13) & 0xffff) / 0xffff) * Math.PI * 2;
+      const i3 = i * 3;
+      pos[i3 + 0] = baseX[i]!;
+      pos[i3 + 1] = ((r1 + r2) * 0.5) * EMBER_RISE_MAX * 0.55;
+      pos[i3 + 2] = baseZ[i]!;
+      col[i3 + 0] = EMBER_ORANGE.r;
+      col[i3 + 1] = EMBER_ORANGE.g;
+      col[i3 + 2] = EMBER_ORANGE.b;
+      opacity[i] = 1;
+    }
+
+    const geo = new BufferGeometry();
+    // Must use BufferAttribute — Float32BufferAttribute *copies* the array, so mutating
+    // `pos` / `col` in updateEmberParticles would never reach the GPU (frozen particles).
+    geo.setAttribute("position", new BufferAttribute(pos, 3));
+    geo.setAttribute("color", new BufferAttribute(col, 3));
+    geo.setAttribute("opacity", new BufferAttribute(opacity, 1));
+
+    const points = new Points(geo, this.emberMat);
+    points.frustumCulled = false;
+    points.visible = false;
+    points.renderOrder = 10;
+    points.position.y = EMBER_ORIGIN_Y;
+
+    return { points, geo, pos, baseX, baseZ, spd, phase, col, opacity };
+  }
+
+  private updateEmberParticles(s: BrazierState, burn: number, dt: number) {
+    s.emberPoints.visible = burn > 0.02;
+    if (!s.emberPoints.visible) return;
+
+    const t = s.time;
+    const pos = s.emberPos;
+    const baseX = s.emberBaseX;
+    const baseZ = s.emberBaseZ;
+    const spd = s.emberSpd;
+    const phase = s.emberPhase;
+    const opacity = s.emberOpacity;
+
+    for (let i = 0; i < EMBER_COUNT; i++) {
+      const i3 = i * 3;
+      let y = pos[i3 + 1]!;
+      y += spd[i]! * dt * burn * 0.82;
+
+      if (y > EMBER_RISE_MAX) {
+        y = -0.02 + Math.random() * 0.07;
+        baseX[i] = (Math.random() - 0.5) * FLAME_W * 0.44;
+        baseZ[i] = (Math.random() - 0.5) * FLAME_W * 0.34;
+      }
+
+      const drift = Math.min(1, Math.max(0, y / EMBER_RISE_MAX));
+      pos[i3 + 0] = baseX[i]! + Math.sin(t * 3.2 + phase[i]!) * 0.014 * drift;
+      pos[i3 + 1] = y;
+      pos[i3 + 2] = baseZ[i]! + Math.cos(t * 2.7 + phase[i]! * 1.2) * 0.014 * drift;
+
+      const ht = Math.max(0, Math.min(1, y / EMBER_RISE_MAX));
+      // True alpha fade (fragment shader) — full opacity at base, ~0 at top
+      const heightFade = Math.pow(1.0 - ht, 2.1);
+      opacity[i] = heightFade * burn;
+    }
+
+    s.emberGeo.attributes.position!.needsUpdate = true;
+    s.emberGeo.attributes.opacity!.needsUpdate = true;
+  }
+
   /* ── Per-frame update ────────────────────────────────────────── */
 
   update(dt: number, playerWorldPos: Vector3): { justLit: boolean; burnProgress: number[] } {
@@ -494,6 +710,8 @@ export class Braziers {
       s.light.intensity = burn > 0.01
         ? 2.2 * burn * (0.85 + 0.15 * Math.sin(s.time * 6.3))
         : 0;
+
+      this.updateEmberParticles(s, burn, dt);
     }
 
     return {
@@ -526,10 +744,14 @@ export class Braziers {
     this.treeMesh.dispose();
     this.treeMesh.removeFromParent();
 
+    this.emberMat.dispose();
+    this.emberTexture.dispose();
+
     for (const s of this.states) {
       s.flameMat.dispose();
       s.glowMat.dispose();
       s.light.dispose();
+      s.emberGeo.dispose();
       s.group.removeFromParent();
     }
     this.states = [];

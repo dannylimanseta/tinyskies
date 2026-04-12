@@ -487,6 +487,58 @@ const STONEHENGE_PANIC = [
   "You hear a whisper from the stones... \"Fly. Just fly. Don't stop.\"",
 ];
 
+/* ── Brazier whisper lines ───────────────────────────────────────── */
+
+/** Approaching an extinguished brazier — ancient, dormant. */
+const BRAZIER_UNLIT = [
+  "The brazier's iron is cold. An inscription reads: \"Five fires hold the veil. Let them go dark and the sky opens.\"",
+  "The wood inside has turned to stone. Carved into the bowl: \"Do not let it go dark.\"",
+  "Lichen covers the metal. Beneath it: \"Five flames, one shield. Against what comes from beyond the stars.\"",
+  "A voice, not quite heard: \"We placed these five across the world. We did not tell anyone why. We should have.\"",
+  "The brazier has not burned in a very long time. The air around it smells faintly of something that has no name.",
+];
+
+/** Approaching a lit brazier when only 1–2 total are burning — the network stirs. */
+const BRAZIER_LIT_FEW = [
+  "The brazier burns. Something in the flame whispers... \"One down. Four to find. The veil thins slower now.\"",
+  "The flame casts no shadow. An inscription glows: \"Light all five before it arrives.\"",
+  "You hear something in the crackling... \"They are watching. Whatever built the veil watches you light it back.\"",
+  "The flame burns upward even when the wind says otherwise. The other four are out there, cold and waiting.",
+  "Standing near the fire, you feel a warmth that isn't entirely from the flame. The brazier hums.",
+];
+
+/** Approaching any brazier when 3–4 are burning — urgency rises. */
+const BRAZIER_LIT_MANY = [
+  "The air feels charged. An inscription: \"When four burn, the fifth must follow. The interval matters.\"",
+  "The flame leans toward the sky, as if pointing at something above.",
+  "The brazier flickers faster as you approach. You hear, barely: \"Almost. Almost. Do not stop now.\"",
+  "You sense the other fires from here — a thread of heat connecting them across the world. One gap remains.",
+  "Half-buried inscription: \"The ancients lit all five in one hour. They are not here to say what happened next.\"",
+];
+
+/** Approaching any brazier when all 5 are burning — the shield holds. */
+const BRAZIER_ALL_LIT = [
+  "All five burn. The air above the globe feels heavier. Like something is pressing against it. Or pressing away.",
+  "The flame is still. The inscription reads: \"You have done what we could not. We do not know if it will be enough.\"",
+  "A hum runs through the ground — faint, global, old. The veil holds. For now.",
+  "\"The shield is not a wall — it is a warning. Whatever it keeps out knows it is there.\"",
+  "The flame burns cold. An inscription glows: \"Five fires, one breath. Hold it.\"",
+];
+
+/**
+ * Pick a brazier ambient whisper.
+ * @param isLit   Whether the brazier being approached is currently burning.
+ * @param litCount How many of the 5 braziers are currently burning.
+ */
+export function pickBrazierWhisper(isLit: boolean, litCount: number): string {
+  let pool: readonly string[];
+  if (litCount >= 5)       pool = BRAZIER_ALL_LIT;
+  else if (litCount >= 3)  pool = BRAZIER_LIT_MANY;
+  else if (isLit)          pool = BRAZIER_LIT_FEW;
+  else                     pool = BRAZIER_UNLIT;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
 /** Pick a stonehenge ambient whisper line based on moon progress. */
 export function pickStonehengeWhisper(moonProgress: number): string {
   let pool: readonly string[];

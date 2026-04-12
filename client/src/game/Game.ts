@@ -60,7 +60,7 @@ import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { Braziers, BRAZIER_COUNT } from "./Braziers";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
-import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper } from "./PackageDialogue";
+import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper, pickBrazierWhisper } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
@@ -87,6 +87,10 @@ const OBSERVATORY_GREET_COOLDOWN = 40;
 const STONEHENGE_WHISPER_DIST = 1.8;
 const STONEHENGE_WHISPER_EXIT_DIST = 2.4;
 const STONEHENGE_WHISPER_COOLDOWN = 45;
+
+const BRAZIER_WHISPER_DIST      = 1.6;
+const BRAZIER_WHISPER_EXIT_DIST = 2.2;
+const BRAZIER_WHISPER_COOLDOWN  = 60;
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -214,6 +218,10 @@ export class Game {
   private stonehengeInRange: boolean[] = [];
   private stonehengeCooldown: number[] = [];
   private stonehengeWorldPositions: Vector3[] = [];
+
+  private brazierInRange: boolean[] = [];
+  private brazierCooldown: number[] = [];
+  private lastBrazierProgress: number[] = [];
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
@@ -765,6 +773,9 @@ export class Game {
 
     this.braziers = new Braziers(this.scene, globeRadius, seed, terrainType);
     this.hud.initBrazierTracker(BRAZIER_COUNT);
+    this.brazierInRange      = new Array(BRAZIER_COUNT).fill(false);
+    this.brazierCooldown     = new Array(BRAZIER_COUNT).fill(0);
+    this.lastBrazierProgress = new Array(BRAZIER_COUNT).fill(0);
 
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
@@ -1675,6 +1686,7 @@ export class Game {
         this.hud.showBrazierLit();
       }
       this.hud.updateBrazierStatus(burnProgress);
+      this.lastBrazierProgress = burnProgress;
     }
 
     /* ── Campsite landing detection ─────────────────────── */
@@ -1773,6 +1785,7 @@ export class Game {
     this.updateBalloonGreetings(dt, questPlayerPos);
       this.updateObservatoryGreetings(dt, questPlayerPos);
       this.updateStonehengeWhispers(dt, questPlayerPos);
+      this.updateBrazierWhispers(dt, questPlayerPos);
       this.updateStonehengeFloat();
       this.globe.updateFloatingTrees(this.moonThreat?.progress ?? 0, this.gameTime);
 
@@ -2432,6 +2445,34 @@ export class Game {
         }
       } else if (dist > STONEHENGE_WHISPER_EXIT_DIST) {
         this.stonehengeInRange[i] = false;
+      }
+    }
+  }
+
+  private updateBrazierWhispers(dt: number, playerWorld: Vector3) {
+    if (!this.braziers) return;
+    for (let i = 0; i < this.brazierCooldown.length; i++) {
+      this.brazierCooldown[i] = Math.max(0, this.brazierCooldown[i]! - dt);
+    }
+    if (this.packageQuestHUD.isBubbleShowing || this.packageQuestHUD.isWhisperShowing) return;
+
+    const positions = this.braziers.worldPositions;
+    const litCount  = this.lastBrazierProgress.filter(p => p > 0).length;
+
+    for (let i = 0; i < positions.length; i++) {
+      const dist = playerWorld.distanceTo(positions[i]!);
+      if (dist < BRAZIER_WHISPER_DIST) {
+        if (!this.brazierInRange[i]) {
+          if (this.brazierCooldown[i]! <= 0) {
+            const isLit  = (this.lastBrazierProgress[i] ?? 0) > 0;
+            const whisper = pickBrazierWhisper(isLit, litCount);
+            this.packageQuestHUD.showWhisper(whisper);
+            this.brazierCooldown[i] = BRAZIER_WHISPER_COOLDOWN;
+          }
+          this.brazierInRange[i] = true;
+        }
+      } else if (dist > BRAZIER_WHISPER_EXIT_DIST) {
+        this.brazierInRange[i] = false;
       }
     }
   }
