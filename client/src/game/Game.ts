@@ -1728,6 +1728,7 @@ export class Game {
       this.updateObservatoryGreetings(dt, questPlayerPos);
       this.updateStonehengeWhispers(dt, questPlayerPos);
       this.updateStonehengeFloat();
+      this.globe.updateFloatingTrees(this.moonThreat?.progress ?? 0, this.gameTime);
 
     if (this.playerVehicle === "plane") {
       const engineVol =

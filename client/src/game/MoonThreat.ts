@@ -28,7 +28,7 @@ const MOON_SCALE_START = 0.6;
 const MOON_SCALE_END = 1.0;
 
 /** Direction from globe centre toward the moon's starting position (normalised). */
-const MOON_APPROACH_DIR = new Vector3(0.4, 0.75, 0.53).normalize();
+export const MOON_APPROACH_DIR = new Vector3(0.4, 0.75, 0.53).normalize();
 
 const POST_IMPACT_SPEED = 0.3;
 

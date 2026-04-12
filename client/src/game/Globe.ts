@@ -24,6 +24,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { addRimLight } from "./RimLight";
+import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, terrainNoise, isLand } from "./SimplexNoise";
 import { getTerrainParams } from "./TerrainPresets";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
@@ -107,6 +108,26 @@ export class Globe {
   readonly stonehengeCenters: { normal: Vector3 }[] = [];
   readonly stonehengeGroups: Group[] = [];
 
+  /** Floating tree clusters (panic-phase effect). */
+  private floatingTreeMesh: InstancedMesh | null = null;   // single mesh → 1 draw call
+  private floatingTreeData: {
+    normal: Vector3;
+    tangentOffset: Vector3;
+    baseHeight: number;
+    amp: number;
+    speed: number;
+    phase: number;
+    quaternion: Quaternion;   // pre-computed: align Y→normal + random lean
+    sizeVar: number;
+  }[] = [];
+  private readonly floatingTreeDummy   = new Object3D();
+  private readonly floatingTreePosScratch = new Vector3();  // avoids per-frame allocation
+  private floatingTreesActive          = false;             // skip updates when t=0
+  private static readonly FT_CLUSTERS         = 28;   // forest-anchored clusters (impact-biased)
+  private static readonly FT_PER_CLUSTER      = 40;   // base trees per forest cluster
+  private static readonly FT_IMPACT_CLUSTERS  = 14;   // extra dense clusters right at impact zone
+  private static readonly FT_IMPACT_PER       = 70;   // trees per impact cluster
+
   /** Shared material palette for all observatories (created once, reused across 3 instances). */
   private obsMaterials: {
     stone: MeshPhongMaterial; stoneDk: MeshPhongMaterial; dome: MeshPhongMaterial;
@@ -141,6 +162,7 @@ export class Globe {
     this.createWindmills();
     this.createObservatories();
     this.createStonehenges();
+    this.createFloatingTreeClusters();
     this.createBalloons();
     this.createClouds();
     this.createAtmosphere();
@@ -1803,6 +1825,188 @@ transformed.z += sway2;`,
       this.group.add(stonehenge);
       this.stonehengeGroups.push(stonehenge);
     }
+  }
+
+  // ── Floating tree clusters (panic phase) — single InstancedMesh → 1 draw call ───
+
+  private createFloatingTreeClusters() {
+    const rand        = seededRandom(888 + this.seed);
+    const forestNoise = createNoise3D(this.seed + 999);
+    const terrainNd   = createNoise3D(this.seed);
+    const params      = getTerrainParams(this.terrainType);
+    const shades      = [0x4a9a3a, 0x55a545, 0x48953a, 0x8aaa35, 0xb59a30];
+    const shadeColors = shades.map((h) => new Color(h));
+    const C           = Globe.FT_CLUSTERS;
+    const T           = Globe.FT_PER_CLUSTER;
+    const IC          = Globe.FT_IMPACT_CLUSTERS;
+    const IT          = Globe.FT_IMPACT_PER;
+    const Y_UP        = new Vector3(0, 1, 0);
+    const colors: Color[] = [];  // parallel to floatingTreeData, set as instance colours later
+
+    // ── Impact tangent frame (shared by fallback & impact clusters) ──
+    const impactRef   = Math.abs(MOON_APPROACH_DIR.y) < 0.9
+      ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+    const impactTang1 = new Vector3().crossVectors(MOON_APPROACH_DIR, impactRef).normalize();
+    const impactTang2 = new Vector3().crossVectors(MOON_APPROACH_DIR, impactTang1).normalize();
+
+    // ── Helper: push tree entries for one cluster ─────────────────────
+    const buildCluster = (
+      clusterNormal: Vector3,
+      count: number,
+      rng: () => number,
+      spreadRange: [number, number],
+      heightMax: number,
+    ) => {
+      const ref   = Math.abs(clusterNormal.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+      const tang1 = new Vector3().crossVectors(clusterNormal, ref).normalize();
+      const tang2 = new Vector3().crossVectors(clusterNormal, tang1).normalize();
+      const spread = spreadRange[0] + rng() * (spreadRange[1] - spreadRange[0]);
+      for (let i = 0; i < count; i++) {
+        const angle = rng() * Math.PI * 2;
+        const r     = Math.sqrt(rng()) * spread;
+        const tangentOffset = new Vector3()
+          .addScaledVector(tang1, Math.cos(angle) * r)
+          .addScaledVector(tang2, Math.sin(angle) * r);
+        const u          = rng();
+        const baseHeight = 0.05 + u * u * heightMax;
+        const leanDir    = rng() * Math.PI * 2;
+        const leanAngle  = 0.12 + rng() * 0.55;
+        const leanAxis   = new Vector3(Math.cos(leanDir), 0, Math.sin(leanDir));
+        const qBase      = new Quaternion().setFromUnitVectors(Y_UP, clusterNormal);
+        const qLean      = new Quaternion().setFromAxisAngle(leanAxis, leanAngle);
+        colors.push(shadeColors[Math.floor(rng() * shadeColors.length)].clone());
+        this.floatingTreeData.push({
+          normal: clusterNormal,
+          tangentOffset,
+          baseHeight,
+          amp:       0.022 + rng() * 0.042,
+          speed:     0.40  + rng() * 0.65,
+          phase:     rng() * Math.PI * 2,
+          quaternion: new Quaternion().multiplyQuaternions(qBase, qLean),
+          sizeVar:    0.026 + rng() * 0.030,
+        });
+      }
+    };
+
+    // ── Find cluster centres anchored to existing forest patches,
+    //    biased toward the moon-impact hemisphere. ──────────────────────
+    const candidates: { normal: Vector3; score: number }[] = [];
+    for (let s = 0; s < 2000; s++) {
+      const theta = rand() * Math.PI * 2;
+      const phi   = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.sin(phi) * Math.sin(theta);
+      const nz = Math.cos(phi);
+      const n  = new Vector3(nx, ny, nz);
+
+      // Must be on land.
+      const tv = terrainNoise(terrainNd, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale);
+      if (tv <= params.threshold) continue;
+
+      // Forest density check.
+      const fv = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
+      if (fv < 0.30) continue;
+
+      // Bias toward the impact hemisphere but allow coverage across the whole globe.
+      const impactDot    = Math.max(0, n.dot(MOON_APPROACH_DIR));
+      const impactWeight = 0.25 + Math.pow(impactDot, 1.5) * 0.75;
+      candidates.push({ normal: n.normalize(), score: fv * impactWeight });
+    }
+
+    // Sort highest score first; greedily pick well-separated centres.
+    candidates.sort((a, b) => b.score - a.score);
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= C) break;
+      if (chosen.every((v) => v.dot(c.normal) < 0.90)) chosen.push(c.normal);
+    }
+    // Fallback: fill any gap with random points on the impact hemisphere.
+    const fbRand = seededRandom(889 + this.seed);
+    while (chosen.length < C) {
+      const spread = fbRand() * 0.7;
+      const angle  = fbRand() * Math.PI * 2;
+      chosen.push(MOON_APPROACH_DIR.clone()
+        .addScaledVector(impactTang1, Math.cos(angle) * spread)
+        .addScaledVector(impactTang2, Math.sin(angle) * spread)
+        .normalize());
+    }
+    for (const n of chosen) {
+      const impactProx = Math.max(0, n.dot(MOON_APPROACH_DIR));
+      const count = Math.round(T * (0.5 + impactProx * 0.8));
+      buildCluster(n, count, rand, [0.20, 0.48], 0.50);
+    }
+
+    // ── Dense impact-zone clusters ─────────────────────────────────────
+    const icRand = seededRandom(890 + this.seed);
+    for (let c = 0; c < IC; c++) {
+      const coneSpread = icRand() * 0.70;
+      const coneAngle  = icRand() * Math.PI * 2;
+      const n = MOON_APPROACH_DIR.clone()
+        .addScaledVector(impactTang1, Math.cos(coneAngle) * Math.sin(coneSpread))
+        .addScaledVector(impactTang2, Math.sin(coneAngle) * Math.sin(coneSpread))
+        .normalize();
+      buildCluster(n, IT, icRand, [0.15, 0.37], 0.45);
+    }
+
+    // ── Single InstancedMesh for all trees — 1 draw call ──────────────
+    const total = this.floatingTreeData.length;
+    const geo   = this.createTeardropGeo(1, 1);
+    const mat   = new MeshPhongMaterial({ color: 0xffffff, flatShading: true });
+    addRimLight(mat, 0xffeeaa, 0.7, 3.0);
+
+    const mesh = new InstancedMesh(geo, mat, total);
+    mesh.castShadow    = true;
+    mesh.frustumCulled = false;
+    const hiddenDummy = new Object3D();
+    hiddenDummy.scale.set(0, 0, 0);
+    hiddenDummy.updateMatrix();
+    for (let i = 0; i < total; i++) {
+      mesh.setMatrixAt(i, hiddenDummy.matrix);
+      mesh.setColorAt(i, colors[i]);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    this.group.add(mesh);
+    this.floatingTreeMesh = mesh;
+  }
+
+  /** Animate floating tree clusters. 1 draw call, zero allocations per frame. */
+  updateFloatingTrees(moonProgress: number, time: number) {
+    const mesh = this.floatingTreeMesh;
+    if (!mesh) return;
+
+    const t = Math.max(0, Math.min(1, (moonProgress - 0.75) / 0.15));
+
+    // When transitioning to inactive: zero all matrices once, then skip every frame.
+    if (t <= 0) {
+      if (this.floatingTreesActive) {
+        this.floatingTreesActive = false;
+        const dummy = this.floatingTreeDummy;
+        dummy.scale.set(0, 0, 0);
+        dummy.updateMatrix();
+        for (let i = 0; i < mesh.count; i++) mesh.setMatrixAt(i, dummy.matrix);
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+      return;
+    }
+
+    this.floatingTreesActive = true;
+    const dummy   = this.floatingTreeDummy;
+    const scratch = this.floatingTreePosScratch;
+    const data    = this.floatingTreeData;
+
+    for (let i = 0; i < mesh.count; i++) {
+      const d   = data[i];
+      const bob = Math.sin(time * d.speed + d.phase) * d.amp * t;
+      scratch.copy(d.normal).multiplyScalar(this.radius + d.baseHeight * t + bob).add(d.tangentOffset);
+      dummy.position.copy(scratch);
+      dummy.quaternion.copy(d.quaternion);
+      dummy.scale.set(d.sizeVar * 0.7, d.sizeVar * 2.5 * t, d.sizeVar * 0.7);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
   /** Low-poly Stonehenge: outer sarsen ring, inner horseshoe trilithons, altar, heel stone.
