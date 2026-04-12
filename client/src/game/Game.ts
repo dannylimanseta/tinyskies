@@ -58,7 +58,7 @@ import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyClus
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
-import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting } from "./PackageDialogue";
+import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
@@ -82,6 +82,9 @@ const BALLOON_GREET_COOLDOWN = 32;
 const OBSERVATORY_GREET_DIST = 1.6;
 const OBSERVATORY_GREET_EXIT_DIST = 2.2;
 const OBSERVATORY_GREET_COOLDOWN = 40;
+const STONEHENGE_WHISPER_DIST = 1.8;
+const STONEHENGE_WHISPER_EXIT_DIST = 2.4;
+const STONEHENGE_WHISPER_COOLDOWN = 45;
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -200,6 +203,9 @@ export class Game {
   private observatoryInRange: boolean[] = [];
   private observatoryCooldown: number[] = [];
   private observatoryWorldPositions: Vector3[] = [];
+  private stonehengeInRange: boolean[] = [];
+  private stonehengeCooldown: number[] = [];
+  private stonehengeWorldPositions: Vector3[] = [];
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
@@ -796,6 +802,13 @@ export class Game {
     this.observatoryCooldown = new Array(obsN).fill(0);
     this.observatoryWorldPositions = this.globe.observatoryCenters.map((o) => {
       return o.normal.clone().multiplyScalar(globeRadius + 0.04);
+    });
+
+    const shN = this.globe.stonehengeCenters.length;
+    this.stonehengeInRange = new Array(shN).fill(false);
+    this.stonehengeCooldown = new Array(shN).fill(0);
+    this.stonehengeWorldPositions = this.globe.stonehengeCenters.map((o) => {
+      return o.normal.clone().multiplyScalar(globeRadius + 0.02);
     });
 
     if (this.vehicleFeatures.packageQuests) {
@@ -1709,7 +1722,8 @@ export class Game {
       if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
     }
     this.updateBalloonGreetings(dt, questPlayerPos);
-    this.updateObservatoryGreetings(dt, questPlayerPos);
+      this.updateObservatoryGreetings(dt, questPlayerPos);
+      this.updateStonehengeWhispers(dt, questPlayerPos);
 
     if (this.playerVehicle === "plane") {
       const engineVol =
@@ -2329,7 +2343,7 @@ export class Game {
     for (let i = 0; i < this.observatoryCooldown.length; i++) {
       this.observatoryCooldown[i] = Math.max(0, this.observatoryCooldown[i] - dt);
     }
-    if (this.packageQuestHUD.isBubbleShowing) return;
+    if (this.packageQuestHUD.isBubbleShowing || this.packageQuestHUD.isWhisperShowing) return;
     for (let i = 0; i < this.observatoryWorldPositions.length; i++) {
       const dist = playerWorld.distanceTo(this.observatoryWorldPositions[i]);
       if (dist < OBSERVATORY_GREET_DIST) {
@@ -2344,6 +2358,29 @@ export class Game {
         }
       } else if (dist > OBSERVATORY_GREET_EXIT_DIST) {
         this.observatoryInRange[i] = false;
+      }
+    }
+  }
+
+  private updateStonehengeWhispers(dt: number, playerWorld: Vector3) {
+    for (let i = 0; i < this.stonehengeCooldown.length; i++) {
+      this.stonehengeCooldown[i] = Math.max(0, this.stonehengeCooldown[i] - dt);
+    }
+    if (this.packageQuestHUD.isBubbleShowing || this.packageQuestHUD.isWhisperShowing) return;
+    for (let i = 0; i < this.stonehengeWorldPositions.length; i++) {
+      const dist = playerWorld.distanceTo(this.stonehengeWorldPositions[i]);
+      if (dist < STONEHENGE_WHISPER_DIST) {
+        if (!this.stonehengeInRange[i]) {
+          if (this.stonehengeCooldown[i] <= 0) {
+            const moonProg = this.moonThreat?.progress ?? 0;
+            const whisper = pickStonehengeWhisper(moonProg);
+            this.packageQuestHUD.showWhisper(whisper);
+            this.stonehengeCooldown[i] = moonProg >= 0.75 ? 15 : STONEHENGE_WHISPER_COOLDOWN;
+          }
+          this.stonehengeInRange[i] = true;
+        }
+      } else if (dist > STONEHENGE_WHISPER_EXIT_DIST) {
+        this.stonehengeInRange[i] = false;
       }
     }
   }

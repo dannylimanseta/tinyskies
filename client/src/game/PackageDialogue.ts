@@ -453,3 +453,46 @@ export function pickObservatoryGreeting(
   const line = pool[Math.floor(Math.random() * pool.length)]!;
   return { npcName, line };
 }
+
+/* ── Stonehenge whisper lines ─────────────────────────────────────── */
+
+const STONEHENGE_CALM = [
+  "The stone circle hums. You hear a whisper... \"The stones remember when the sky was whole.\"",
+  "Standing inside the stone circle, a vision stirs... lanterns floating upward, each one a prayer unanswered.",
+  "Something is carved into the stone circle: \"When the moon swells, light every lantern.\"",
+  "The stone circle resonates. You hear a whisper... \"They built this circle to watch the sky. They stopped watching.\"",
+  "The shadows cast by the stone circle always point toward the moon, no matter the hour.",
+];
+
+const STONEHENGE_UNEASY = [
+  "The stone circle leans as if drawn toward something. A vision stirs... the moon, closer than it should be.",
+  "You hear a whisper from the stone circle... \"Count the stars between the pillars. There are fewer than before.\"",
+  "The ground around the stone circle vibrates faintly. An inscription reads: \"The circle holds as long as the sky does.\"",
+  "A vision ripples through the stone circle... a constellation rearranging itself. One star missing.",
+  "You hear a whisper from the stones... \"Light the lanterns. All of them. Before it is too late.\"",
+];
+
+const STONEHENGE_DREAD = [
+  "You hear a whisper from the stone circle... \"The last keeper lit every lantern. It wasn't enough.\"",
+  "A vision tears through the stone circle... the moon filling the entire sky. Someone screaming. Then silence.",
+  "The air inside the stone circle is wrong. An inscription reads: \"Do not look up. Do not look up.\"",
+  "You hear a whisper from the stones... \"Run. There is nowhere to run. Fly then. Fly as far as you can.\"",
+  "A vision stirs inside the stone circle... hundreds of lanterns rising at once. The moon does not slow.",
+];
+
+const STONEHENGE_PANIC = [
+  "You hear a whisper from the stone circle... \"Too late. Too late. Too--\"",
+  "The stone circle is cracking. An inscription reads: \"We tried. We are sorry.\"",
+  "A vision tears open inside the stone circle... the moon above the globe, close enough to touch. Then nothing.",
+  "You hear a whisper from the stones... \"Fly. Just fly. Don't stop.\"",
+];
+
+/** Pick a stonehenge ambient whisper line based on moon progress. */
+export function pickStonehengeWhisper(moonProgress: number): string {
+  let pool: readonly string[];
+  if (moonProgress >= 0.75) pool = STONEHENGE_PANIC;
+  else if (moonProgress >= 0.50) pool = STONEHENGE_DREAD;
+  else if (moonProgress >= 0.25) pool = STONEHENGE_UNEASY;
+  else pool = STONEHENGE_CALM;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}

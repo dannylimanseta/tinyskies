@@ -19,6 +19,8 @@ export class PackageQuestHUD {
   private bannerDistEl: HTMLSpanElement;
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   private circumference: number;
+  private whisperEl: HTMLDivElement;
+  private whisperTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** `npcName` is set when `visible` is true (dialogue bubble shown). */
   onVisibilityChange?: (visible: boolean, npcName?: string) => void;
@@ -67,6 +69,10 @@ export class PackageQuestHUD {
     this.bubbleEl.appendChild(this.bubbleContentEl);
     parent.appendChild(this.bubbleEl);
 
+    this.whisperEl = document.createElement("div");
+    this.whisperEl.className = "pkg-whisper";
+    parent.appendChild(this.whisperEl);
+
     this.bannerEl = document.createElement("div");
     this.bannerEl.className = "pkg-banner";
     this.bannerNameEl = document.createElement("span");
@@ -87,13 +93,30 @@ export class PackageQuestHUD {
     return this.bubbleTimer !== null;
   }
 
+  /** True while a stonehenge whisper is on-screen. */
+  get isWhisperShowing(): boolean {
+    return this.whisperTimer !== null;
+  }
+
   hideBubble() {
     if (this.bubbleTimer) {
       clearTimeout(this.bubbleTimer);
       this.bubbleTimer = null;
     }
     this.bubbleEl.style.opacity = "0";
+    const narrow = isNarrowDialogueViewport();
+    this.bubbleEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
     this.onVisibilityChange?.(false);
+  }
+
+  hideWhisper() {
+    if (this.whisperTimer) {
+      clearTimeout(this.whisperTimer);
+      this.whisperTimer = null;
+    }
+    this.whisperEl.style.opacity = "0";
+    const narrow = isNarrowDialogueViewport();
+    this.whisperEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
   }
 
   setProgress(value: number) {
@@ -103,6 +126,7 @@ export class PackageQuestHUD {
   }
 
   showBubble(npcName: string, text: string) {
+    this.hideWhisper();
     if (this.bubbleTimer) clearTimeout(this.bubbleTimer);
     this.bubbleNpcEl.textContent = npcName;
     this.bubbleTextEl.textContent = text;
@@ -127,6 +151,21 @@ export class PackageQuestHUD {
       this.onVisibilityChange?.(false);
       this.bubbleTimer = null;
     }, 4000);
+  }
+
+  /** Show an ambient stonehenge whisper — no portrait, italic, same position as NPC bubble. */
+  showWhisper(text: string) {
+    this.hideBubble();
+    if (this.whisperTimer) clearTimeout(this.whisperTimer);
+    this.whisperEl.textContent = text;
+    const narrow = isNarrowDialogueViewport();
+    this.whisperEl.style.opacity = "1";
+    this.whisperEl.style.transform = narrow ? "translate(0, 0)" : "translate(-50%, 0)";
+    this.whisperTimer = setTimeout(() => {
+      this.whisperEl.style.opacity = "0";
+      this.whisperEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
+      this.whisperTimer = null;
+    }, 5500);
   }
 
   showDeliveryTarget(villageName: string) {
@@ -242,6 +281,46 @@ export class PackageQuestHUD {
         color: rgba(255, 255, 255, 0.65);
         font-weight: 600;
         font-variant-numeric: tabular-nums;
+      }
+
+      .pkg-whisper {
+        position: absolute;
+        top: 80px;
+        left: 50%;
+        transform: translate(-50%, -6px);
+        max-width: 400px;
+        width: max-content;
+        text-align: left;
+        font-style: italic;
+        font-size: 1.0rem;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.80);
+        letter-spacing: 0.01em;
+        line-height: 1.4;
+        padding: 10px 16px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        backdrop-filter: blur(12px);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 11;
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+      }
+      @media (max-width: 768px) {
+        .pkg-whisper {
+          position: fixed;
+          top: max(63px, calc(55px + env(safe-area-inset-top)));
+          left: 10vw;
+          right: auto;
+          width: 80vw;
+          max-width: 80vw;
+          transform: translateY(-6px);
+          font-size: 0.9rem;
+          padding: 10px 12px;
+          backdrop-filter: none;
+          box-sizing: border-box;
+        }
       }
 
       /*
