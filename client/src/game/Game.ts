@@ -1058,8 +1058,8 @@ export class Game {
 
     const REWIND_SPEED = 9.0;
     const FADE_IN = 1.0;   // seconds to reveal scene
-    const HOLD = 1.8;      // seconds of full-visibility rewind
-    const FADE_OUT = 1.0;  // seconds to go back to black
+    const HOLD = 0.6;      // seconds of full-visibility rewind
+    const FADE_OUT = 2.2;  // seconds to go back to black
     const TOTAL = FADE_IN + HOLD + FADE_OUT;
     const cam = this.moonCinematicCamera ?? this.cameraRig.camera;
 
