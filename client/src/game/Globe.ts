@@ -3293,40 +3293,105 @@ transformed.z += sway2;`,
       const towerH = 0.18;
       const towerRBot = 0.021;
       const towerRTop = 0.015;
-      const towerGeo = new CylinderGeometry(towerRTop, towerRBot, towerH, 8);
+      
+      // Base platform
+      const baseH = 0.015;
+      const baseR = towerRBot + 0.01;
+      const baseGeo = new CylinderGeometry(baseR, baseR + 0.005, baseH, 12);
+      baseGeo.translate(0, baseH / 2, 0);
+      const stoneMat = new MeshPhongMaterial({ color: 0x8e8984, flatShading: true });
+      addRimLight(stoneMat, 0xe8e0d8, 0.36, 2.75);
+      lighthouse.add(new Mesh(baseGeo, stoneMat));
+
+      const towerGeo = new CylinderGeometry(towerRTop, towerRBot, towerH, 16);
       towerGeo.translate(0, towerH / 2, 0);
-      const towerMat = new MeshPhongMaterial({ color: 0xf5f0e8 });
+      const towerMat = new MeshPhongMaterial({ color: 0xf5f0e8, flatShading: true });
+      addRimLight(towerMat, 0xffffff, 0.4, 2.5);
       lighthouse.add(new Mesh(towerGeo, towerMat));
 
+      // Door
+      const doorW = 0.012;
+      const doorH = 0.018;
+      const doorGeo = new BoxGeometry(doorW, doorH, 0.005);
+      doorGeo.translate(0, doorH / 2 + baseH, towerRBot);
+      const doorMat = new MeshPhongMaterial({ color: 0x5a4030, flatShading: true });
+      lighthouse.add(new Mesh(doorGeo, doorMat));
+
+      // Windows going up the tower
+      const winSize = 0.006;
+      const winGeo = new BoxGeometry(winSize, winSize * 1.5, 0.005);
+      const winMat = new MeshPhongMaterial({ color: 0x1a2530, flatShading: true });
+      for (let i = 1; i <= 3; i++) {
+        const wy = baseH + (towerH / 4) * i;
+        const wr = MathUtils.lerp(towerRBot, towerRTop, wy / towerH);
+        const win = new Mesh(winGeo, winMat);
+        win.position.set(0, wy, wr);
+        lighthouse.add(win);
+      }
+
+      // Red stripes
+      const stripeMat = new MeshPhongMaterial({ color: 0xcc3333, flatShading: true });
+      addRimLight(stripeMat, 0xff8866, 0.4, 2.5);
+      
       const stripeH = 0.025;
       const stripeY = towerH * 0.55;
       const stripeR = MathUtils.lerp(towerRBot, towerRTop, 0.55) + 0.001;
-      const stripeGeo = new CylinderGeometry(stripeR, stripeR + 0.001, stripeH, 8);
+      const stripeGeo = new CylinderGeometry(stripeR, stripeR + 0.001, stripeH, 16);
       stripeGeo.translate(0, stripeY, 0);
-      lighthouse.add(new Mesh(stripeGeo, new MeshPhongMaterial({ color: 0xcc3333 })));
+      lighthouse.add(new Mesh(stripeGeo, stripeMat));
 
       const stripe2Y = towerH * 0.3;
       const stripe2R = MathUtils.lerp(towerRBot, towerRTop, 0.3) + 0.001;
-      const stripe2Geo = new CylinderGeometry(stripe2R, stripe2R + 0.001, stripeH, 8);
+      const stripe2Geo = new CylinderGeometry(stripe2R, stripe2R + 0.001, stripeH, 16);
       stripe2Geo.translate(0, stripe2Y, 0);
-      lighthouse.add(new Mesh(stripe2Geo, new MeshPhongMaterial({ color: 0xcc3333 })));
+      lighthouse.add(new Mesh(stripe2Geo, stripeMat));
 
+      // Lantern room
       const lanternY = towerH;
       const lanternR = towerRTop + 0.006;
       const lanternH = 0.025;
-      const lanternGeo = new CylinderGeometry(lanternR, lanternR, lanternH, 8);
+      
+      // Walkway / Gallery deck
+      const deckGeo = new CylinderGeometry(lanternR + 0.004, lanternR + 0.002, 0.004, 16);
+      deckGeo.translate(0, lanternY, 0);
+      const metalMat = new MeshPhongMaterial({ color: 0x333333, flatShading: true });
+      lighthouse.add(new Mesh(deckGeo, metalMat));
+      
+      // Railing
+      const railGeo = new CylinderGeometry(lanternR + 0.003, lanternR + 0.003, 0.008, 16, 1, true);
+      railGeo.translate(0, lanternY + 0.004, 0);
+      const railMat = new MeshPhongMaterial({ color: 0x222222, wireframe: true });
+      lighthouse.add(new Mesh(railGeo, railMat));
+
+      // Glass lantern housing
+      const lanternGeo = new CylinderGeometry(lanternR, lanternR, lanternH, 12);
       lanternGeo.translate(0, lanternY + lanternH / 2, 0);
-      const lanternMat = new MeshPhongMaterial({ color: 0xfff8dd, emissive: 0xffdd44, emissiveIntensity: 0.6 });
+      const lanternMat = new MeshPhongMaterial({ color: 0xfff8dd, emissive: 0xffdd44, emissiveIntensity: 0.8, transparent: true, opacity: 0.9 });
       lighthouse.add(new Mesh(lanternGeo, lanternMat));
+      
+      // Lantern struts
+      const strutGeo = new CylinderGeometry(0.001, 0.001, lanternH, 4);
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const strut = new Mesh(strutGeo, metalMat);
+        strut.position.set(Math.cos(angle) * lanternR, lanternY + lanternH / 2, Math.sin(angle) * lanternR);
+        lighthouse.add(strut);
+      }
 
-      const roofGeo = new CylinderGeometry(0.002, lanternR + 0.003, 0.016, 8);
+      // Roof (Cupola)
+      const roofMat = new MeshPhongMaterial({ color: 0xcc3333, flatShading: true }); // Red roof
+      addRimLight(roofMat, 0xff8866, 0.4, 2.5);
+      
+      const roofGeo = new CylinderGeometry(0.002, lanternR + 0.003, 0.016, 16);
       roofGeo.translate(0, lanternY + lanternH + 0.008, 0);
-      lighthouse.add(new Mesh(roofGeo, new MeshPhongMaterial({ color: 0x444444 })));
+      lighthouse.add(new Mesh(roofGeo, roofMat));
+      
+      // Roof ball / vent
+      const ballGeo = new SphereGeometry(0.004, 8, 8);
+      ballGeo.translate(0, lanternY + lanternH + 0.018, 0);
+      lighthouse.add(new Mesh(ballGeo, metalMat));
 
-      const railGeo = new CylinderGeometry(lanternR + 0.004, lanternR + 0.004, 0.004, 12);
-      railGeo.translate(0, lanternY, 0);
-      lighthouse.add(new Mesh(railGeo, new MeshPhongMaterial({ color: 0x333333 })));
-
+      // Light beams
       const beamLen = 0.8;
       const beamSpread = 0.1;
       const beamGeo = new CylinderGeometry(beamSpread, 0.002, beamLen, 12, 1, true);
