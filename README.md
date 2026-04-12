@@ -55,17 +55,31 @@ npm run dev
 
 ## Deployment
 
+Production URL for the game client: **https://tinyskies.vercel.app** (Vercel assigns `{project-name}.vercel.app` — name the Vercel project **`tinyskies`**, or add **tinyskies.vercel.app** under **Project → Settings → Domains**).
+
 ### Client (Vercel)
 
-Deploy the `client/` directory to Vercel. Set the environment variable:
-- `VITE_SERVER_URL` = your Railway server URL
+This repo’s root `vercel.json` builds the client (`npm run build -w client`) and serves `client/dist` with SPA rewrites.
 
-### Server (Railway)
+In **Vercel → Project → Settings → Environment Variables** (Production):
 
-Deploy the root directory with the `server/Dockerfile`. Add:
-- PostgreSQL plugin (connection string auto-injected as `DATABASE_URL`)
-- `CLIENT_URL` = your Vercel domain
-- `PORT` = 3001
+| Variable | Value |
+|----------|--------|
+| `VITE_SERVER_URL` | Your public server URL, e.g. `https://your-app.up.railway.app` (no trailing slash) |
+
+See `client/.env.example`. Redeploy after changing env vars so Vite bakes in `VITE_SERVER_URL`.
+
+### Server (Railway or similar)
+
+Deploy with `server/Dockerfile`. Set:
+
+| Variable | Value |
+|----------|--------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `CLIENT_URL` | **`https://tinyskies.vercel.app`** — must match the browser origin exactly (scheme + host) for CORS and Socket.io |
+| `PORT` | `3001` (or your host’s assigned port) |
+
+Local dev keeps defaults: client `http://localhost:5173`, server `http://localhost:3001`.
 
 ## Tech Stack
 
