@@ -42,25 +42,32 @@ const REF_UP = new Vector3(0, 1, 0);
 
 const S = 0.35;
 const H = 1.25;
-function buildVolcanoGeometry(): LatheGeometry {
-  const profile: Vector2[] = [
-    new Vector2(0.00 * S, 0.92 * S * H),
-    new Vector2(0.12 * S, 0.90 * S * H),
-    new Vector2(0.26 * S, 1.00 * S * H),
-    new Vector2(0.33 * S, 0.95 * S * H),
-    new Vector2(0.40 * S, 0.84 * S * H),
-    new Vector2(0.50 * S, 0.68 * S * H),
-    new Vector2(0.62 * S, 0.48 * S * H),
-    new Vector2(0.76 * S, 0.28 * S * H),
-    new Vector2(0.90 * S, 0.12 * S * H),
-    new Vector2(1.05 * S, 0.03 * S * H),
-    new Vector2(1.15 * S, 0.00 * S * H),
-  ];
-  const geo = new LatheGeometry(profile, 16);
+function buildVolcanoGeometry(seed: number): LatheGeometry {
+  const profile: Vector2[] = [];
+  const steps = 24;
+  
+  // Crater interior
+  profile.push(new Vector2(0.00 * S, 0.88 * S * H));
+  profile.push(new Vector2(0.06 * S, 0.88 * S * H)); // crater floor edge
+  profile.push(new Vector2(0.09 * S, 0.94 * S * H)); // inner wall slope
+  profile.push(new Vector2(0.12 * S, 0.98 * S * H)); // inner rim edge
+  profile.push(new Vector2(0.18 * S, 1.00 * S * H)); // rim peak
+  profile.push(new Vector2(0.24 * S, 0.98 * S * H)); // outer rim edge
+  
+  // Exterior slopes
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps; // 0 at top, 1 at bottom
+    const r = 0.24 * S + Math.pow(t, 1.6) * 1.38 * S;
+    const y = (1.0 - t) * 0.98 * S * H;
+    profile.push(new Vector2(r, y));
+  }
+
+  const geo = new LatheGeometry(profile, 32);
 
   /* ── Perturb vertices for an irregular, non-circular shape ───── */
   const posAttr = geo.attributes.position;
   const rimY = S * H * 1.0;
+  const noise = createNoise3D(seed);
 
   for (let i = 0; i < posAttr.count; i++) {
     const x = posAttr.getX(i);
@@ -69,23 +76,20 @@ function buildVolcanoGeometry(): LatheGeometry {
     const r = Math.sqrt(x * x + z * z);
     if (r < 0.001) continue;
 
-    const angle = Math.atan2(z, x);
     const t = y / rimY;
 
-    const warp =
-      Math.sin(angle * 2.0) * 0.35 +
-      Math.sin(angle * 5.0 + 1.3) * 0.30 +
-      Math.sin(angle * 9.0 + 2.7) * 0.20 +
-      Math.sin(angle * 13.0 + 4.1) * 0.15;
+    // Use 3D noise for organic, rocky shape
+    const nVal = terrainNoise(noise, x * 4.0, y * 4.0, z * 4.0, 4, 2.0, 0.5, 1.0);
+    const warp = (nVal - 0.5) * 2.0;
 
     const slopeBand = Math.sin(t * Math.PI);
-    const heightFade = Math.max(slopeBand, (1.0 - t) * 0.5);
+    const heightFade = Math.max(slopeBand, (1.0 - t) * 0.6);
     const radialScale = 1.0 + warp * 0.25 * heightFade;
 
     posAttr.setX(i, x * radialScale);
     posAttr.setZ(i, z * radialScale);
 
-    const yWarp = warp * 0.06 * S * slopeBand;
+    const yWarp = warp * 0.08 * S * slopeBand;
     posAttr.setY(i, y + yWarp);
   }
   posAttr.needsUpdate = true;
@@ -99,29 +103,40 @@ function buildVolcanoGeometry(): LatheGeometry {
     const r = Math.sqrt(x * x + z * z);
     const t = Math.max(0, y / rimY);
 
+    // Noise to break up color banding
+    const cNoise = terrainNoise(noise, x * 10.0, y * 10.0, z * 10.0, 3, 2.0, 0.5, 1.0);
+    const tMod = Math.max(0, Math.min(1, t + (cNoise - 0.5) * 0.25));
+
     let cr: number, cg: number, cb: number;
-    if (t > 0.88 && r < 0.04 * S) {
-      cr = 0.65; cg = 0.18; cb = 0.05;
-    } else if (t > 0.85) {
-      cr = 0.22; cg = 0.12; cb = 0.08;
-    } else if (t > 0.65) {
-      const tipT = (t - 0.65) / (0.85 - 0.65);
-      const darkR = 0.14; const darkG = 0.08; const darkB = 0.05;
-      const midR = 0.42; const midG = 0.16; const midB = 0.08;
+    if (tMod > 0.88 && r < 0.1 * S) {
+      // Magma core inside
+      cr = 0.85; cg = 0.25; cb = 0.05;
+    } else if (tMod > 0.82) {
+      // Scorched rim
+      cr = 0.16; cg = 0.10; cb = 0.08;
+    } else if (tMod > 0.55) {
+      // Upper slopes (dark ash/rock)
+      const tipT = (tMod - 0.55) / (0.82 - 0.55);
+      const darkR = 0.16; const darkG = 0.10; const darkB = 0.08;
+      const midR = 0.38; const midG = 0.24; const midB = 0.18;
       cr = midR + (darkR - midR) * tipT;
       cg = midG + (darkG - midG) * tipT;
       cb = midB + (darkB - midB) * tipT;
     } else {
-      const slopeT = Math.max(0, Math.min(1, t / 0.65));
-      const topR = 0.42; const topG = 0.16; const topB = 0.08;
-      const botR = 0.25; const botG = 0.20; const botB = 0.18;
+      // Lower slopes (blending into terrain)
+      const slopeT = Math.max(0, Math.min(1, tMod / 0.55));
+      const topR = 0.38; const topG = 0.24; const topB = 0.18;
+      const botR = 0.28; const botG = 0.32; const botB = 0.22; // Greenish-brown base
       cr = botR + (topR - botR) * slopeT;
       cg = botG + (topG - botG) * slopeT;
       cb = botB + (topB - botB) * slopeT;
     }
-    colors[i * 3] = cr;
-    colors[i * 3 + 1] = cg;
-    colors[i * 3 + 2] = cb;
+    
+    // Add some subtle highlight noise
+    const highlight = (cNoise - 0.5) * 0.1;
+    colors[i * 3] = Math.max(0, Math.min(1, cr + highlight));
+    colors[i * 3 + 1] = Math.max(0, Math.min(1, cg + highlight));
+    colors[i * 3 + 2] = Math.max(0, Math.min(1, cb + highlight));
   }
   geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
@@ -270,13 +285,11 @@ export class Volcano {
   private north = new Vector3();
   private east = new Vector3();
 
-  private craterGlowMat: ShaderMaterial;
   private lavaMat: ShaderMaterial;
   private smokeMat: ShaderMaterial;
   private skirtMat: ShaderMaterial;
   private volcanoBodyMat: MeshPhongMaterial;
   private volcanoGeo: LatheGeometry;
-  private craterGeo: CircleGeometry;
   private lavaSphereGeo: SphereGeometry;
   private smokePlaneGeo: PlaneGeometry;
   private skirtGeo: CircleGeometry;
@@ -312,7 +325,7 @@ export class Volcano {
     this.placeOnHighTerrain(worldSeed, terrainType, volcanoIndex);
 
     /* ── Volcano body ──────────────────────────────────────────── */
-    this.volcanoGeo = buildVolcanoGeometry();
+    this.volcanoGeo = buildVolcanoGeometry(this.seedVal);
     this.volcanoBodyMat = new MeshPhongMaterial({
       vertexColors: true,
       flatShading: true,
@@ -339,22 +352,6 @@ export class Volcano {
     skirtMesh.rotation.x = -Math.PI / 2;
     skirtMesh.position.y = S * H * 0.06;
     this.group.add(skirtMesh);
-
-    /* ── Crater glow disc ──────────────────────────────────────── */
-    this.craterGeo = new CircleGeometry(0.035 * S / 0.12, 12);
-    this.craterGlowMat = new ShaderMaterial({
-      vertexShader: craterGlowVert,
-      fragmentShader: craterGlowFrag,
-      uniforms: { uTime: { value: 0 } },
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      side: DoubleSide,
-    });
-    const glowDisc = new Mesh(this.craterGeo, this.craterGlowMat);
-    glowDisc.position.y = S * H * 0.92;
-    glowDisc.rotation.x = -Math.PI / 2;
-    this.group.add(glowDisc);
 
     /* ── Lava blobs (instanced) ────────────────────────────────── */
     this.lavaSphereGeo = new SphereGeometry(0.02, 5, 4);
@@ -569,7 +566,6 @@ export class Volcano {
     playerAlt: number,
   ): { justCollected: boolean } {
     this.time += dt;
-    this.craterGlowMat.uniforms.uTime.value = this.time;
     this.lavaMat.uniforms.uTime.value = this.time;
 
     const gravity = 0.08;
@@ -660,8 +656,6 @@ export class Volcano {
   dispose() {
     this.volcanoGeo.dispose();
     this.volcanoBodyMat.dispose();
-    this.craterGeo.dispose();
-    this.craterGlowMat.dispose();
     this.lavaSphereGeo.dispose();
     this.lavaMat.dispose();
     this.lavaInstanced.dispose();
