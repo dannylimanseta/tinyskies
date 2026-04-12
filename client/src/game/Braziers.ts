@@ -8,11 +8,9 @@ import {
   Group,
   NearestFilter,
   NormalBlending,
-  InstancedMesh,
   LatheGeometry,
   Mesh,
   MeshPhongMaterial,
-  Object3D,
   PlaneGeometry,
   PointLight,
   Points,
@@ -44,11 +42,8 @@ const FLAME_Y = POLE_H + BOWL_H + FLAME_H * 0.58;
 const FLAME_GLOW_Y = FLAME_Y - FLAME_H * 0.18;
 const FLAME_LIGHT_Y = FLAME_Y - FLAME_H * 0.28;
 
-/* Tree ring — same scales / geometry style as Globe.ts forest */
-const TREES_PER_BRAZIER = 7;
-const TREE_RING_R       = 0.30;
-const TREE_SCALE_MIN    = 0.028;
-const TREE_SCALE_MAX    = 0.052;
+/** Sink brazier along surface normal so it sits slightly embedded in terrain */
+const BRAZIER_GROUND_SINK = 0.038;
 
 /* Inland placement: ring-sample radius (in unit-normal space) and max water ratio */
 const INLAND_CHECK_DIST  = 0.10;   // ≈ 0.5 world units on a radius-5 globe
@@ -259,15 +254,10 @@ export class Braziers {
   private rimGeo!: CylinderGeometry;
   private flameGeo!: PlaneGeometry;
   private glowGeo!: PlaneGeometry;
-  private treeGeo!: LatheGeometry;
 
   /* shared materials */
   private ironMat!: MeshPhongMaterial;
   private bowlMat!: MeshPhongMaterial;
-  private treeMat!: MeshPhongMaterial;
-
-  /* tree instanced mesh */
-  private treeMesh!: InstancedMesh;
 
   private emberTexture!: CanvasTexture;
   private emberMat!: ShaderMaterial;
@@ -293,16 +283,9 @@ export class Braziers {
       blending: NormalBlending,
     });
 
-    const totalTrees = BRAZIER_COUNT * TREES_PER_BRAZIER;
-    this.treeMesh = new InstancedMesh(this.treeGeo, this.treeMat, totalTrees);
-    this.treeMesh.frustumCulled = false;
-    scene.add(this.treeMesh);
-
     const normals = this.generateInlandPositions(
       BRAZIER_COUNT, worldSeed, terrainType,
     );
-
-    const dummy = new Object3D();
 
     for (let i = 0; i < normals.length; i++) {
       const normal   = normals[i]!;
@@ -312,7 +295,7 @@ export class Braziers {
       const brazierQ = new Quaternion().setFromUnitVectors(REF_UP, normal);
 
       const group = this.buildBrazierGroup();
-      group.position.copy(normal.clone().multiplyScalar(surfaceR));
+      group.position.copy(normal.clone().multiplyScalar(surfaceR - BRAZIER_GROUND_SINK));
       group.quaternion.copy(brazierQ);
       group.rotateY(((worldSeed * 2654435761 + i * 1234567891) >>> 0) / 0xffffffff * Math.PI * 2);
       scene.add(group);
@@ -364,45 +347,7 @@ export class Braziers {
         worldPos,
         lit: false, burnTimer: 0, time: 0, fadeInT: 0, fadeOutT: 1,
       });
-
-      /* ── Tree ring (same geometry + scale as Globe.ts forest) ── */
-      for (let t = 0; t < TREES_PER_BRAZIER; t++) {
-        const idx = i * TREES_PER_BRAZIER + t;
-        const h = this.hashInt(worldSeed * 31337 + i * 7919 + t * 1021);
-
-        const angleJitter = (h & 0xff) / 255 * 0.55;
-        const angle = (t / TREES_PER_BRAZIER) * Math.PI * 2 + angleJitter;
-        const ringVar = 0.88 + ((h >> 8 & 0xff) / 255) * 0.28;
-
-        // Same scale formula as Globe.ts: treeH = treeScale*2.5, treeR = treeScale*0.7
-        const treeScale = TREE_SCALE_MIN + ((h >> 16 & 0xff) / 255) * (TREE_SCALE_MAX - TREE_SCALE_MIN);
-        const treeH = treeScale * 2.5;
-        const treeR = treeScale * 0.7;
-
-        // Tangent-plane offset from the brazier's surface centre
-        const localOffset = new Vector3(
-          TREE_RING_R * ringVar * Math.cos(angle),
-          0,
-          TREE_RING_R * ringVar * Math.sin(angle),
-        ).applyQuaternion(brazierQ);
-
-        const treePos = group.position.clone().add(localOffset);
-        // Sink slightly into terrain — same as Globe.ts (-treeH * 0.05 along normal)
-        treePos.addScaledVector(normal, -treeH * 0.05);
-
-        // Random Y rotation around surface normal for facet variety
-        const yRot = new Quaternion().setFromAxisAngle(normal, angle);
-        const treeQ = yRot.multiply(brazierQ.clone());
-
-        dummy.position.copy(treePos);
-        dummy.quaternion.copy(treeQ);
-        dummy.scale.set(treeR, treeH, treeR);
-        dummy.updateMatrix();
-        this.treeMesh.setMatrixAt(idx, dummy.matrix);
-      }
     }
-
-    this.treeMesh.instanceMatrix.needsUpdate = true;
   }
 
   /* ── Shared geometry ─────────────────────────────────────────── */
@@ -422,33 +367,19 @@ export class Braziers {
 
     this.flameGeo = new PlaneGeometry(FLAME_W, FLAME_H);
     this.glowGeo  = new PlaneGeometry(FLAME_W * 2.8, FLAME_H * 1.6);
-
-    /* Teardrop tree — identical algorithm to Globe.ts createTeardropGeo(1,1) */
-    const tearPoints: Vector2[] = [];
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10;
-      tearPoints.push(new Vector2(
-        Math.pow(Math.sin(t * Math.PI), 0.35) * Math.pow(1 - t, 0.5),
-        t,
-      ));
-    }
-    this.treeGeo = new LatheGeometry(tearPoints, 6);
   }
 
   /* ── Shared materials ────────────────────────────────────────── */
 
   private buildSharedMaterials() {
-    this.ironMat = new MeshPhongMaterial({ color: 0x2a2218, flatShading: true, shininess: 22 });
-    addRimLight(this.ironMat, 0xff6600, 0.55, 2.8);
+    const iron = 0x4a4036;
+    this.ironMat = new MeshPhongMaterial({ color: iron, flatShading: true, shininess: 26 });
+    addRimLight(this.ironMat, 0xff8855, 0.42, 2.7);
 
     this.bowlMat = new MeshPhongMaterial({
-      color: 0x2a2218, flatShading: true, shininess: 22, side: DoubleSide,
+      color: iron, flatShading: true, shininess: 26, side: DoubleSide,
     });
-    addRimLight(this.bowlMat, 0xff6600, 0.55, 2.8);
-
-    /* Same green shade as Globe.ts forest (first of the five shades) */
-    this.treeMat = new MeshPhongMaterial({ color: 0x4a9a3a, flatShading: true });
-    addRimLight(this.treeMat, 0xff8833, 0.22, 2.5);
+    addRimLight(this.bowlMat, 0xff8855, 0.42, 2.7);
   }
 
   /* ── Brazier structural Group ────────────────────────────────── */
@@ -736,13 +667,8 @@ export class Braziers {
     this.rimGeo.dispose();
     this.flameGeo.dispose();
     this.glowGeo.dispose();
-    this.treeGeo.dispose();
     this.ironMat.dispose();
     this.bowlMat.dispose();
-    this.treeMat.dispose();
-
-    this.treeMesh.dispose();
-    this.treeMesh.removeFromParent();
 
     this.emberMat.dispose();
     this.emberTexture.dispose();
