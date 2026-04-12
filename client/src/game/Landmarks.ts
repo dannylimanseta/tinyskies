@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from "three";
 
-export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill" | "observatory";
+export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill" | "observatory" | "stonehenge";
 
 export interface Landmark {
   type: LandmarkType;
@@ -67,6 +67,15 @@ const OBSERVATORY_SUFFIXES = [
   " Observatory", " Dome", " Watch", " Peak", " Lookout", " Station", " Spire", " Summit",
 ];
 
+const STONEHENGE_PREFIXES = [
+  "Ancient", "Old", "Standing", "Broken", "Hollow", "Forgotten", "Worn", "Silent",
+  "Mossy", "Grey", "Crooked", "Lonely", "Wandering", "Sunken", "Crumbling", "Lost",
+];
+
+const STONEHENGE_SUFFIXES = [
+  " Stones", " Circle", " Ring", " Henge", " Monoliths", " Pillars", " Ruins", " Altar",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
   village:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   peak:         { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
@@ -76,6 +85,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   lighthouse:   { prefixes: LIGHTHOUSE_PREFIXES, suffixes: LIGHTHOUSE_SUFFIXES },
   windmill:     { prefixes: WINDMILL_PREFIXES, suffixes: WINDMILL_SUFFIXES },
   observatory:  { prefixes: OBSERVATORY_PREFIXES, suffixes: OBSERVATORY_SUFFIXES },
+  stonehenge:   { prefixes: STONEHENGE_PREFIXES,  suffixes: STONEHENGE_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -174,6 +184,22 @@ export class LandmarkRegistry {
         normal: observatories[i].normal.clone().normalize(),
         enterDot: 0.996,
         exitDot: 0.992,
+      });
+    }
+  }
+
+  registerStonehenges(
+    stonehenges: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, stonehenges.length, "stonehenge");
+    for (let i = 0; i < stonehenges.length; i++) {
+      this.landmarks.push({
+        type: "stonehenge",
+        name: names[i]!,
+        normal: stonehenges[i]!.normal.clone().normalize(),
+        enterDot: 0.995,
+        exitDot: 0.991,
       });
     }
   }

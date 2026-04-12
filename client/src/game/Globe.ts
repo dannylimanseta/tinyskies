@@ -104,12 +104,18 @@ export class Globe {
   readonly windmillCenters: { normal: Vector3 }[] = [];
   private windmillBlades: { pivot: Group; speed: number }[] = [];
   readonly observatoryCenters: { normal: Vector3 }[] = [];
+  readonly stonehengeCenters: { normal: Vector3 }[] = [];
 
   /** Shared material palette for all observatories (created once, reused across 3 instances). */
   private obsMaterials: {
     stone: MeshPhongMaterial; stoneDk: MeshPhongMaterial; dome: MeshPhongMaterial;
     slit: MeshPhongMaterial; window: MeshPhongMaterial; frame: MeshPhongMaterial;
     door: MeshPhongMaterial; step: MeshPhongMaterial; finder: MeshPhongMaterial;
+  } | null = null;
+
+  /** Shared material palette for all stonehenges. */
+  private stonehengeMats: {
+    sarsen: MeshPhongMaterial; lintel: MeshPhongMaterial; altar: MeshPhongMaterial;
   } | null = null;
 
   private segments: number;
@@ -133,6 +139,7 @@ export class Globe {
     this.createLighthouses();
     this.createWindmills();
     this.createObservatories();
+    this.createStonehenges();
     this.createBalloons();
     this.createClouds();
     this.createAtmosphere();
@@ -1699,6 +1706,235 @@ transformed.z += sway2;`,
       observatory.castShadow = true;
       this.group.add(observatory);
     }
+  }
+
+  private createStonehenges() {
+    const STONEHENGE_COUNT = 4;
+    const MIN_ELEVATION = 0.02;
+    const MAX_ELEVATION = 0.30;
+    const MIN_SEPARATION_DOT = 0.88;
+    // Inland check: sample surrounding points — require very low water ratio.
+    const INLAND_CHECKS = 12;
+    const INLAND_CHECK_DIST = 0.10;
+    const MAX_WATER_RATIO = 0.10;   // at most 1 in 10 surrounding points can be water
+
+    const rand = seededRandom(8888 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 2000 && candidates.length < 50) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      // Inland check: sample a ring of points around the candidate.
+      const tangent = new Vector3(-ny, nx, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+      let waterCount = 0;
+      for (let c = 0; c < INLAND_CHECKS; c++) {
+        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
+        const cn = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
+          .normalize();
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) waterCount++;
+      }
+      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+
+      // Keep away from all other landmarks.
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    // Prefer flatter (lower elevation) terrain — more like the real Salisbury Plain.
+    candidates.sort((a, b) => a.elevation - b.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= STONEHENGE_COUNT) break;
+      const tooClose = chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT);
+      if (tooClose) continue;
+      chosen.push(c.normal);
+    }
+
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+
+    for (const normal of chosen) {
+      this.stonehengeCenters.push({ normal: normal.clone() });
+
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+      const stonehenge = this.buildStonehenge(rand);
+      stonehenge.position.copy(normal.clone().multiplyScalar(surfaceR));
+      stonehenge.quaternion.setFromUnitVectors(REF_UP, normal);
+      stonehenge.rotateY(rand() * Math.PI * 2);
+      stonehenge.castShadow = true;
+      this.group.add(stonehenge);
+    }
+  }
+
+  /** Low-poly Stonehenge: outer sarsen ring, inner horseshoe trilithons, altar, heel stone. */
+  private buildStonehenge(rand: () => number): Group {
+    if (!this.stonehengeMats) {
+      this.stonehengeMats = {
+        sarsen: new MeshPhongMaterial({ color: 0x9a9080 }),
+        lintel: new MeshPhongMaterial({ color: 0xb0a898 }),
+        altar:  new MeshPhongMaterial({ color: 0x706860 }),
+      };
+    }
+    const m = this.stonehengeMats;
+
+    const buckets: Record<keyof typeof m, BufferGeometry[]> = {
+      sarsen: [], lintel: [], altar: [],
+    };
+    const add = (geo: BufferGeometry, key: keyof typeof m) => buckets[key].push(geo);
+
+    const S = 2.2;
+
+    const R_OUT      = 0.095 * S;   // outer sarsen ring radius
+    const R_IN       = 0.056 * S;   // inner horseshoe radius
+    const OUTER_H    = 0.040 * S;   // outer upright height
+    const OUTER_W    = 0.012 * S;   // outer upright width
+    const OUTER_D    = 0.010 * S;   // outer upright depth
+    const INNER_H    = 0.054 * S;   // inner trilithon upright height
+    const INNER_W    = 0.014 * S;   // inner upright width
+    const INNER_D    = 0.012 * S;   // inner upright depth
+    const LINTEL_H   = 0.009 * S;   // lintel height
+    const LINTEL_D   = 0.011 * S;   // lintel depth (radial thickness)
+    const HALF_GAP   = 0.009 * S;   // half-gap between trilithon uprights
+
+    // Outer chord: arc length between adjacent sarsens × slight overhang
+    const OUTER_CHORD = 2 * R_OUT * Math.sin(Math.PI / 10) * 1.08;
+    // Inner lintel width: spans both uprights + slight overhang
+    const INNER_LINTEL_W = INNER_W * 2 + HALF_GAP * 2 + 0.004 * S;
+
+    // ── Pre-compute wear randomness (fixed calls so sequence is deterministic) ──
+    // ~28% of outer uprights are fallen, each with a slight yaw twist.
+    const outerFallen  = Array.from({ length: 10 }, () => rand() < 0.28);
+    const outerYaw     = Array.from({ length: 10 }, () => (rand() - 0.5) * 0.35);
+    // ~10% of lintels missing from wear alone (independent of fallen stones).
+    const skipLintel   = Array.from({ length: 10 }, () => rand() < 0.10);
+    // Inner horseshoe: ~45% chance one trilithon has a fallen upright.
+    const innerFallenTri  = Math.floor(rand() * 5);
+    const innerHasFallen  = rand() < 0.45;
+    const innerFallenSign = rand() < 0.5 ? -1 : 1;
+
+    // ── 1. Outer sarsen ring — 10 uprights ──
+    // Fallen geometry: rotateX(PI/2) tips the stone along +Z (outward), then
+    // rotateY(a) aligns that outward direction with the radial at angle a.
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const geo = new BoxGeometry(OUTER_W, OUTER_H, OUTER_D);
+      if (outerFallen[i]) {
+        geo.translate(0, OUTER_H / 2, 0);          // base at y = 0
+        geo.rotateX(Math.PI / 2);                  // tip now along +Z
+        geo.translate(0, OUTER_D / 2, 0);          // rest on ground
+        geo.rotateY(a + outerYaw[i]);              // align fall radially + slight twist
+        geo.translate(Math.sin(a) * R_OUT, 0, Math.cos(a) * R_OUT);
+      } else {
+        geo.translate(0, OUTER_H / 2, 0);
+        geo.translate(Math.sin(a) * R_OUT, 0, Math.cos(a) * R_OUT);
+      }
+      add(geo, "sarsen");
+    }
+
+    // ── 2. Outer lintels — skip if adjacent upright is fallen or random wear ──
+    for (let i = 0; i < 10; i++) {
+      const j = (i + 1) % 10;
+      if (outerFallen[i] || outerFallen[j] || skipLintel[i]) continue;
+      const midA = ((i + 0.5) / 10) * Math.PI * 2;
+      const geo = new BoxGeometry(OUTER_CHORD, LINTEL_H, LINTEL_D);
+      geo.rotateY(midA);
+      geo.translate(Math.sin(midA) * R_OUT, OUTER_H + LINTEL_H / 2, Math.cos(midA) * R_OUT);
+      add(geo, "lintel");
+    }
+
+    // ── 3. Inner horseshoe — 5 trilithons spanning ~288° (opening toward +Z) ──
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI * 0.8 + (i / 4) * Math.PI * 1.6;
+      const rx = Math.sin(a) * R_IN;
+      const rz = Math.cos(a) * R_IN;
+      const tx = Math.cos(a);
+      const tz = -Math.sin(a);
+
+      const thisFallen = innerHasFallen && i === innerFallenTri;
+
+      for (const sign of [-1, 1] as const) {
+        const geo = new BoxGeometry(INNER_W, INNER_H, INNER_D);
+        if (thisFallen && sign === innerFallenSign) {
+          // Fallen inward: tip points toward the altar (opposite radial).
+          geo.translate(0, INNER_H / 2, 0);
+          geo.rotateX(Math.PI / 2);
+          geo.translate(0, INNER_D / 2, 0);
+          geo.rotateY(a + Math.PI);
+          geo.translate(rx + tx * sign * HALF_GAP, 0, rz + tz * sign * HALF_GAP);
+        } else {
+          geo.translate(0, INNER_H / 2, 0);
+          geo.translate(rx + tx * sign * HALF_GAP, 0, rz + tz * sign * HALF_GAP);
+        }
+        add(geo, "sarsen");
+      }
+
+      // No lintel if this trilithon has a collapsed upright.
+      if (!thisFallen) {
+        const lintelGeo = new BoxGeometry(INNER_LINTEL_W, LINTEL_H, LINTEL_D);
+        lintelGeo.rotateY(a);
+        lintelGeo.translate(rx, INNER_H + LINTEL_H / 2, rz);
+        add(lintelGeo, "lintel");
+      }
+    }
+
+    // ── 4. Central altar stone — flat slab on the ground ──
+    const altarGeo = new BoxGeometry(0.022 * S, 0.005 * S, 0.013 * S);
+    altarGeo.translate(0, 0.0025 * S, 0);
+    add(altarGeo, "altar");
+
+    // ── 5. Heel stone — single tapered stone just outside the ring, slightly leaning ──
+    const heelGeo = new CylinderGeometry(0.005 * S, 0.008 * S, OUTER_H * 0.85, 5);
+    heelGeo.rotateZ(0.13);  // slight lean toward center
+    heelGeo.translate(0, OUTER_H * 0.43, R_OUT + 0.032 * S);
+    add(heelGeo, "altar");
+
+    // ── Merge each material bucket into one mesh ──
+    const g = new Group();
+    for (const key of Object.keys(buckets) as (keyof typeof m)[]) {
+      const geos = buckets[key];
+      if (geos.length === 0) continue;
+      const merged = mergeGeometries(geos, false);
+      if (merged) g.add(new Mesh(merged, m[key]));
+      for (const geo of geos) geo.dispose();
+    }
+    return g;
   }
 
   /**
