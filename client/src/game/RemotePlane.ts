@@ -128,6 +128,10 @@ class RemotePlane {
   private visibilityTarget = 1;
   private visibilitySmooth = 1;
 
+  private paintballWobbleAmp = 0;
+  private paintballWobblePhase = 0;
+  private paintballWobbleBank = 0;
+
   get visibilityOpacity(): number {
     return this.visibilitySmooth;
   }
@@ -187,7 +191,25 @@ class RemotePlane {
     this.wasDeadReckoning = false;
   }
 
+  /** Rolls the biplane mesh briefly (visual only); no-op for boat/carpet. */
+  triggerPaintballHitWobble() {
+    if (this.vehicle !== "plane") return;
+    this.paintballWobbleAmp = 0.42;
+    this.paintballWobblePhase = 0;
+  }
+
   update(dt: number) {
+    if (this.vehicle === "plane") {
+      if (this.paintballWobbleAmp > 0.002) {
+        this.paintballWobblePhase += dt * 19;
+        this.paintballWobbleBank =
+          Math.sin(this.paintballWobblePhase) * this.paintballWobbleAmp;
+        this.paintballWobbleAmp *= Math.exp(-4.2 * dt);
+      } else {
+        this.paintballWobbleAmp = 0;
+        this.paintballWobbleBank = 0;
+      }
+    }
     const now = Date.now();
     const renderTime = now - INTERPOLATION_DELAY_MS;
 
@@ -295,11 +317,12 @@ class RemotePlane {
       const bobRoll = Math.sin(this.bobTime * BOAT_ROLL_BOB_SPEED + 2.7) * BOAT_ROLL_BOB_AMP;
       m = buildBoatMatrix(qPos, state.heading, bobAlt, this.globeRadius, bobPitch, bobRoll);
     } else {
+      const bank = (state.bankAngle ?? 0) + this.paintballWobbleBank;
       m = buildPlaneMatrix(
         qPos,
         state.heading,
         state.pitch,
-        state.bankAngle,
+        bank,
         state.altitude,
         this.globeRadius,
       );
@@ -380,6 +403,10 @@ export class RemotePlaneManager {
   /** Biplane root for paint splatters (see `BiplaneMesh` `splatterAnchor`). */
   getPlaneGroup(playerId: string): Group | null {
     return this.planes.get(playerId)?.group ?? null;
+  }
+
+  triggerPaintballHitWobble(playerId: string) {
+    this.planes.get(playerId)?.triggerPaintballHitWobble();
   }
 
   updatePlayer(state: PlayerState) {

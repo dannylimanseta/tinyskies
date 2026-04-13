@@ -38,9 +38,11 @@ varying float vAlpha;
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
-  float soft = 1.0 - d * d;
+  float edge = smoothstep(0.82, 0.98, d);
+  float a = 1.0 - edge;
+  if (a < 0.03) discard;
   vec3 col = uColor * uBoost;
-  gl_FragColor = vec4(col, soft * vAlpha);
+  gl_FragColor = vec4(col, a * vAlpha);
 }
 `;
 

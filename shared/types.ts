@@ -69,13 +69,16 @@ export const PAINTBALL_COOLDOWN_MS = 500;
 export const PAINTBALL_SPEED = 7;
 /** Max travel distance = globeRadius * this factor. */
 export const PAINTBALL_RANGE_FACTOR = 0.56;
-/** Hit test: max distance from ray to target hull (world units). */
-export const PAINTBALL_HIT_RADIUS = 0.22;
+/** Hit test: max distance from ray to target plane origin (world units). Keep tight vs. visible mesh. */
+export const PAINTBALL_HIT_RADIUS = 0.09;
 /** Splatter opacity fades to zero over this many seconds. */
-export const SPLATTER_LIFETIME_SEC = 4.5;
-/** Fun tints for paint splats (0xRRGGBB). Server picks one per hit. */
+export const SPLATTER_LIFETIME_SEC = 14;
+/**
+ * Pastel-ish tints (0xRRGGBB) for paintballs and splatters — no pure white.
+ * Server picks one per hit.
+ */
 export const PAINTBALL_COLOR_PALETTE: readonly number[] = [
-  0xff3355, 0xff6633, 0xffdd33, 0x33ff88, 0x33ccff, 0x8866ff, 0xff33cc, 0xffffff,
+  0xe898a8, 0xe5b098, 0xe8d898, 0x98d8b8, 0x98c8e8, 0xc8b8e8, 0xe898c8, 0xa8c8d8,
 ];
 
 export interface PaintballFiredEvent {

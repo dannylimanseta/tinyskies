@@ -82,7 +82,6 @@ export function createBiplane(color: number = 0xff4444): Group {
     const tip = new Mesh(new CylinderGeometry(s * 0.9, s * 0.9, s * 0.18, 12), wingMat);
     tip.position.set(side * s * 4.25, s * 1.4, -s * 0.2);
     tip.scale.set(1, 1, 1);
-    markPaintSplatterWing(tip);
     plane.add(tip);
   }
 
@@ -95,7 +94,6 @@ export function createBiplane(color: number = 0xff4444): Group {
   for (const side of [-1, 1]) {
     const tip = new Mesh(new CylinderGeometry(s * 0.8, s * 0.8, s * 0.18, 12), wingMat);
     tip.position.set(side * s * 3.5, -s * 0.5, 0);
-    markPaintSplatterWing(tip);
     plane.add(tip);
   }
 

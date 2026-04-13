@@ -67,6 +67,11 @@ export class Plane {
   private elevateBlend = 0;
   private prevAltitude = ALTITUDE;
 
+  /** Damped sin — paintball hit rolls the mesh left/right briefly (visual only). */
+  private paintballWobbleAmp = 0;
+  private paintballWobblePhase = 0;
+  private paintballWobbleBank = 0;
+
   private globeRadius: number;
   private seed: number;
   private terrainType: string;
@@ -169,7 +174,23 @@ export class Plane {
     // Hard speed ceiling — prevents physics/NaN issues from stacked upgrades.
     this.speed = Math.min(this.speed, ABSOLUTE_MAX_SPEED);
 
+    if (this.paintballWobbleAmp > 0.002) {
+      this.paintballWobblePhase += dt * 19;
+      this.paintballWobbleBank =
+        Math.sin(this.paintballWobblePhase) * this.paintballWobbleAmp;
+      this.paintballWobbleAmp *= Math.exp(-4.2 * dt);
+    } else {
+      this.paintballWobbleAmp = 0;
+      this.paintballWobbleBank = 0;
+    }
+
     this.applyMatrix();
+  }
+
+  /** Called when this plane is struck by a paintball (local client). */
+  triggerPaintballHitWobble() {
+    this.paintballWobbleAmp = 0.42;
+    this.paintballWobblePhase = 0;
   }
 
   speedBoost() {
@@ -183,7 +204,7 @@ export class Plane {
       this.qPosition,
       this.heading,
       this.pitch,
-      this.bankAngle,
+      this.bankAngle + this.paintballWobbleBank,
       this.altitude,
       this.globeRadius,
     );

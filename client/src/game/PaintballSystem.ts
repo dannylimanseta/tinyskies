@@ -35,6 +35,14 @@ import type { RemotePlaneManager } from "./RemotePlane";
 import { PaintballSplashPool } from "./PaintballSplash";
 import { seededRandom } from "./SphericalMath";
 
+/** Wing decals: a touch softer than raw palette, but richer than the old heavy pastel wash. */
+function decalTintColor(paletteHex: number): Color {
+  const c = new Color(paletteHex);
+  c.lerp(new Color(0xffffff), 0.08);
+  c.offsetHSL(0, 0.06, -0.05);
+  return c;
+}
+
 const PBALL_VERT = `
 varying vec3 vN;
 varying vec3 vV;
@@ -144,6 +152,7 @@ export class PaintballSystem {
     private getSocket: () => import("../network/SocketClient").SocketClient | null,
     private remotePlanes: RemotePlaneManager,
     private onLocalPlayerPaintballHit?: () => void,
+    private onPaintballVictimWobble?: (victimId: string) => void,
   ) {
     const loader = new TextureLoader();
     loader.load(
@@ -266,13 +275,19 @@ export class PaintballSystem {
     if (ev.victimId === myId) {
       this.onLocalPlayerPaintballHit?.();
     }
+    this.onPaintballVictimWobble?.(ev.victimId);
 
     let splatWorld = this.addSplatterDecal(victimRoot, ev.color, ev.splatSeed);
     if (!splatWorld) {
       victimRoot.updateMatrixWorld(true);
       splatWorld = victimRoot.getWorldPosition(new Vector3());
     }
-    this.splashPool.play(this.scene, splatWorld, ev.color, ev.splatSeed);
+    this.splashPool.play(
+      this.scene,
+      splatWorld,
+      decalTintColor(ev.color).getHex(),
+      ev.splatSeed,
+    );
   }
 
   /**
@@ -326,10 +341,11 @@ export class PaintballSystem {
       const hit = hits[0]!;
       const hitMesh = hit.object as MeshT;
       const nWorld = hit.face!.normal.clone().transformDirection(hitMesh.matrixWorld).normalize();
-      const posW = hit.point.clone().addScaledVector(nWorld, 0.004);
+      const zBias = 0.005 + rnd() * 0.014;
+      const posW = hit.point.clone().addScaledVector(nWorld, zBias);
 
       const sizesXZ = 0.12 + rnd() * 0.1;
-      const depth = 0.42;
+      const depth = 0.34 + rnd() * 0.16;
       const orientHelper = new Object3D();
       orientHelper.position.copy(posW);
       orientHelper.lookAt(posW.clone().add(nWorld));
@@ -355,16 +371,18 @@ export class PaintballSystem {
       const map = this.texture!.clone();
       map.colorSpace = SRGBColorSpace;
 
+      const splatterIndex = this.splatters.length;
+      const po = 6 + (splatterIndex % 20);
       const mat = new MeshBasicMaterial({
         map,
-        color: new Color(colorHex),
+        color: decalTintColor(colorHex),
         transparent: true,
         opacity: 1,
         depthWrite: false,
         polygonOffset: true,
-        polygonOffsetFactor: -4,
-        polygonOffsetUnits: -4,
-        alphaTest: 0.08,
+        polygonOffsetFactor: -po,
+        polygonOffsetUnits: -po,
+        alphaTest: 0.04,
         side: DoubleSide,
       });
 
@@ -372,7 +390,7 @@ export class PaintballSystem {
       decalGeo.applyMatrix4(invWorld);
 
       const splat = new Mesh(decalGeo, mat);
-      splat.renderOrder = 480;
+      splat.renderOrder = 470 + (splatterIndex % 60);
       victimRoot.add(splat);
 
       this.splatters.push({
@@ -429,7 +447,9 @@ export class PaintballSystem {
         m.dispose();
         this.splatters.splice(i, 1);
       } else {
-        s.mat.opacity = 1 - age / fadeMs;
+        const t = age / fadeMs;
+        // Smooth ease — lingers near full opacity, then eases out over a long hold.
+        s.mat.opacity = 1 - t * t * (3 - 2 * t);
       }
     }
   }
