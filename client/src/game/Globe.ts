@@ -413,6 +413,11 @@ gl_FragColor.rgb += rim;
       const y = posAttr.getY(i);
       const t = Math.max(0, Math.min(1, y / height));
       const c = bottomColor.clone().lerp(topColor, t);
+      
+      // Fake AO: Darken the bottom of the tree
+      const ao = MathUtils.lerp(0.1, 1.0, Math.min(1, t * 2.0));
+      c.multiplyScalar(ao);
+
       colors[i * 3] = c.r;
       colors[i * 3 + 1] = c.g;
       colors[i * 3 + 2] = c.b;
@@ -839,7 +844,11 @@ transformed.z += sway2;`,
       const px = positions[i * 3];
       const py = positions[i * 3 + 1];
       const pz = positions[i * 3 + 2];
-      const shade = 0.85 + Math.sin(px * 31.7 + py * 47.3 + pz * 19.1) * 0.15;
+      
+      // Fake AO: Darken the bottom of the rock
+      const ao = MathUtils.lerp(0.15, 1.0, Math.min(1, Math.max(0, py / (sy * 0.7))));
+      
+      const shade = (0.85 + Math.sin(px * 31.7 + py * 47.3 + pz * 19.1) * 0.15) * ao;
       for (let v = 0; v < 3; v++) {
         colors[(i + v) * 3] = shade;
         colors[(i + v) * 3 + 1] = shade;
@@ -1088,15 +1097,20 @@ transformed.z += sway2;`,
       const norm = geo.attributes.normal;
       for (let i = 0; i < pos.count; i++) {
         const idx = (vOffset + i) * 3;
+        const y = pos.getY(i);
+        
+        // Fake AO: Darken the bottom of the house
+        const ao = MathUtils.lerp(0.15, 1.0, Math.min(1, Math.max(0, y / 0.5)));
+
         positions[idx] = pos.getX(i);
-        positions[idx + 1] = pos.getY(i);
+        positions[idx + 1] = y;
         positions[idx + 2] = pos.getZ(i);
         normals[idx] = norm.getX(i);
         normals[idx + 1] = norm.getY(i);
         normals[idx + 2] = norm.getZ(i);
-        colors[idx] = color.r;
-        colors[idx + 1] = color.g;
-        colors[idx + 2] = color.b;
+        colors[idx] = color.r * ao;
+        colors[idx + 1] = color.g * ao;
+        colors[idx + 2] = color.b * ao;
       }
       if (geo.index) {
         for (let i = 0; i < geo.index.count; i++) {
