@@ -13,8 +13,10 @@
     "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
     "build:client": "npm run build -w client",
     "build:server": "npm run build -w server",
-    "vercel:deploy": "npx vercel@latest deploy --prod --yes",
-    "vercel:preview": "npx vercel@latest deploy --yes"
+    "deploy": "railway up --detach && npx vercel@latest deploy --prod --yes",
+    "deploy:server": "railway up --detach",
+    "deploy:client": "npx vercel@latest deploy --prod --yes",
+    "deploy:preview": "npx vercel@latest deploy --yes"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

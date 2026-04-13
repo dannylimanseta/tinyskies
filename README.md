@@ -52,32 +52,76 @@ npm run dev
 | A / D | Turn left / right |
 | Shift | Speed up |
 | Ctrl | Slow down |
+| E | Fire paintball |
 
 ## Deployment
 
-Production URL for the game client: **https://tinyskies.vercel.app** (Vercel assigns `{project-name}.vercel.app` — name the Vercel project **`tinyskies`**, or add **tinyskies.vercel.app** under **Project → Settings → Domains**).
+Production URLs:
+- **Client**: https://tinyskies.vercel.app (Vercel)
+- **Server API**: Railway (or any Docker host)
 
-### Client (Vercel)
+### One-command deploy (recommended)
 
-This repo’s root `vercel.json` builds the client (`npm run build -w client`) and serves `client/dist` with SPA rewrites.
+Deploy **both** server (Railway) and client (Vercel) in one shot:
 
-In **Vercel → Project → Settings → Environment Variables** (Production):
+```bash
+npm run deploy
+```
 
-| Variable | Value |
-|----------|--------|
-| `VITE_SERVER_URL` | Your public server URL, e.g. `https://your-app.up.railway.app` (no trailing slash) |
+This runs `railway up` then `vercel deploy --prod` sequentially so the API is live before the new frontend goes out.
 
-See `client/.env.example`. Redeploy after changing env vars so Vite bakes in `VITE_SERVER_URL`.
+Deploy individually when you only changed one side:
 
-### Server (Railway or similar)
+```bash
+npm run deploy:server   # Railway only
+npm run deploy:client   # Vercel only
+npm run deploy:preview  # Vercel preview (non-production)
+```
 
-Deploy with `server/Dockerfile`. Set:
+### First-time setup (once per machine)
+
+**1. Railway CLI**
+
+```bash
+npm i -g @railway/cli
+railway login
+railway link    # select the globefly-server project
+```
+
+**2. Vercel CLI**
+
+```bash
+npx vercel login
+npx vercel link   # select the tinyskies project
+```
+
+**3. Server URL for the client**
+
+Edit `client/.env.production` and set `VITE_SERVER_URL` to your Railway API URL:
+
+```
+VITE_SERVER_URL=https://globefly-api-production.up.railway.app
+```
+
+Commit the file. Vite reads it on every production build so Vercel picks it up automatically -- no Vercel dashboard env setup needed for the API URL.
+
+Alternatively, set `SERVER_URL` in Vercel environment variables -- the client fetches it at runtime via `/api/server-url` (no rebuild needed when the URL changes).
+
+### Environment variables
+
+**Server (Railway dashboard or `railway variables`)**
 
 | Variable | Value |
 |----------|--------|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `CLIENT_URL` | **`https://tinyskies.vercel.app`** — must match the browser origin exactly (scheme + host) for CORS and Socket.io |
-| `PORT` | `3001` (or your host’s assigned port) |
+| `CLIENT_URL` | `https://tinyskies.vercel.app` (for CORS; comma-separated for extras) |
+| `PORT` | `3001` (or Railway's assigned port) |
+
+**Client (committed in repo -- no dashboard needed)**
+
+| File | Variable | Purpose |
+|------|----------|---------|
+| `client/.env.production` | `VITE_SERVER_URL` | Baked into the bundle at build time |
 
 Local dev keeps defaults: client `http://localhost:5173`, server `http://localhost:3001`.
 
