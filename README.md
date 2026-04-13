@@ -52,7 +52,8 @@ npm run dev
 | A / D | Turn left / right |
 | Shift | Speed up |
 | Ctrl | Slow down |
-| E | Fire paintball |
+| Arrow Up | Fly upwards (altitude) |
+| Space | Fire paintball |
 
 ## Deployment
 

@@ -38,12 +38,12 @@ export class FlightControls {
     }
 
     let turnRate = 0;
-    if (this.keys.has("arrowleft") || this.keys.has("a")) turnRate += TURN_SPEED;
-    if (this.keys.has("arrowright") || this.keys.has("d")) turnRate -= TURN_SPEED;
+    if (this.keys.has("a")) turnRate += TURN_SPEED;
+    if (this.keys.has("d")) turnRate -= TURN_SPEED;
 
-    const forward = this.keys.has("arrowup") || this.keys.has("w");
-    const brake = this.keys.has("arrowdown") || this.keys.has("s");
-    const elevate = this.keys.has(" ");
+    const forward = this.keys.has("w");
+    const brake = this.keys.has("s");
+    const elevate = this.keys.has("arrowup");
     const descend = false;
     const paintball = this.paintballQueued;
     this.paintballQueued = false;
@@ -56,13 +56,13 @@ export class FlightControls {
   private onKeyDown = (e: KeyboardEvent) => {
     if (!this._enabled) return;
     const key = e.key.toLowerCase();
-    if (key === "e" && !e.repeat) {
+    if (key === " " && !e.repeat) {
       this.paintballQueued = true;
     }
     if (key === "f" && !e.repeat) {
       this.interactQueued = true;
     }
-    if (key === " ") {
+    if (key === " " || key === "arrowup") {
       e.preventDefault();
     }
     this.keys.add(key);
