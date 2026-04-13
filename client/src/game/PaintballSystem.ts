@@ -188,19 +188,13 @@ export class PaintballSystem {
       this.globeRadius,
     );
 
-    const sock = this.getSocket();
-    if (sock?.connected) {
-      sock.emitPaintballFire();
-      /** Projectile + color come from server `paintball:fired` (matches splatter on hit). */
-      return;
-    }
-
     const myId = this.getSocketId() ?? "local";
     const color =
       PAINTBALL_COLOR_PALETTE[
         Math.floor(Math.random() * PAINTBALL_COLOR_PALETTE.length)
       ]!;
-    this.spawnProjectile({
+
+    const shot = {
       shooterId: myId,
       color,
       ox: ray.origin.x,
@@ -210,10 +204,25 @@ export class PaintballSystem {
       dy: ray.direction.y,
       dz: ray.direction.z,
       speed: PAINTBALL_SPEED,
-    });
+    };
+
+    const sock = this.getSocket();
+    if (sock?.connected) {
+      sock.emitPaintballFire();
+      /** Optimistic spawn so the shot appears even if `paintball:fired` is slow or lost (prod WS / CDN). */
+      this.spawnProjectile(shot);
+      return;
+    }
+
+    this.spawnProjectile(shot);
   }
 
   onPaintballFired(ev: PaintballFiredEvent) {
+    const myId = this.getSocketId();
+    if (myId && ev.shooterId === myId) {
+      /** Local player already has an optimistic projectile from `tryLocalFire`. */
+      return;
+    }
     this.spawnProjectile(ev);
   }
 

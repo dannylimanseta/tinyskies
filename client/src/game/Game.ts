@@ -35,6 +35,7 @@ import { FlightControls } from "./FlightControls";
 import { TouchControls } from "./TouchControls";
 import { CameraRig } from "./CameraRig";
 import { SocketClient } from "../network/SocketClient";
+import { resolveServerUrl } from "../runtime/resolveServerUrl";
 import { isMobile } from "../utils/isMobile";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
@@ -291,6 +292,8 @@ export class Game {
   private previewAngle = 0;
   private loadingEl: HTMLDivElement | null = null;
   private reservationId?: string;
+  /** Set in `start()` via {@link resolveServerUrl}; used by {@link getServerUrl}. */
+  private serverUrlCache: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -302,6 +305,7 @@ export class Game {
     this.mobile = isMobile();
     this.showLoadingOverlay();
 
+    this.serverUrlCache = await resolveServerUrl();
     const serverUrl = this.getServerUrl();
 
     try {
@@ -2582,9 +2586,7 @@ export class Game {
   }
 
   private getServerUrl(): string {
-    return (
-      (import.meta as any).env?.VITE_SERVER_URL ?? "http://localhost:3001"
-    );
+    return this.serverUrlCache ?? "http://localhost:3001";
   }
 
   /* ── Cleanup ─────────────────────────────────────────────────────── */

@@ -33,7 +33,14 @@ const corsOrigins = corsAllowedOrigins();
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
   if (!origin) return true; // same-origin / non-browser
-  return corsOrigins.includes(origin);
+  if (corsOrigins.includes(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    if (host === "vercel.app" || host.endsWith(".vercel.app")) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 const prisma = new PrismaClient();

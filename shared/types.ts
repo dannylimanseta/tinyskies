@@ -69,8 +69,11 @@ export const PAINTBALL_COOLDOWN_MS = 500;
 export const PAINTBALL_SPEED = 7;
 /** Max travel distance = globeRadius * this factor. */
 export const PAINTBALL_RANGE_FACTOR = 0.56;
-/** Hit test: max distance from ray to target plane origin (world units). Keep tight vs. visible mesh. */
-export const PAINTBALL_HIT_RADIUS = 0.09;
+/**
+ * Hit test: max distance from shot ray to the **victim’s globe position point** (not full mesh).
+ * Wider than a true hull but much smaller than 0.22 — tune feel vs. “free” hits.
+ */
+export const PAINTBALL_HIT_RADIUS = 0.14;
 /** Splatter opacity fades to zero over this many seconds. */
 export const SPLATTER_LIFETIME_SEC = 14;
 /**
