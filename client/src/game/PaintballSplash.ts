@@ -137,8 +137,8 @@ export class PaintballSplashBurst {
       p.vy = rad.y * w * spread + ax.y * u + ay.y * v;
       p.vz = rad.z * w * spread + ax.z * u + ay.z * v;
 
-      const base = 0.66 + rnd() * 1.35;
-      const sz = base * (0.5 + rnd() * 1.0);
+      const base = 0.35 + rnd() * 0.75;
+      const sz = base * (0.4 + rnd() * 0.8);
       this.sizeAttr.setX(i, sz);
     }
 

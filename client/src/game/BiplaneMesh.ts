@@ -130,13 +130,11 @@ export function createBiplane(color: number = 0xff4444): Group {
   // --- Horizontal stabilizer: wider, with rounded tips ---
   const hStab = new Mesh(new BoxGeometry(s * 3.2, s * 0.12, s * 1.0), bodyMat);
   hStab.position.set(0, s * 0.15, s * 4.6);
-  markPaintSplatterWing(hStab);
   plane.add(hStab);
 
   for (const side of [-1, 1]) {
     const stabTip = new Mesh(new CylinderGeometry(s * 0.5, s * 0.5, s * 0.12, 10), bodyMat);
     stabTip.position.set(side * s * 1.6, s * 0.15, s * 4.6);
-    markPaintSplatterWing(stabTip);
     plane.add(stabTip);
   }
 

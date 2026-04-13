@@ -702,12 +702,12 @@ export class Game {
           this.audioManager.playSFX("shoot_1", 0.82);
         }
       },
-      (splatSeed) => {
+      (splatSeed, distant) => {
         this.audioManager.resumeContextIfNeeded();
         const n = 1 + ((splatSeed >>> 0) % 3);
         const id = `impact_${n}` as "impact_1" | "impact_2" | "impact_3";
         if (this.audioManager.hasSFX(id)) {
-          this.audioManager.playSFX(id, 0.88);
+          this.audioManager.playSFX(id, distant ? 0.35 : 0.88);
         }
       },
     );

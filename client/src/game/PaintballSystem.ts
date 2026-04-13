@@ -1,8 +1,9 @@
 import {
   Box3,
+  BufferAttribute,
   BufferGeometry,
-  DoubleSide,
   Euler,
+  FrontSide,
   Group,
   Matrix4,
   Mesh,
@@ -109,6 +110,62 @@ type SplatterFade = {
   start: number;
 };
 
+/** Strip triangles whose average vertex normal faces away from `upDir` (the hit surface normal). */
+function stripBackFaces(geo: BufferGeometry, upDir: Vector3): BufferGeometry {
+  const pos = geo.attributes.position as BufferAttribute;
+  const norm = geo.attributes.normal as BufferAttribute;
+  const uv = geo.attributes.uv as BufferAttribute | undefined;
+  if (!pos || !norm) return geo;
+
+  const triCount = pos.count / 3;
+  const keepTris: number[] = [];
+  const avg = new Vector3();
+
+  for (let t = 0; t < triCount; t++) {
+    const i = t * 3;
+    avg.set(0, 0, 0);
+    for (let v = 0; v < 3; v++) {
+      avg.x += norm.getX(i + v);
+      avg.y += norm.getY(i + v);
+      avg.z += norm.getZ(i + v);
+    }
+    if (avg.dot(upDir) > 0) keepTris.push(t);
+  }
+
+  if (keepTris.length === triCount) return geo;
+
+  const vertCount = keepTris.length * 3;
+  const newPos = new Float32Array(vertCount * 3);
+  const newNorm = new Float32Array(vertCount * 3);
+  const newUv = uv ? new Float32Array(vertCount * 2) : undefined;
+
+  for (let k = 0; k < keepTris.length; k++) {
+    const src = keepTris[k]! * 3;
+    const dst = k * 3;
+    for (let v = 0; v < 3; v++) {
+      const si = src + v;
+      const di = dst + v;
+      newPos[di * 3] = pos.getX(si);
+      newPos[di * 3 + 1] = pos.getY(si);
+      newPos[di * 3 + 2] = pos.getZ(si);
+      newNorm[di * 3] = norm.getX(si);
+      newNorm[di * 3 + 1] = norm.getY(si);
+      newNorm[di * 3 + 2] = norm.getZ(si);
+      if (uv && newUv) {
+        newUv[di * 2] = uv.getX(si);
+        newUv[di * 2 + 1] = uv.getY(si);
+      }
+    }
+  }
+
+  const out = new BufferGeometry();
+  out.setAttribute("position", new BufferAttribute(newPos, 3));
+  out.setAttribute("normal", new BufferAttribute(newNorm, 3));
+  if (newUv) out.setAttribute("uv", new BufferAttribute(newUv, 2));
+  geo.dispose();
+  return out;
+}
+
 /** Raycaster / traverse only check each node's own `visible`; parents can hide a subtree (e.g. remote carry package). */
 function isVisibleInHierarchy(obj: Object3D): boolean {
   let o: Object3D | null = obj;
@@ -155,8 +212,8 @@ export class PaintballSystem {
     private onPaintballVictimWobble?: (victimId: string) => void,
     /** One-shot when a projectile actually spawns (local + remote). */
     private onPaintballShoot?: () => void,
-    /** One-shot when a paintball hits a plane (after splat VFX). */
-    private onPaintballImpact?: (splatSeed: number) => void,
+    /** One-shot when a paintball hits a plane. `distant` = true when our shot hit someone else. */
+    private onPaintballImpact?: (splatSeed: number, distant: boolean) => void,
   ) {
     const loader = new TextureLoader();
     loader.load(
@@ -227,7 +284,7 @@ export class PaintballSystem {
       /** Local player already has an optimistic projectile from `tryLocalFire`. */
       return;
     }
-    if (this.spawnProjectile(ev)) this.onPaintballShoot?.();
+    this.spawnProjectile(ev);
   }
 
   private spawnProjectile(ev: {
@@ -302,7 +359,11 @@ export class PaintballSystem {
       decalTintColor(ev.color).getHex(),
       ev.splatSeed,
     );
-    this.onPaintballImpact?.(ev.splatSeed);
+    if (ev.victimId === myId) {
+      this.onPaintballImpact?.(ev.splatSeed, false);
+    } else if (ev.shooterId === myId) {
+      this.onPaintballImpact?.(ev.splatSeed, true);
+    }
   }
 
   /**
@@ -383,6 +444,12 @@ export class PaintballSystem {
         continue;
       }
 
+      const filteredGeo = stripBackFaces(decalGeo, nWorld);
+      if (!filteredGeo.attributes.position || filteredGeo.attributes.position.count < 3) {
+        filteredGeo.dispose();
+        continue;
+      }
+
       const map = this.texture!.clone();
       map.colorSpace = SRGBColorSpace;
 
@@ -398,13 +465,13 @@ export class PaintballSystem {
         polygonOffsetFactor: -po,
         polygonOffsetUnits: -po,
         alphaTest: 0.04,
-        side: DoubleSide,
+        side: FrontSide,
       });
 
       const invWorld = _m.copy(victimRoot.matrixWorld).invert();
-      decalGeo.applyMatrix4(invWorld);
+      filteredGeo.applyMatrix4(invWorld);
 
-      const splat = new Mesh(decalGeo, mat);
+      const splat = new Mesh(filteredGeo, mat);
       splat.renderOrder = 470 + (splatterIndex % 60);
       victimRoot.add(splat);
 
