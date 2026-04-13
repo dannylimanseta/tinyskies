@@ -146,7 +146,7 @@ export class Boat {
     forward: boolean,
     brake: boolean,
     _elevate: boolean = false,
-    _barrelRoll: boolean = false,
+    _paintball: boolean = false,
   ) {
     if (forward) {
       this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);

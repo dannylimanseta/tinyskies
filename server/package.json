@@ -20,8 +20,9 @@
     "@prisma/client": "^6.4.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "nanoid": "^5.1.2",
     "socket.io": "^4.8.1",
-    "nanoid": "^5.1.2"
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

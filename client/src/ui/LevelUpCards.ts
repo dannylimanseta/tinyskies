@@ -107,7 +107,6 @@ const UPGRADE_ICONS: Record<string, string> = {
   nitro_tank: "⚡",
   quick_climb: "🪂",
   tight_turn: "🌀",
-  snap_roll: "🔄",
   quick_brake: "🛑",
   diamond_magnet: "💎",
   golden_touch: "✨",
@@ -115,7 +114,6 @@ const UPGRADE_ICONS: Record<string, string> = {
   rainbow_finder: "🌈",
   firefly_season: "🪲",
   lantern_festival: "🏮",
-  roll_boost: "🚀",
   frequent_flyer: "✈️",
   night_owl: "🦉",
 };

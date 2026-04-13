@@ -38,6 +38,7 @@ import { SocketClient } from "../network/SocketClient";
 import { isMobile } from "../utils/isMobile";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
+import { PaintballSystem } from "./PaintballSystem";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
@@ -181,6 +182,7 @@ export class Game {
   private mobile = false;
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
+  private paintballSystem: PaintballSystem | null = null;
   private speedLines!: SpeedLines;
   private contrails!: Contrails;
   private wakeTrail!: WakeTrail;
@@ -671,6 +673,14 @@ export class Game {
     }
 
     this.remotePlanes = new RemotePlaneManager(this.scene, globeRadius);
+    this.paintballSystem = new PaintballSystem(
+      this.scene,
+      globeRadius,
+      () => this.socketClient?.id,
+      () => this.socketClient,
+      this.remotePlanes,
+      () => this.cameraRig.shake(0.038, 0.26),
+    );
 
     this.speedLines = new SpeedLines();
 
@@ -712,12 +722,6 @@ export class Game {
     this.scene.add(this.collectVFX.group);
 
     this.ringManager.onCollect = (xp, worldPos, tier) => {
-      const rolling = this.vehicleFeatures.barrelRollBonus && this.localPlayer.isRolling;
-      const bonusXP = rolling ? xp : 0;
-      if (bonusXP > 0) {
-        this.ringManager.sessionXP += bonusXP;
-        this.ringManager.level = this.ringManager.getLevel();
-      }
       this.collectVFX.play(worldPos, tier);
       if (this.vehicleFeatures.collectibleDiamonds) {
         const now = performance.now();
@@ -740,7 +744,7 @@ export class Game {
           SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
         this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
       }
-      this.hud.showXPGain(xp + bonusXP, rolling);
+      this.hud.showXPGain(xp);
       this.hud.setXP(
         this.ringManager.getXP(),
         this.ringManager.getXPForNextLevel(),
@@ -924,6 +928,8 @@ export class Game {
     this.ringManager?.dispose();
     this.collectVFX?.dispose();
     this.localPlayer?.dispose();
+    this.paintballSystem?.dispose();
+    this.paintballSystem = null;
     this.remotePlanes?.dispose();
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
@@ -1294,6 +1300,17 @@ export class Game {
       this.applyBrazierMoonShield(payload.remainingMs);
     });
 
+    this.socketClient.onPaintballFired((ev) => {
+      this.paintballSystem?.onPaintballFired(ev);
+    });
+
+    this.socketClient.onPaintballHit((ev) => {
+      this.paintballSystem?.onPaintballHit(
+        ev,
+        this.localPlayer instanceof Plane ? this.localPlayer.group : null,
+      );
+    });
+
     this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle, this.reservationId);
 
     this.stateSync = new StateSync(this.socketClient, this.localPlayer);
@@ -1515,10 +1532,14 @@ export class Game {
       return;
     }
 
-    const { turnRate, forward, brake, elevate, descend, barrelRoll, interact } =
+    const { turnRate, forward, brake, elevate, descend, paintball, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
     this.localPlayer.visibility = 1;
-    this.localPlayer.update(dt, turnRate, forward, brake, elevate, barrelRoll, descend);
+    this.localPlayer.update(dt, turnRate, forward, brake, elevate, paintball, descend);
+
+    if (paintball && this.localPlayer instanceof Plane && this.paintballSystem) {
+      this.paintballSystem.tryLocalFire(this.localPlayer);
+    }
 
     if (this.moonThreat && !this.moonThreat.hasImpacted) {
       this.localPlayer.group.updateMatrixWorld(true);
@@ -1556,6 +1577,7 @@ export class Game {
     this.globe.update(dt);
 
     this.remotePlanes.update(dt, this.cameraRig.camera);
+    this.paintballSystem?.update(dt);
 
     this.localPlayer.group.updateMatrixWorld(true);
 
@@ -2370,9 +2392,7 @@ export class Game {
         boostDurationMult: s.boostDurationMult,
         altSpeedMult: s.altSpeedMult,
         bankMult: s.bankMult,
-        rollSpeedMult: s.rollSpeedMult,
         brakeDecelMult: s.brakeDecelMult,
-        rollBoostEnabled: s.rollBoostEnabled,
       });
     }
 
@@ -2564,6 +2584,8 @@ export class Game {
   dispose() {
     this.running = false;
     this.previewActive = false;
+    this.paintballSystem?.dispose();
+    this.paintballSystem = null;
     this.controls?.dispose();
     this.touchControls?.dispose();
     this.speedLines?.dispose();

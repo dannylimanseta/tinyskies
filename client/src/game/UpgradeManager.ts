@@ -5,9 +5,7 @@ export interface UpgradeState {
   boostDurationMult: number;
   altSpeedMult: number;
   bankMult: number;
-  rollSpeedMult: number;
   brakeDecelMult: number;
-  rollBoostEnabled: boolean;
   // Economy multipliers
   diamondXpMult: number;
   deliveryXpMult: number;
@@ -36,9 +34,7 @@ function defaultState(): UpgradeState {
     boostDurationMult: 1,
     altSpeedMult: 1,
     bankMult: 1,
-    rollSpeedMult: 1,
     brakeDecelMult: 1,
-    rollBoostEnabled: false,
     diamondXpMult: 1,
     deliveryXpMult: 1,
     diamondCountBonus: 0,
@@ -85,13 +81,6 @@ const UPGRADES: UpgradeDefinition[] = [
     description: "+15% turning responsiveness",
     category: "performance",
     apply: (s) => { s.bankMult *= 1.15; },
-  },
-  {
-    id: "snap_roll",
-    name: "Snap Roll",
-    description: "+20% barrel roll speed",
-    category: "performance",
-    apply: (s) => { s.rollSpeedMult *= 1.20; },
   },
   {
     id: "quick_brake",
@@ -141,13 +130,6 @@ const UPGRADES: UpgradeDefinition[] = [
     description: "+1 lantern cluster in the world",
     category: "economy",
     apply: (s) => { s.extraLanterns += 1; },
-  },
-  {
-    id: "roll_boost",
-    name: "Roll Boost",
-    description: "Barrel rolls give a brief 10% speed kick",
-    category: "performance",
-    apply: (s) => { s.rollBoostEnabled = true; },
   },
   {
     id: "frequent_flyer",

@@ -487,7 +487,7 @@ export class RingManager {
     return 0;
   }
 
-  /** Add XP without diamond collect side effects (SFX combo, barrel-roll bonus, speed boost). */
+  /** Add XP without diamond collect side effects (SFX combo, speed boost). */
   applyBonusXP(amount: number) {
     if (amount <= 0) return;
     const prevLevel = this.level;

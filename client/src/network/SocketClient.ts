@@ -3,6 +3,8 @@ import type {
   BrazierLitEvent,
   BrazierMoonPausePayload,
   BrazierSyncPayload,
+  PaintballFiredEvent,
+  PaintballHitEvent,
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
@@ -47,6 +49,18 @@ export class SocketClient {
 
   emitBrazierIgnite(index: number) {
     this.socket.emit("brazier:ignite", index);
+  }
+
+  emitPaintballFire() {
+    this.socket.emit("paintball:fire");
+  }
+
+  onPaintballFired(cb: (ev: PaintballFiredEvent) => void) {
+    this.socket.on("paintball:fired", cb);
+  }
+
+  onPaintballHit(cb: (ev: PaintballHitEvent) => void) {
+    this.socket.on("paintball:hit", cb);
   }
 
   onPlayerJoined(cb: (player: PlayerState) => void) {

@@ -100,7 +100,7 @@ export class Carpet {
     forward: boolean,
     brake: boolean,
     elevate: boolean = false,
-    _barrelRoll: boolean = false,
+    _paintball: boolean = false,
   ) {
     if (this.timeUniform) this.timeUniform.value += dt;
 

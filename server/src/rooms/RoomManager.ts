@@ -36,10 +36,10 @@ export class RoomManager {
     this.worldSlugs.push(slug);
   }
 
-  getOrCreateRoom(slug: string): Room {
+  getOrCreateRoom(slug: string, globeRadius: number): Room {
     let room = this.rooms.get(slug);
     if (!room) {
-      room = new Room(slug);
+      room = new Room(slug, globeRadius);
       this.rooms.set(slug, room);
     }
     const timer = this.cleanupTimers.get(slug);
@@ -56,12 +56,13 @@ export class RoomManager {
     playerName: string,
     vehicle: Vehicle = "plane",
     reservationId?: string,
+    globeRadius = 5,
   ) {
     if (reservationId) {
       this.confirmReservation(reservationId);
     }
 
-    const room = this.getOrCreateRoom(slug);
+    const room = this.getOrCreateRoom(slug, globeRadius);
 
     if (room.isFull) {
       socket.emit("world:full", slug);
@@ -86,6 +87,10 @@ export class RoomManager {
 
     socket.on("brazier:ignite", (index: number) => {
       room.igniteBrazier(socket.id, index);
+    });
+
+    socket.on("paintball:fire", () => {
+      room.firePaintball(socket.id);
     });
 
     socket.on("disconnect", () => {

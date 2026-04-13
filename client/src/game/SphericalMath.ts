@@ -110,6 +110,28 @@ export function cartesianFromSpherical(
 }
 
 /**
+ * World ray from plane nose — must stay aligned with server `paintball/hitTest` and {@link buildPlaneMatrix}.
+ */
+export function paintballRayFromPlaneState(
+  qPosition: Quaternion,
+  heading: number,
+  pitch: number,
+  altitude: number,
+  globeRadius: number,
+): { origin: Vector3; direction: Vector3 } {
+  const origin = cartesianFromSpherical(qPosition, altitude, globeRadius);
+  const frame = tangentFrame(qPosition);
+  const forward = new Vector3()
+    .addScaledVector(frame.north, Math.cos(heading))
+    .addScaledVector(frame.east, Math.sin(heading))
+    .normalize();
+  const right = new Vector3().crossVectors(forward, frame.up).normalize();
+  const pitchQ = _q.setFromAxisAngle(right, -pitch);
+  const direction = forward.clone().applyQuaternion(pitchQ).normalize();
+  return { origin, direction };
+}
+
+/**
  * Build the full 4x4 world matrix for rendering a plane.
  * Composes position (on sphere) with orientation (heading, pitch, bank in local frame).
  */

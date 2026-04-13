@@ -377,6 +377,11 @@ export class RemotePlaneManager {
     this.planes.delete(playerId);
   }
 
+  /** Biplane root for paint splatters (see `BiplaneMesh` `splatterAnchor`). */
+  getPlaneGroup(playerId: string): Group | null {
+    return this.planes.get(playerId)?.group ?? null;
+  }
+
   updatePlayer(state: PlayerState) {
     const rp = this.planes.get(state.id);
     if (!rp) {

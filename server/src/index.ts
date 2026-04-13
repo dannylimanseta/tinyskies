@@ -70,10 +70,17 @@ app.get("/health", (_req, res) => {
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  socket.on("world:join", (slug, playerName, vehicle, reservationId) => {
+  socket.on("world:join", async (slug, playerName, vehicle, reservationId) => {
     console.log(`Player ${socket.id} joining world: ${slug}`);
     const v = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
-    roomManager.joinRoom(slug, socket, playerName, v, reservationId);
+    let globeRadius = 5;
+    try {
+      const world = await prisma.world.findUnique({ where: { slug } });
+      if (world) globeRadius = world.globeRadius;
+    } catch (err) {
+      console.warn("world:join globeRadius lookup failed:", err);
+    }
+    roomManager.joinRoom(slug, socket, playerName, v, reservationId, globeRadius);
   });
 
   socket.on("disconnect", () => {

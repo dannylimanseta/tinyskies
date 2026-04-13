@@ -29,10 +29,6 @@ const BANK_RESPONSIVENESS = 4;
 const TURN_INPUT_SMOOTH = 8;
 /** Climb hold (Space) ramps 0→1 instead of snapping. */
 const ELEVATE_INPUT_SMOOTH = 6;
-const ROLL_SPEED = 5.0;
-const TWO_PI = Math.PI * 2;
-const ROLL_ALT_AMPLITUDE = 0.05;
-const ROLL_PITCH_AMPLITUDE = 0.02;
 /** Upper end of `speedRatio` while at or below MAX_SPEED (before boost segment). */
 const CRUISE_SPEED_RATIO_MAX = 0.167;
 
@@ -48,11 +44,8 @@ export class Plane {
   altitude = ALTITUDE;
   speed = 0;
   bankAngle = 0;
-  isRolling = false;
-  private rollProgress = 0;
+  /** Kept at 0; still synced for PlayerState compatibility. */
   rollAngle = 0;
-  private rollAltOffset = 0;
-  private rollPitchOffset = 0;
   /** Remaining time at `BOOST_SPEED` after `speedBoost()`; 0 when not boosting. */
   private boostTimer = 0;
   /** Network fade 0–1 (moon cutscene); read by StateSync. */
@@ -65,9 +58,7 @@ export class Plane {
     boostDurationMult: 1,
     altSpeedMult: 1,
     bankMult: 1,
-    rollSpeedMult: 1,
     brakeDecelMult: 1,
-    rollBoostEnabled: false,
   };
 
   /** Smoothed yaw command (matches keyboard / stick after lag). */
@@ -100,7 +91,7 @@ export class Plane {
     forward: boolean,
     brake: boolean,
     elevate: boolean = false,
-    barrelRoll: boolean = false,
+    _paintball: boolean = false,
     descend: boolean = false,
   ) {
     // Compute effective values once so all references below stay consistent.
@@ -109,7 +100,6 @@ export class Plane {
     const effBrakeDecel = BRAKE_DECEL * this.upgrades.brakeDecelMult;
     const effAltSpeed = ALTITUDE_SPEED * this.upgrades.altSpeedMult;
     const effBankResp = BANK_RESPONSIVENESS * this.upgrades.bankMult;
-    const effRollSpeed = ROLL_SPEED * this.upgrades.rollSpeedMult;
 
     if (this.boostTimer > 0) {
       this.boostTimer = Math.max(0, this.boostTimer - dt);
@@ -172,38 +162,8 @@ export class Plane {
     const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, effBankResp * dt);
 
-    if (barrelRoll && !this.isRolling) {
-      this.isRolling = true;
-      this.rollProgress = 0;
-    }
-
     if (this.group.userData.propeller) {
       this.group.userData.propeller.rotation.z -= (this.speed * 15 + 10) * dt;
-    }
-
-    if (this.isRolling) {
-      this.rollProgress += effRollSpeed / TWO_PI * dt;
-      if (this.rollProgress >= 1) {
-        this.rollProgress = 0;
-        this.rollAngle = 0;
-        this.isRolling = false;
-        this.rollAltOffset = 0;
-        this.rollPitchOffset = 0;
-        if (this.upgrades.rollBoostEnabled) {
-          this.speed = Math.min(this.speed * 1.10, effBoostSpeed);
-        }
-      } else {
-        const t = this.rollProgress;
-        const eased = t < 0.5
-          ? 4 * t * t * t
-          : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        this.rollAngle = eased * TWO_PI;
-        this.rollAltOffset = Math.sin(this.rollAngle) * ROLL_ALT_AMPLITUDE;
-        this.rollPitchOffset = Math.sin(this.rollAngle * 2) * ROLL_PITCH_AMPLITUDE;
-      }
-    } else {
-      this.rollAltOffset += (0 - this.rollAltOffset) * Math.min(1, 8 * dt);
-      this.rollPitchOffset += (0 - this.rollPitchOffset) * Math.min(1, 8 * dt);
     }
 
     // Hard speed ceiling — prevents physics/NaN issues from stacked upgrades.
@@ -222,9 +182,9 @@ export class Plane {
     const m = buildPlaneMatrix(
       this.qPosition,
       this.heading,
-      this.pitch + this.rollPitchOffset,
-      this.bankAngle + this.rollAngle,
-      this.altitude + this.rollAltOffset,
+      this.pitch,
+      this.bankAngle,
+      this.altitude,
       this.globeRadius,
     );
     this.group.matrix.copy(m);

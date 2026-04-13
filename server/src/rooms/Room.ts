@@ -3,11 +3,15 @@ import type {
   BrazierLitEvent,
   BrazierMoonPausePayload,
   BrazierSyncPayload,
+  PaintballFiredEvent,
+  PaintballHitEvent,
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
   Vehicle,
 } from "@globefly/shared";
+import { PAINTBALL_COOLDOWN_MS } from "../paintball/constants.js";
+import { computePaintballShot } from "../paintball/hitTest.js";
 
 /** Must match `BRAZIER_COUNT` / `BRAZIER_BURN_MS` / `BRAZIER_MOON_PAUSE_MS` in `@globefly/shared`. */
 const BRAZIER_COUNT = 5;
@@ -23,7 +27,11 @@ export const MAX_PLAYERS = 15;
 
 export class Room {
   readonly slug: string;
+  /** World globe radius — used for paintball raycast (matches Prisma world row). */
+  readonly globeRadius: number;
   private players = new Map<string, ConnectedPlayer>();
+  /** Last paintball fire time per socket (ms). */
+  private lastPaintballAt = new Map<string, number>();
   /** Per-index wall-clock burn end (ms), or null — shared by everyone in this world room. */
   private brazierBurnEndsAt: (number | null)[] = Array.from(
     { length: BRAZIER_COUNT },
@@ -32,8 +40,9 @@ export class Room {
   /** Wall-clock ms when shared moon-pause shield ends; null if not active. */
   private brazierMoonPauseEndsAt: number | null = null;
 
-  constructor(slug: string) {
+  constructor(slug: string, globeRadius: number) {
     this.slug = slug;
+    this.globeRadius = globeRadius;
   }
 
   get playerCount() {
@@ -91,9 +100,50 @@ export class Room {
 
   removePlayer(socketId: string) {
     this.players.delete(socketId);
+    this.lastPaintballAt.delete(socketId);
 
     for (const [, player] of this.players) {
       player.socket.emit("player:left", socketId);
+    }
+  }
+
+  /** Server-authoritative paintball: validates cooldown and vehicle; broadcasts to room. */
+  firePaintball(socketId: string) {
+    const me = this.players.get(socketId);
+    if (!me) return;
+
+    const veh = me.state.vehicle === "boat" ? "boat" : me.state.vehicle === "carpet" ? "carpet" : "plane";
+    if (veh !== "plane") return;
+
+    const now = Date.now();
+    const last = this.lastPaintballAt.get(socketId) ?? 0;
+    if (now - last < PAINTBALL_COOLDOWN_MS) return;
+    this.lastPaintballAt.set(socketId, now);
+
+    const others = Array.from(this.players.entries())
+      .filter(([id]) => id !== socketId)
+      .map(([id, p]) => ({ id, state: p.state }));
+
+    const result = computePaintballShot(me.state, socketId, others, this.globeRadius);
+
+    const firedPayload: PaintballFiredEvent = {
+      shooterId: socketId,
+      ...result.fired,
+    };
+    for (const [, p] of this.players) {
+      p.socket.emit("paintball:fired", firedPayload);
+    }
+
+    if (result.hit) {
+      const hitPayload: PaintballHitEvent = {
+        shooterId: socketId,
+        victimId: result.hit.victimId,
+        color: result.hit.color,
+        splatSeed: result.hit.splatSeed,
+      };
+      for (const [, p] of this.players) {
+        p.socket.emit("paintball:hit", hitPayload);
+      }
     }
   }
 

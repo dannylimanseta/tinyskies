@@ -131,10 +131,10 @@ export class HUD {
     this.xpValueEl.textContent = `${current} XP`;
   }
 
-  showXPGain(amount: number, bonus = false) {
+  showXPGain(amount: number) {
     const popup = document.createElement("div");
-    popup.className = bonus ? "hud-xp-popup hud-xp-popup-bonus" : "hud-xp-popup";
-    popup.textContent = bonus ? `+${amount} XP BARREL ROLL!` : `+${amount} XP`;
+    popup.className = "hud-xp-popup";
+    popup.textContent = `+${amount} XP`;
     this.el.appendChild(popup);
 
     requestAnimationFrame(() => popup.classList.add("hud-xp-popup-animate"));

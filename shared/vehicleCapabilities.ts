@@ -18,8 +18,6 @@ export interface VehicleGameFeatures {
   carpetTrail: boolean;
   /** Multiplier for camera roll when turning (1 = full plane tilt) */
   cameraTiltScale: number;
-  /** Extra XP when collecting while barrel rolling */
-  barrelRollBonus: boolean;
   /** Camera follow distance behind the vehicle */
   cameraFollowDistance: number;
   /** Camera height above the vehicle */
@@ -41,7 +39,6 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     wakeTrail: false,
     carpetTrail: false,
     cameraTiltScale: 1,
-    barrelRollBonus: true,
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
     cameraSpeedZoom: 0,
@@ -56,7 +53,6 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     wakeTrail: true,
     carpetTrail: false,
     cameraTiltScale: 0.28,
-    barrelRollBonus: false,
     cameraFollowDistance: 1.2,
     cameraFollowHeight: 0.7,
     cameraSpeedZoom: 0,
@@ -71,7 +67,6 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     wakeTrail: false,
     carpetTrail: true,
     cameraTiltScale: 0.5,
-    barrelRollBonus: false,
     cameraFollowDistance: 0.32,
     cameraFollowHeight: 0.16,
     /** Negative = pull in slightly at speed; keep mild so chase distance stays above CameraRig floor. */

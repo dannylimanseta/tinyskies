@@ -90,7 +90,7 @@ export class TouchControls {
     this.vehicle = vehicle;
     this.elevateBtn.style.display = "";
     if (vehicle === "plane") {
-      this.actionBtn.textContent = "⟳";
+      this.actionBtn.textContent = "●";
       this.actionBtn.style.display = "";
       this.descendBtn.style.display = "none";
     } else if (vehicle === "carpet") {
@@ -105,7 +105,7 @@ export class TouchControls {
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, barrelRoll: false, interact: false };
+      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, paintball: false, interact: false };
     }
 
     const nx = JOYSTICK_RADIUS > 0 ? this.joyDx / JOYSTICK_RADIUS : 0;
@@ -117,14 +117,14 @@ export class TouchControls {
 
     const elevate = this.elevateHeld;
     const descend = this.descendHeld;
-    let barrelRoll = false;
+    let paintball = false;
 
     if (this.vehicle === "plane") {
-      barrelRoll = this.actionQueued;
+      paintball = this.actionQueued;
       this.actionQueued = false;
     }
 
-    return { turnRate, forward, brake, elevate, descend, barrelRoll, interact: false };
+    return { turnRate, forward, brake, elevate, descend, paintball, interact: false };
   }
 
   /* ── Joystick touch handling ─────────────────────────────── */

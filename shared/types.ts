@@ -63,6 +63,43 @@ export interface BrazierMoonPausePayload {
   remainingMs: number;
 }
 
+/** ms between paintball shots (client UX + server authority). */
+export const PAINTBALL_COOLDOWN_MS = 500;
+/** Projectile travel speed in world units per second. */
+export const PAINTBALL_SPEED = 7;
+/** Max travel distance = globeRadius * this factor. */
+export const PAINTBALL_RANGE_FACTOR = 0.56;
+/** Hit test: max distance from ray to target hull (world units). */
+export const PAINTBALL_HIT_RADIUS = 0.22;
+/** Splatter opacity fades to zero over this many seconds. */
+export const SPLATTER_LIFETIME_SEC = 4.5;
+/** Fun tints for paint splats (0xRRGGBB). Server picks one per hit. */
+export const PAINTBALL_COLOR_PALETTE: readonly number[] = [
+  0xff3355, 0xff6633, 0xffdd33, 0x33ff88, 0x33ccff, 0x8866ff, 0xff33cc, 0xffffff,
+];
+
+export interface PaintballFiredEvent {
+  shooterId: string;
+  /** Palette color (0xRRGGBB) for this shot — same as splatter when the shot hits. */
+  color: number;
+  ox: number;
+  oy: number;
+  oz: number;
+  dx: number;
+  dy: number;
+  dz: number;
+  speed: number;
+}
+
+export interface PaintballHitEvent {
+  shooterId: string;
+  victimId: string;
+  /** 0xRRGGBB */
+  color: number;
+  /** Deterministic splatter placement/rotation on clients. */
+  splatSeed: number;
+}
+
 export interface ServerToClientEvents {
   "player:joined": (player: PlayerState) => void;
   "player:left": (playerId: string) => void;
@@ -73,6 +110,8 @@ export interface ServerToClientEvents {
   "brazier:sync": (payload: BrazierSyncPayload) => void;
   "brazier:lit": (event: BrazierLitEvent) => void;
   "brazier:moonPause": (payload: BrazierMoonPausePayload) => void;
+  "paintball:fired": (event: PaintballFiredEvent) => void;
+  "paintball:hit": (event: PaintballHitEvent) => void;
 }
 
 export interface ClientToServerEvents {
@@ -84,4 +123,5 @@ export interface ClientToServerEvents {
     reservationId?: string,
   ) => void;
   "brazier:ignite": (index: number) => void;
+  "paintball:fire": () => void;
 }

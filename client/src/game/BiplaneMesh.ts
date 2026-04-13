@@ -14,6 +14,11 @@ import {
 } from "three";
 import { addRimLight } from "./RimLight";
 
+/** Paint splatters (decals) are limited to these meshes — see `PaintballSystem`. */
+function markPaintSplatterWing(m: Mesh) {
+  m.userData.paintSplatterSurface = true;
+}
+
 export function createBiplane(color: number = 0xff4444): Group {
   const plane = new Group();
   const s = 0.025;
@@ -70,23 +75,27 @@ export function createBiplane(color: number = 0xff4444): Group {
   // --- Upper wing: slightly swept, rounded tips ---
   const upperWing = new Mesh(new BoxGeometry(s * 8.5, s * 0.18, s * 1.8), wingMat);
   upperWing.position.set(0, s * 1.4, -s * 0.2);
+  markPaintSplatterWing(upperWing);
   plane.add(upperWing);
 
   for (const side of [-1, 1]) {
     const tip = new Mesh(new CylinderGeometry(s * 0.9, s * 0.9, s * 0.18, 12), wingMat);
     tip.position.set(side * s * 4.25, s * 1.4, -s * 0.2);
     tip.scale.set(1, 1, 1);
+    markPaintSplatterWing(tip);
     plane.add(tip);
   }
 
   // --- Lower wing: slightly smaller ---
   const lowerWing = new Mesh(new BoxGeometry(s * 7.0, s * 0.18, s * 1.6), wingMat);
   lowerWing.position.set(0, -s * 0.5, 0);
+  markPaintSplatterWing(lowerWing);
   plane.add(lowerWing);
 
   for (const side of [-1, 1]) {
     const tip = new Mesh(new CylinderGeometry(s * 0.8, s * 0.8, s * 0.18, 12), wingMat);
     tip.position.set(side * s * 3.5, -s * 0.5, 0);
+    markPaintSplatterWing(tip);
     plane.add(tip);
   }
 
@@ -123,11 +132,13 @@ export function createBiplane(color: number = 0xff4444): Group {
   // --- Horizontal stabilizer: wider, with rounded tips ---
   const hStab = new Mesh(new BoxGeometry(s * 3.2, s * 0.12, s * 1.0), bodyMat);
   hStab.position.set(0, s * 0.15, s * 4.6);
+  markPaintSplatterWing(hStab);
   plane.add(hStab);
 
   for (const side of [-1, 1]) {
     const stabTip = new Mesh(new CylinderGeometry(s * 0.5, s * 0.5, s * 0.12, 10), bodyMat);
     stabTip.position.set(side * s * 1.6, s * 0.15, s * 4.6);
+    markPaintSplatterWing(stabTip);
     plane.add(stabTip);
   }
 
@@ -229,6 +240,11 @@ export function createBiplane(color: number = 0xff4444): Group {
   tailStrut.position.set(0, -s * 0.35, s * 4.1);
   tailStrut.rotation.x = -0.4;
   plane.add(tailStrut);
+
+  const splatterAnchor = new Group();
+  splatterAnchor.name = "splatterAnchor";
+  plane.add(splatterAnchor);
+  plane.userData.splatterAnchor = splatterAnchor;
 
   plane.traverse((child) => {
     child.castShadow = true;
