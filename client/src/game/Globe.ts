@@ -1077,7 +1077,7 @@ transformed.z += sway2;`,
   }
 
   private mergeColoredParts(
-    parts: { geo: BufferGeometry; color: Color }[],
+    parts: { geo: BufferGeometry; color: Color; isWindow?: boolean }[],
   ): BufferGeometry {
     let totalVerts = 0;
     let totalIdx = 0;
@@ -1089,18 +1089,22 @@ transformed.z += sway2;`,
     const positions = new Float32Array(totalVerts * 3);
     const normals = new Float32Array(totalVerts * 3);
     const colors = new Float32Array(totalVerts * 3);
+    // We'll use the 'uv' attribute to store a 1.0 flag for windows, 0.0 for everything else
+    // so the shader knows which parts should glow at night.
+    const uvs = new Float32Array(totalVerts * 2);
     const indices: number[] = [];
     let vOffset = 0;
 
-    for (const { geo, color } of parts) {
+    for (const { geo, color, isWindow } of parts) {
       const pos = geo.attributes.position;
       const norm = geo.attributes.normal;
       for (let i = 0; i < pos.count; i++) {
         const idx = (vOffset + i) * 3;
+        const uvIdx = (vOffset + i) * 2;
         const y = pos.getY(i);
         
-        // Fake AO: Darken the bottom of the house
-        const ao = MathUtils.lerp(0.15, 1.0, Math.min(1, Math.max(0, y / 0.5)));
+        // Fake AO: Darken the bottom of the house (but don't darken windows)
+        const ao = isWindow ? 1.0 : MathUtils.lerp(0.15, 1.0, Math.min(1, Math.max(0, y / 0.5)));
 
         positions[idx] = pos.getX(i);
         positions[idx + 1] = y;
@@ -1111,6 +1115,9 @@ transformed.z += sway2;`,
         colors[idx] = color.r * ao;
         colors[idx + 1] = color.g * ao;
         colors[idx + 2] = color.b * ao;
+        
+        uvs[uvIdx] = isWindow ? 1.0 : 0.0;
+        uvs[uvIdx + 1] = 0.0;
       }
       if (geo.index) {
         for (let i = 0; i < geo.index.count; i++) {
@@ -1124,6 +1131,7 @@ transformed.z += sway2;`,
     merged.setAttribute("position", new Float32BufferAttribute(positions, 3));
     merged.setAttribute("normal", new Float32BufferAttribute(normals, 3));
     merged.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    merged.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
     merged.setIndex(indices);
     for (const { geo } of parts) geo.dispose();
     return merged;
@@ -1140,10 +1148,10 @@ transformed.z += sway2;`,
     const domeColor = domeColors[type % domeColors.length];
     const flatRoofColor = new Color(0xe8e4dc);
     const doorColor = new Color(0x5a4030); // Wood door
-    const windowColor = new Color(0x1a2530); // Dark glass
+    const windowColor = new Color(0xffcc66); // Warm orange-yellowish for lit windows
     const frameColor = new Color(0x8e8984); // Stone window/door frames
 
-    const parts: { geo: BufferGeometry; color: Color }[] = [];
+    const parts: { geo: BufferGeometry; color: Color; isWindow?: boolean }[] = [];
 
     // Helper to add framed windows
     const addWindow = (w: number, h: number, d: number, px: number, py: number, pz: number) => {
@@ -1155,7 +1163,7 @@ transformed.z += sway2;`,
 
       const win = new BoxGeometry(w, h, d * 1.4); // slightly deeper so it sticks out of frame
       win.translate(px, py, pz);
-      parts.push({ geo: win, color: windowColor });
+      parts.push({ geo: win, color: windowColor, isWindow: true });
     };
 
     // Helper to add framed doors
@@ -1463,6 +1471,35 @@ transformed.z += sway2;`,
         shininess: 15,
       });
       addRimLight(mat, 0xffeebb, 0.6, 3.0);
+
+      // Inject custom shader logic to make windows glow (emissive) based on the UV flag
+      const onBeforeCompile = mat.onBeforeCompile.bind(mat);
+      mat.onBeforeCompile = (shader, renderer) => {
+        onBeforeCompile(shader, renderer);
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <common>",
+          `#include <common>
+          varying float vIsWindow;`
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <uv_vertex>",
+          `#include <uv_vertex>
+          vIsWindow = uv.x;` // We stored 1.0 in uv.x for windows
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <common>",
+          `#include <common>
+          varying float vIsWindow;`
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <emissivemap_fragment>",
+          `#include <emissivemap_fragment>
+          // If this is a window, add a strong warm emissive glow
+          if (vIsWindow > 0.5) {
+            totalEmissiveRadiance += vec3(1.0, 0.75, 0.2) * 10.5;
+          }`
+        );
+      };
 
       const instanced = new InstancedMesh(houseGeos[t], mat, tforms.length);
       instanced.castShadow = true;
