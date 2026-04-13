@@ -12,7 +12,7 @@ import {
 } from "three";
 
 /** Max ribbon segments per wing (~40% shorter than original for a tighter trail). */
-const TRAIL_LENGTH = 36;
+const TRAIL_LENGTH = 72;
 const WIDTH = 0.005;
 
 const trailVert = `
