@@ -307,6 +307,7 @@ export class Globe {
     posAttr.needsUpdate = true;
     geo.computeVertexNormals();
     geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+    geo.setAttribute("oceanDepth", new Float32BufferAttribute(oceanDepth, 1));
 
     const mat = new MeshPhongMaterial({
       vertexColors: true,
@@ -344,7 +345,22 @@ uniform vec3 rimColor;
 uniform float rimIntensity;
 uniform float rimPower;
 uniform vec3 foamColor;
-varying vec3 vWorldPos;`,
+varying vec3 vWorldPos;
+varying float vOceanDepth;`
+      );
+
+      shader.vertexShader = shader.vertexShader.replace(
+        "varying vec3 vWorldPos;",
+        `varying vec3 vWorldPos;
+varying float vOceanDepth;
+attribute float oceanDepth;`
+      );
+
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <worldpos_vertex>",
+        `#include <worldpos_vertex>
+vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vOceanDepth = oceanDepth;`
       );
 
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -353,6 +369,24 @@ varying vec3 vWorldPos;`,
   gl_FragColor.rgb += vec3(0.04, 0.06, 0.10);
 
   vec3 wp = vWorldPos;
+  
+  // Coastline contour foam (using distance to land via vOceanDepth)
+  if (vOceanDepth > 0.0 && vOceanDepth < 1.0) {
+    // Create scrolling contour lines based on depth
+    // Reduced frequency from 15.0 to 6.0 for fewer lines
+    // Added noise to vOceanDepth to make the lines slightly irregular and wavy
+    float noiseOffset = sin(wp.x * 12.0 + wp.z * 8.0 + oceanTime) * 0.03;
+    float contour = fract((vOceanDepth + noiseOffset) * 6.0 - oceanTime * 0.8);
+    
+    // Thicker, softer lines: changed smoothstep bounds from (0.85, 0.95) to (0.7, 0.9)
+    float line = smoothstep(0.7, 0.9, contour) * (1.0 - smoothstep(0.9, 1.0, contour));
+    
+    // Fade out as it gets deeper (fade to 0.0 much earlier)
+    float depthFade = 1.0 - smoothstep(0.05, 0.35, vOceanDepth);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, foamColor, line * depthFade * 0.9);
+  }
+
+  // Existing open ocean foam
   float w1 = sin(wp.x * 43.0 + wp.y * 27.0 + wp.z * 11.0 + oceanTime * 3.6) * 0.5 + 0.5;
   float w2 = sin(wp.y * 37.0 + wp.z * 53.0 + wp.x * 7.0 - oceanTime * 2.7) * 0.5 + 0.5;
   float w3 = sin(wp.z * 31.0 + wp.x * 19.0 + wp.y * 47.0 + oceanTime * 2.1) * 0.5 + 0.5;
