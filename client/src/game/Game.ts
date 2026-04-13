@@ -349,6 +349,10 @@ export class Game {
       for (const id of LEVELUP_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      this.audioManager.loadSFX("shoot_1", "/audio/sfx/shoot_1.mp3");
+      for (const id of ["impact_1", "impact_2", "impact_3"] as const) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
     });
     this.playerName = generateWhimsicalName();
 
@@ -691,6 +695,20 @@ export class Game {
           return;
         }
         this.remotePlanes.triggerPaintballHitWobble(victimId);
+      },
+      () => {
+        this.audioManager.resumeContextIfNeeded();
+        if (this.audioManager.hasSFX("shoot_1")) {
+          this.audioManager.playSFX("shoot_1", 0.82);
+        }
+      },
+      (splatSeed) => {
+        this.audioManager.resumeContextIfNeeded();
+        const n = 1 + ((splatSeed >>> 0) % 3);
+        const id = `impact_${n}` as "impact_1" | "impact_2" | "impact_3";
+        if (this.audioManager.hasSFX(id)) {
+          this.audioManager.playSFX(id, 0.88);
+        }
       },
     );
 

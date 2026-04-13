@@ -153,6 +153,10 @@ export class PaintballSystem {
     private remotePlanes: RemotePlaneManager,
     private onLocalPlayerPaintballHit?: () => void,
     private onPaintballVictimWobble?: (victimId: string) => void,
+    /** One-shot when a projectile actually spawns (local + remote). */
+    private onPaintballShoot?: () => void,
+    /** One-shot when a paintball hits a plane (after splat VFX). */
+    private onPaintballImpact?: (splatSeed: number) => void,
   ) {
     const loader = new TextureLoader();
     loader.load(
@@ -210,11 +214,11 @@ export class PaintballSystem {
     if (sock?.connected) {
       sock.emitPaintballFire();
       /** Optimistic spawn so the shot appears even if `paintball:fired` is slow or lost (prod WS / CDN). */
-      this.spawnProjectile(shot);
+      if (this.spawnProjectile(shot)) this.onPaintballShoot?.();
       return;
     }
 
-    this.spawnProjectile(shot);
+    if (this.spawnProjectile(shot)) this.onPaintballShoot?.();
   }
 
   onPaintballFired(ev: PaintballFiredEvent) {
@@ -223,7 +227,7 @@ export class PaintballSystem {
       /** Local player already has an optimistic projectile from `tryLocalFire`. */
       return;
     }
-    this.spawnProjectile(ev);
+    if (this.spawnProjectile(ev)) this.onPaintballShoot?.();
   }
 
   private spawnProjectile(ev: {
@@ -236,13 +240,13 @@ export class PaintballSystem {
     dy: number;
     dz: number;
     speed: number;
-  }) {
+  }): boolean {
     const o = new Vector3(ev.ox, ev.oy, ev.oz);
     const r0 = Math.max(1e-4, o.length());
     const rHat = o.clone().divideScalar(r0);
     let wHat = new Vector3(ev.dx, ev.dy, ev.dz);
     wHat.sub(rHat.clone().multiplyScalar(wHat.dot(rHat)));
-    if (wHat.lengthSq() < 1e-8) return;
+    if (wHat.lengthSq() < 1e-8) return false;
     wHat.normalize();
 
     const maxRange = this.globeRadius * PAINTBALL_RANGE_FACTOR;
@@ -262,6 +266,7 @@ export class PaintballSystem {
       maxRange,
       speed: ev.speed,
     });
+    return true;
   }
 
   onPaintballHit(ev: PaintballHitEvent, localPlaneGroup: Group | null) {
@@ -297,6 +302,7 @@ export class PaintballSystem {
       decalTintColor(ev.color).getHex(),
       ev.splatSeed,
     );
+    this.onPaintballImpact?.(ev.splatSeed);
   }
 
   /**
