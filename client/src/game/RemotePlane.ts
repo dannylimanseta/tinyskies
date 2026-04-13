@@ -230,6 +230,10 @@ class RemotePlane {
     this.lastRendered = computed;
     this.applyToMesh(computed, dt);
 
+    if (this.group.userData.propeller && computed.speed !== undefined) {
+      this.group.userData.propeller.rotation.z -= (computed.speed * 15 + 10) * dt;
+    }
+
     this.visibilitySmooth += (this.visibilityTarget - this.visibilitySmooth) * Math.min(1, dt * 10);
     applyRemoteOpacity(this.group, this.visibilitySmooth);
     this.beacon.setOpacityMultiplier(this.visibilitySmooth);

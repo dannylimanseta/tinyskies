@@ -579,6 +579,10 @@ export class CampsiteScene {
     const pulseN = firePulse / 0.85;
     this.glowMat.uniforms.uIntensity.value = 0.68 + pulseN * 0.16;
 
+    if (this.vehicleClone && this.vehicleClone.userData.propeller) {
+      this.vehicleClone.userData.propeller.rotation.z -= 15 * dt;
+    }
+
     const state = this.controls.getState();
     this.avatar.update(dt, state.moveX, state.moveZ, TREE_RING_INNER * 2, state.jump);
 

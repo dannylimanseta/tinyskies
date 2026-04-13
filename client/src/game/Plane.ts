@@ -177,6 +177,10 @@ export class Plane {
       this.rollProgress = 0;
     }
 
+    if (this.group.userData.propeller) {
+      this.group.userData.propeller.rotation.z -= (this.speed * 15 + 10) * dt;
+    }
+
     if (this.isRolling) {
       this.rollProgress += effRollSpeed / TWO_PI * dt;
       if (this.rollProgress >= 1) {
