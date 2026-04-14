@@ -59,15 +59,15 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
   }
 
   const bodyMat = new MeshPhongMaterial({ color: baseColor, flatShading: true, shininess: 45 });
-  addRimLight(bodyMat, 0xeeccff, 0.3, 3.0);
+  addRimLight(bodyMat, 0xeeccff, 0.45, 2.5);
   addWobble(bodyMat, timeUniform, [0, 0, 0]);
 
   const patternMat = new MeshPhongMaterial({ color: 0x8b2252, flatShading: true, shininess: 40 });
-  addRimLight(patternMat, 0xffaacc, 0.2, 3.0);
+  addRimLight(patternMat, 0xffaacc, 0.35, 2.5);
   addWobble(patternMat, timeUniform, [0, 0.001, 0]);
 
   const tasselMat = new MeshPhongMaterial({ color: 0xd4a830, flatShading: true, shininess: 35 });
-  addRimLight(tasselMat, 0xffe888, 0.2, 3.0);
+  addRimLight(tasselMat, 0xffe888, 0.35, 2.5);
 
   // Main body — subdivided for cloth wobble
   const bodyW = s * 2.8;
@@ -135,8 +135,20 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
     
     model.traverse((child) => {
       if ((child as Mesh).isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
+        const mesh = child as Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        
+        // Convert to MeshPhongMaterial for rim lighting and flat shading
+        const oldMat = mesh.material as any;
+        const newMat = new MeshPhongMaterial({
+          color: oldMat.color,
+          map: oldMat.map,
+          flatShading: true,
+          shininess: 15,
+        });
+        addRimLight(newMat, 0xffddaa, 0.35, 2.5);
+        mesh.material = newMat;
       }
     });
     
