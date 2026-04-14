@@ -127,11 +127,10 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
     const model = gltf.scene;
     
     // Scale and position the model to fit on the carpet
-    // (You may need to adjust these values depending on the actual scale of the GLB)
-    model.scale.setScalar(0.015);
+    model.scale.setScalar(0.06);
     
-    // Make it face forward (+Z)
-    model.rotation.y = Math.PI;
+    // Rotate 90 degrees to the right (from Math.PI)
+    model.rotation.y = Math.PI / 2;
     
     model.traverse((child) => {
       if ((child as Mesh).isMesh) {
