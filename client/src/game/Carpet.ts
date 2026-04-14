@@ -34,7 +34,7 @@ const ELEVATE_INPUT_SMOOTH = 6;
 /** Default hover clearance above terrain surface. */
 const HOVER_HEIGHT = 0.08;
 /** Height above terrain when Space (elevate) is held. */
-const BOOST_HEIGHT = 1.15;
+const BOOST_HEIGHT = 0.6;
 /** How fast altitude lerps toward the target (lower = slower climb = longer tilt). */
 const ALTITUDE_LERP = 0.6;
 /** Max nose-up tilt when climbing (~35 degrees). */
@@ -149,12 +149,13 @@ export class Carpet {
     const hardFloor = surfaceAlt + HOVER_HEIGHT;
     if (this.altitude < hardFloor) this.altitude = hardFloor;
 
-    const altGap = targetAlt - this.altitude;
-    const climbPitch = -Math.max(0, Math.min(CLIMB_PITCH_MAX, altGap * CLIMB_PITCH_GAIN));
-    const altDelta = this.altitude - this.prevAltitude;
-    const targetPitch = climbPitch - altDelta * 4;
-    this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
+    const altDelta = (this.altitude - this.prevAltitude) / Math.max(dt, 1e-4);
     this.prevAltitude = this.altitude;
+    
+    // Pitch up when climbing, level out when stable
+    const climbRate = Math.max(-1, Math.min(1, altDelta * 1.5));
+    const targetPitch = -CLIMB_PITCH_MAX * Math.max(0, climbRate);
+    this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
 
     const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * dt);
