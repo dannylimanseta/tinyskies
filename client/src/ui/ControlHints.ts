@@ -14,10 +14,10 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
   }
   if (vehicle === "carpet") {
     return [
-      { keys: ["W", "↑"], label: "Forward" },
-      { keys: ["S", "↓"], label: "Brake" },
-      { keys: ["A", "D", "←", "→"], label: "Turn" },
-      { keys: ["Space"], label: "Hover high" },
+      { keys: ["W"], label: "Throttle" },
+      { keys: ["S"], label: "Slow" },
+      { keys: ["A", "D"], label: "Turn" },
+      { keys: ["↑"], label: "Climb" },
     ];
   }
   const base: Row[] = [
