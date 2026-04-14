@@ -127,7 +127,7 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
     const model = gltf.scene;
     
     // Scale and position the model to fit on the carpet
-    model.scale.setScalar(0.06);
+    model.scale.setScalar(0.05);
     
     // Rotate 90 degrees to the right (from Math.PI)
     model.rotation.y = Math.PI / 2;
@@ -142,7 +142,7 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
     capyGroup.add(model);
   });
 
-  capyGroup.position.set(0, bodyH * 0.5, -s * 0.4);
+  capyGroup.position.set(0, bodyH * 0.5, s * 0.4);
   carpet.add(capyGroup);
 
   carpet.traverse((child) => { child.castShadow = true; });
