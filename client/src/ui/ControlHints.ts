@@ -12,13 +12,19 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
       { keys: ["Space"], label: "Paintball" },
     ];
   }
+  if (vehicle === "carpet") {
+    return [
+      { keys: ["W", "↑"], label: "Forward" },
+      { keys: ["S", "↓"], label: "Brake" },
+      { keys: ["A", "D", "←", "→"], label: "Turn" },
+      { keys: ["Space"], label: "Hover high" },
+    ];
+  }
   const base: Row[] = [
     { keys: ["W", "↑"], label: "Throttle" },
     { keys: ["S", "↓"], label: "Slow" },
     { keys: ["A", "D", "←", "→"], label: "Turn" },
   ];
-  if (vehicle === "boat") return base;
-  base.push({ keys: ["Space"], label: "Climb" });
   return base;
 }
 
