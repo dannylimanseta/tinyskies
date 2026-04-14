@@ -59,7 +59,7 @@ export class Lobby {
   private el: HTMLDivElement;
   private options: LobbyOptions;
   private selectedVehicle: Vehicle = "plane";
-  private unlockQueue: ("carpet" | "boat")[] = [];
+  private unlockQueue: ("carpet" | "braziers" | "boat")[] = [];
 
   constructor(container: HTMLElement, options: LobbyOptions) {
     this.container = container;
@@ -238,6 +238,10 @@ export class Lobby {
         unlockTitle.textContent = "Magic Carpet unlocked";
         unlockBody.textContent =
           "You reached level 2 on a run. Take to the skies on silk and starlight.";
+      } else if (kind === "braziers") {
+        unlockTitle.textContent = "Ancient fires awaken";
+        unlockBody.textContent =
+          "Mysterious ancient braziers have started to emerge across the world. Seek them out—five flames may turn the tide.";
       } else {
         unlockTitle.textContent = "Boat unlocked";
         unlockBody.textContent =

@@ -21,6 +21,7 @@ import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import {
   BRAZIER_MOON_PAUSE_MS,
   getVehicleFeatures,
+  type BrazierSyncPayload,
   type Vehicle,
   type VehicleGameFeatures,
   type WorldConfig,
@@ -233,6 +234,8 @@ export class Game {
   private lastBrazierProgress: number[] = [];
   /** Offline-only edge detect for all-five shield (no server). */
   private prevAllFiveBraziers = false;
+  /** If braziers were locked at join, stash server sync until they unlock mid-run. */
+  private pendingBrazierSync: BrazierSyncPayload | null = null;
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
@@ -830,11 +833,7 @@ export class Game {
       this.fireflyClusters.push(new FireflyCluster(this.scene, globeRadius, seed, terrainType, fi));
     }
 
-    this.braziers = new Braziers(this.scene, globeRadius, seed, terrainType);
-    this.hud.initBrazierTracker(BRAZIER_COUNT);
-    this.brazierInRange      = new Array(BRAZIER_COUNT).fill(false);
-    this.brazierCooldown     = new Array(BRAZIER_COUNT).fill(0);
-    this.lastBrazierProgress = new Array(BRAZIER_COUNT).fill(0);
+    this.ensureBraziersSpawned();
 
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
@@ -981,6 +980,7 @@ export class Game {
     this.fireflyClusters = [];
     this.braziers?.dispose();
     this.braziers = null;
+    this.pendingBrazierSync = null;
     this.hud.disposeBrazierTracker();
     this.campsiteScene?.dispose();
     this.campsiteScene = null;
@@ -1324,7 +1324,8 @@ export class Game {
     });
 
     this.socketClient.onBrazierSync((payload) => {
-      this.braziers?.syncBrazierExpiries(payload.expiries);
+      if (this.braziers) this.braziers.syncBrazierExpiries(payload.expiries);
+      else this.pendingBrazierSync = payload;
     });
 
     this.socketClient.onBrazierLit((ev) => {
@@ -2365,8 +2366,28 @@ export class Game {
     this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
   }
 
+  /** Places braziers in the world once any vehicle has reached level 3 (see `ProgressionManager`). */
+  private ensureBraziersSpawned() {
+    if (this.braziers) return;
+    if (!ProgressionManager.areBraziersUnlocked()) return;
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    const seed = this.gameSeed;
+    const terrainType = this.gameTerrainType;
+    this.braziers = new Braziers(this.scene, globeRadius, seed, terrainType);
+    this.hud.initBrazierTracker(BRAZIER_COUNT);
+    this.brazierInRange = new Array(BRAZIER_COUNT).fill(false);
+    this.brazierCooldown = new Array(BRAZIER_COUNT).fill(0);
+    this.lastBrazierProgress = new Array(BRAZIER_COUNT).fill(0);
+    this.prevAllFiveBraziers = false;
+    if (this.pendingBrazierSync) {
+      this.braziers.syncBrazierExpiries(this.pendingBrazierSync.expiries);
+      this.pendingBrazierSync = null;
+    }
+  }
+
   private handleLevelUp(level: number) {
     this.playLevelUpSfx();
+    this.ensureBraziersSpawned();
     this.hud.showLevelUp(level);
 
     const cards = this.progression.upgrades.drawCards(3);
