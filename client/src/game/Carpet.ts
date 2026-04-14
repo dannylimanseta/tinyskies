@@ -15,6 +15,8 @@ import {
 import { createCarpet, carpetWobbleY } from "./CarpetMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
+import { PilotAvatar } from "./PilotAvatar";
+
 const CRUISE_SPEED = 0.6;
 const BRAKE_DECEL = 2.5;
 const ACCEL = 1.8;
@@ -73,6 +75,8 @@ export class Carpet {
   /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
   private boostTimer = 0;
 
+  private avatar: PilotAvatar;
+
   /** @param spawnSalt Per-session random start position/heading on the globe. */
   constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0, hullColor?: number) {
     this.globeRadius = globeRadius;
@@ -87,6 +91,17 @@ export class Carpet {
       if (t) this.tassels.push({ obj: t, baseY: t.position.y, cx: t.position.x, cz: t.position.z });
     }
     this.timeUniform = this.group.userData.timeUniform ?? null;
+
+    this.avatar = new PilotAvatar();
+    // Scale down to fit the carpet (PilotAvatar is ~1.92 units tall before its own 0.55 scale).
+    // The carpet body is about 0.09 units long. Wait, s=0.025, bodyLen = s*3.6 = 0.09.
+    // Let's scale the avatar to fit on the carpet.
+    this.avatar.group.scale.setScalar(0.045);
+    // Skateboard stance: face sideways
+    this.avatar.group.rotation.y = Math.PI / 2;
+    // Position on top of the carpet
+    this.avatar.group.position.set(0, 0.005, 0);
+    this.group.add(this.avatar.group);
 
     const spawn = randomSpawnQuaternionAndHeading(seed + spawnSalt);
     this.qPosition.copy(spawn.qPosition);
@@ -161,6 +176,16 @@ export class Carpet {
       t.obj.rotation.x = -this.tasselCurl;
       t.obj.position.y = t.baseY + carpetWobbleY(t.cx, t.cz, time);
     }
+
+    // Avatar leans into the turn slightly, and maybe bobs.
+    // We pass moveX=0, moveZ=0 so it stays idle, but we can manually tilt it.
+    this.avatar.update(dt, 0, 0, 0, false);
+    // Skateboard stance: facing sideways. Leaning forward/backward based on speed or turn.
+    this.avatar.group.rotation.set(
+      this.pitch * 0.5,
+      Math.PI / 2,
+      -this.bankAngle * 0.5
+    );
 
     this.speed = Math.min(this.speed, ABSOLUTE_MAX_SPEED);
 
