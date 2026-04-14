@@ -3,6 +3,14 @@ import { UpgradeManager } from "./UpgradeManager";
 
 const STORAGE_KEY = "globefly_vehicle_progress";
 const NAME_KEY = "globefly_player_name";
+const UNLOCK_ACK_KEY = "globefly_unlocks_ack";
+/** Campsite bookmark; cleared with `clearAll` for a full local reset. */
+const CAMPSITE_KEY = "globefly_campsite";
+
+/** Carpet unlocks when any vehicle has reached at least this level. */
+export const UNLOCK_CARPET_MIN_MAX_LEVEL = 2;
+/** Boat unlocks when plane or carpet reaches this level (boat’s own level does not count). */
+export const UNLOCK_BOAT_PLANE_OR_CARPET_LEVEL = 4;
 
 const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 6600, 8200];
 
@@ -123,10 +131,69 @@ export class ProgressionManager {
     return ProgressionManager.loadAll()[vehicle];
   }
 
+  /** Max `level` among saved vehicles; missing slots count as 0. */
+  static maxLevelAcrossSlots(all: AllVehicleProgress = ProgressionManager.loadAll()): number {
+    return Math.max(
+      0,
+      all.plane?.level ?? 0,
+      all.boat?.level ?? 0,
+      all.carpet?.level ?? 0,
+    );
+  }
+
+  static isVehicleUnlocked(
+    vehicle: Vehicle,
+    all: AllVehicleProgress = ProgressionManager.loadAll(),
+  ): boolean {
+    if (vehicle === "plane") return true;
+    if (vehicle === "carpet") {
+      return ProgressionManager.maxLevelAcrossSlots(all) >= UNLOCK_CARPET_MIN_MAX_LEVEL;
+    }
+    if (vehicle === "boat") {
+      const pl = all.plane?.level ?? 0;
+      const ca = all.carpet?.level ?? 0;
+      return pl >= UNLOCK_BOAT_PLANE_OR_CARPET_LEVEL || ca >= UNLOCK_BOAT_PLANE_OR_CARPET_LEVEL;
+    }
+    return false;
+  }
+
+  /** Saved level for that vehicle, or `null` if never played (no save). */
+  static savedLevelOrNull(vehicle: Vehicle): number | null {
+    const s = ProgressionManager.loadAll()[vehicle];
+    return s != null ? s.level : null;
+  }
+
+  // ── One-time unlock celebration (lobby popup) ──
+
+  static getPendingUnlockCelebrations(): ("carpet" | "boat")[] {
+    const all = ProgressionManager.loadAll();
+    const ack = ProgressionManager.loadUnlockAck();
+    const out: ("carpet" | "boat")[] = [];
+    if (ProgressionManager.isVehicleUnlocked("carpet", all) && !ack.carpet) out.push("carpet");
+    if (ProgressionManager.isVehicleUnlocked("boat", all) && !ack.boat) out.push("boat");
+    return out;
+  }
+
+  static acknowledgeUnlockCelebration(vehicle: "carpet" | "boat") {
+    const ack = ProgressionManager.loadUnlockAck();
+    ack[vehicle] = true;
+    try { localStorage.setItem(UNLOCK_ACK_KEY, JSON.stringify(ack)); } catch {}
+  }
+
+  static loadUnlockAck(): { carpet?: boolean; boat?: boolean } {
+    try {
+      const raw = localStorage.getItem(UNLOCK_ACK_KEY);
+      if (raw) return JSON.parse(raw) as { carpet?: boolean; boat?: boolean };
+    } catch {}
+    return {};
+  }
+
   static clearAll() {
     try {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(NAME_KEY);
+      localStorage.removeItem(UNLOCK_ACK_KEY);
+      localStorage.removeItem(CAMPSITE_KEY);
     } catch {}
   }
 

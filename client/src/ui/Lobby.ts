@@ -1,4 +1,23 @@
 import type { Vehicle } from "@globefly/shared";
+import { ProgressionManager } from "../game/ProgressionManager";
+
+const VEHICLE_ORDER: Vehicle[] = ["plane", "carpet", "boat"];
+
+/** Lucide-style padlock for locked vehicle slots (vehicle type hidden). */
+const LOCK_SVG = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+
+const SHORT_LABELS: Record<Vehicle, string> = {
+  plane: "Plane",
+  boat: "Boat",
+  carpet: "Carpet",
+};
+
+/** Lucide-style vehicle icons (historical lobby). */
+const VEHICLE_SVGS: Record<Vehicle, string> = {
+  plane: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`,
+  boat: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2"/><path d="M6 18h12l-3.5-3.5C15 12 13 12 10 10c-3.5 5.5-6.5 5.5-6.5 5.5L6 18Z"/><path d="M10 2v4"/><path d="M9 5l2-2 2 2"/></svg>`,
+  carpet: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>`,
+};
 
 /* ── Whimsical Name Generator ──────────────────────────────────────── */
 
@@ -39,6 +58,8 @@ export class Lobby {
   private container: HTMLElement;
   private el: HTMLDivElement;
   private options: LobbyOptions;
+  private selectedVehicle: Vehicle = "plane";
+  private unlockQueue: ("carpet" | "boat")[] = [];
 
   constructor(container: HTMLElement, options: LobbyOptions) {
     this.container = container;
@@ -48,7 +69,6 @@ export class Lobby {
     this.buildUI();
   }
 
-  /** Enter fullscreen on Start (user gesture). Browser Esc exits fullscreen. */
   private static requestFullscreen(): void {
     const el = document.documentElement as HTMLElement & {
       webkitRequestFullscreen?: () => Promise<void>;
@@ -57,6 +77,42 @@ export class Lobby {
       el.requestFullscreen?.bind(el) ??
       el.webkitRequestFullscreen?.bind(el);
     if (req) void Promise.resolve(req()).catch(() => {});
+  }
+
+  private levelLine(level: number | null): string {
+    const n = Math.max(1, level ?? 1);
+    return `Level ${n}`;
+  }
+
+  private buildVehicleButtonsHTML(): string {
+    return VEHICLE_ORDER.map((v) => {
+      const unlocked = ProgressionManager.isVehicleUnlocked(v);
+      const level = ProgressionManager.savedLevelOrNull(v);
+      const isSel = unlocked && v === this.selectedVehicle;
+      const cls = `lobby-vbtn${isSel && unlocked ? " active" : ""}${unlocked ? "" : " locked"}`;
+      if (!unlocked) {
+        return `
+        <button type="button" class="${cls}"
+          data-vehicle="${v}"
+          disabled
+          role="radio"
+          aria-checked="false"
+          aria-disabled="true"
+          aria-label="Locked vehicle">
+          <span class="lobby-vicon lobby-vicon--lock" aria-hidden="true">${LOCK_SVG}</span>
+        </button>`;
+      }
+      return `
+        <button type="button" class="${cls}"
+          data-vehicle="${v}"
+          role="radio"
+          aria-checked="${isSel ? "true" : "false"}"
+          aria-disabled="false">
+          <span class="lobby-vicon" aria-hidden="true">${VEHICLE_SVGS[v]}</span>
+          <span class="lobby-vlabel">${SHORT_LABELS[v]}</span>
+          <span class="lobby-vmeta">${this.levelLine(level)}</span>
+        </button>`;
+    }).join("");
   }
 
   private buildUI() {
@@ -73,7 +129,20 @@ export class Lobby {
               </span>
             </div>
           </div>
-          <button type="button" class="lobby-start" id="btn-start">START GAME</button>
+          <div class="lobby-bar">
+            <div class="lobby-vehicles" role="radiogroup" aria-label="Vehicle">
+              ${this.buildVehicleButtonsHTML()}
+            </div>
+            <button type="button" class="lobby-fly" id="btn-fly">GO</button>
+          </div>
+        </div>
+        <div class="lobby-unlock-modal" id="lobby-unlock-modal" aria-hidden="true">
+          <div class="lobby-unlock-backdrop"></div>
+          <div class="lobby-unlock-panel" role="dialog" aria-modal="true" aria-labelledby="lobby-unlock-title">
+            <h2 class="lobby-unlock-title" id="lobby-unlock-title"></h2>
+            <p class="lobby-unlock-body"></p>
+            <button type="button" class="lobby-unlock-ok" id="btn-unlock-ok">Got it</button>
+          </div>
         </div>
       </div>
     `;
@@ -125,13 +194,79 @@ export class Lobby {
       });
     }
 
-    const startBtn = this.el.querySelector("#btn-start") as HTMLButtonElement;
+    const flyBtn = this.el.querySelector("#btn-fly") as HTMLButtonElement;
+    const vehiclesEl = this.el.querySelector(".lobby-vehicles") as HTMLElement;
+    const unlockModal = this.el.querySelector("#lobby-unlock-modal") as HTMLElement;
+    const unlockTitle = unlockModal.querySelector(".lobby-unlock-title") as HTMLElement;
+    const unlockBody = unlockModal.querySelector(".lobby-unlock-body") as HTMLElement;
+    const unlockOk = this.el.querySelector("#btn-unlock-ok") as HTMLButtonElement;
 
-    startBtn.addEventListener("click", () => {
-      startBtn.disabled = true;
-      Lobby.requestFullscreen();
-      this.options.onPlay("plane");
+    const setSelectedVehicle = (v: Vehicle) => {
+      if (!ProgressionManager.isVehicleUnlocked(v)) return;
+      this.selectedVehicle = v;
+      vehiclesEl.querySelectorAll(".lobby-vbtn").forEach((btn) => {
+        const el = btn as HTMLButtonElement;
+        if (el.classList.contains("locked")) {
+          el.setAttribute("aria-checked", "false");
+          return;
+        }
+        const veh = el.dataset.vehicle as Vehicle;
+        const on = veh === v;
+        el.classList.toggle("active", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+      });
+    };
+
+    vehiclesEl.querySelectorAll(".lobby-vbtn:not(.locked)").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const veh = (btn as HTMLButtonElement).dataset.vehicle as Vehicle;
+        setSelectedVehicle(veh);
+      });
     });
+
+    this.unlockQueue = [...ProgressionManager.getPendingUnlockCelebrations()];
+
+    const showNextUnlockModal = () => {
+      if (this.unlockQueue.length === 0) {
+        unlockModal.classList.remove("open");
+        unlockModal.setAttribute("aria-hidden", "true");
+        flyBtn.disabled = false;
+        return;
+      }
+      const kind = this.unlockQueue[0]!;
+      if (kind === "carpet") {
+        unlockTitle.textContent = "Magic Carpet unlocked";
+        unlockBody.textContent =
+          "You reached level 2 on a run. Take to the skies on silk and starlight.";
+      } else {
+        unlockTitle.textContent = "Boat unlocked";
+        unlockBody.textContent =
+          "You reached level 4 with the biplane or carpet. The ocean is yours to sail.";
+      }
+      unlockModal.classList.add("open");
+      unlockModal.setAttribute("aria-hidden", "false");
+      flyBtn.disabled = true;
+      requestAnimationFrame(() => unlockOk.focus());
+    };
+
+    unlockOk.addEventListener("click", () => {
+      if (this.unlockQueue.length === 0) return;
+      const kind = this.unlockQueue.shift()!;
+      ProgressionManager.acknowledgeUnlockCelebration(kind);
+      showNextUnlockModal();
+    });
+
+    flyBtn.addEventListener("click", () => {
+      if (!ProgressionManager.isVehicleUnlocked(this.selectedVehicle)) return;
+      flyBtn.disabled = true;
+      Lobby.requestFullscreen();
+      this.options.onPlay(this.selectedVehicle);
+    });
+
+    if (this.unlockQueue.length > 0) {
+      flyBtn.disabled = true;
+      showNextUnlockModal();
+    }
 
     this.applyStyles();
   }
@@ -140,6 +275,7 @@ export class Lobby {
     this.container.appendChild(this.el);
     requestAnimationFrame(() => {
       this.el.querySelector(".lobby-header")?.classList.add("visible");
+      this.el.querySelector(".lobby-bar")?.classList.add("visible");
     });
   }
 
@@ -182,10 +318,9 @@ export class Lobby {
         pointer-events: none;
       }
 
-      /* ── Header ─────────────────────────────────────── */
       .lobby-header {
         position: fixed;
-        top: 32vh;
+        top: 28vh;
         left: 0; right: 0;
         display: flex;
         flex-direction: column;
@@ -226,10 +361,7 @@ export class Lobby {
         flex-wrap: nowrap;
         max-width: calc(100% - 48px);
       }
-      .lobby-greeting-hi {
-        flex-shrink: 0;
-        white-space: nowrap;
-      }
+      .lobby-greeting-hi { flex-shrink: 0; white-space: nowrap; }
       .lobby-name-wrap {
         position: relative;
         display: inline-block;
@@ -245,9 +377,7 @@ export class Lobby {
         cursor: text;
         transition: border-color 0.2s;
       }
-      .lobby-name:focus {
-        border-bottom-color: rgba(255, 255, 255, 0.7);
-      }
+      .lobby-name:focus { border-bottom-color: rgba(255, 255, 255, 0.7); }
       .lobby-edit-btn {
         position: absolute;
         left: 100%;
@@ -264,81 +394,234 @@ export class Lobby {
         display: inline-flex;
         align-items: center;
       }
-      .lobby-edit-btn:hover {
-        color: rgba(255, 255, 255, 0.8);
+      .lobby-edit-btn:hover { color: rgba(255, 255, 255, 0.8); }
+
+      .lobby-bar {
+        position: relative;
+        align-self: center;
+        margin-top: 40px;
+        width: min(520px, calc(100% - 80px));
+        padding: 10px 12px;
+        display: flex;
+        align-items: stretch;
+        gap: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(32px) saturate(120%);
+        -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        opacity: 0;
+        transform: translateY(28px);
+        transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        transition-delay: 0.55s;
+        z-index: 101;
+        box-sizing: border-box;
+      }
+      .lobby-bar.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .lobby-overlay.fade-out .lobby-bar {
+        transform: translateY(16px);
       }
 
-      .lobby-start {
-        margin: 2.85rem 0 0;
-        padding: 6px 8px;
-        border: none;
-        border-radius: 0;
-        background: transparent;
-        color: #ffffff;
-        font-family: inherit;
-        font-size: clamp(1rem, 4vw, 1.15rem);
-        font-weight: 800;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        cursor: pointer;
-        display: inline-flex;
+      .lobby-vehicles {
+        display: flex;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+      }
+      .lobby-vbtn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 12px;
-        white-space: nowrap;
-        transition: transform 0.15s ease;
-        -webkit-tap-highlight-color: transparent;
+        gap: 2px;
+        padding: 8px 6px 10px;
+        min-height: 72px;
+        min-width: 0;
+        border: 2px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        color: #ffffff;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s, box-shadow 0.2s, border-color 0.2s, opacity 0.2s;
+        font-family: inherit;
       }
-      /* Match HUD floating text (.hud-xp-popup) — lines hidden until hover / press / focus. */
-      .lobby-start::before,
-      .lobby-start::after {
-        content: '';
-        display: block;
-        width: 48px;
-        height: 2px;
-        flex-shrink: 0;
-        opacity: 0;
-        transition: opacity 0.3s ease-out;
+      .lobby-vbtn:hover:not(.locked):not(.active) {
+        background: rgba(255, 255, 255, 0.12);
       }
-      .lobby-start::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5));
+      .lobby-vbtn.active {
+        background: rgba(255, 255, 255, 1.0);
+        color: rgba(20, 30, 50, 0.92);
       }
-      .lobby-start::after {
-        background: linear-gradient(90deg, rgba(255, 255, 255, 0.5), transparent);
+      .lobby-vbtn.active .lobby-vmeta { color: rgba(20, 30, 50, 0.75); }
+      .lobby-vbtn.locked {
+        opacity: 0.55;
+        cursor: not-allowed;
+        gap: 0;
       }
-      .lobby-start:hover:not(:disabled)::before,
-      .lobby-start:hover:not(:disabled)::after,
-      .lobby-start:active:not(:disabled)::before,
-      .lobby-start:active:not(:disabled)::after,
-      .lobby-start:focus-visible:not(:disabled)::before,
-      .lobby-start:focus-visible:not(:disabled)::after {
-        opacity: 1;
+      .lobby-vbtn.locked .lobby-vicon--lock {
+        opacity: 0.9;
       }
-      .lobby-start:active:not(:disabled) {
-        transform: scale(0.98);
+      .lobby-vicon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
       }
-      .lobby-start:disabled {
-        opacity: 0.45;
-        cursor: default;
+      .lobby-vicon svg { width: 24px; height: 24px; flex-shrink: 0; }
+      .lobby-vicon--lock svg { width: 28px; height: 28px; }
+      .lobby-vlabel {
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
       }
-      .lobby-start:disabled::before,
-      .lobby-start:disabled::after {
-        opacity: 0 !important;
+      .lobby-vmeta {
+        font-size: 0.68rem;
+        font-weight: 600;
+        line-height: 1.25;
+        text-align: center;
+        max-width: 100%;
+        padding: 0 2px;
+        opacity: 0.92;
+        letter-spacing: 0.02em;
       }
 
+      .lobby-fly {
+        align-self: stretch;
+        padding: 0 28px;
+        border: none;
+        border-radius: 10px;
+        background: #000000;
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.15s, box-shadow 0.3s, opacity 0.2s;
+        animation: lobby-fly-pulse 2s ease-in-out infinite;
+        flex-shrink: 0;
+      }
+      .lobby-fly:hover:not(:disabled) {
+        background: #1a1a1a;
+        transform: scale(1.03);
+      }
+      .lobby-fly:active:not(:disabled) { transform: scale(0.97); }
+      .lobby-fly:disabled {
+        opacity: 0.52;
+        cursor: default;
+        animation: none;
+        transform: none;
+      }
+      @keyframes lobby-fly-pulse {
+        0%, 100% { box-shadow: 0 0 8px rgba(0, 0, 0, 0.35); }
+        50% { box-shadow: 0 0 18px rgba(0, 0, 0, 0.55); }
+      }
+
+      .lobby-unlock-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 110;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .lobby-unlock-modal.open {
+        display: flex;
+        pointer-events: auto;
+      }
+      .lobby-unlock-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px) saturate(110%);
+        -webkit-backdrop-filter: blur(10px) saturate(110%);
+      }
+      .lobby-unlock-panel {
+        position: relative;
+        z-index: 1;
+        width: min(22rem, calc(100% - 48px));
+        max-width: 100%;
+        margin: 0 24px;
+        padding: 22px 22px 20px;
+        text-align: center;
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(32px) saturate(120%);
+        -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        box-sizing: border-box;
+      }
+      .lobby-unlock-title {
+        font-size: clamp(1.05rem, 3.6vw, 1.25rem);
+        font-weight: 800;
+        margin: 0 0 10px;
+        letter-spacing: 0.02em;
+        color: #ffffff;
+        text-shadow: 0 0 24px rgba(255, 255, 255, 0.2);
+      }
+      .lobby-unlock-body {
+        font-size: 0.94rem;
+        font-weight: 400;
+        line-height: 1.55;
+        margin: 0 0 20px;
+        opacity: 0.92;
+        color: rgba(255, 255, 255, 0.95);
+      }
+      .lobby-unlock-ok {
+        width: 100%;
+        padding: 12px 24px;
+        min-height: 48px;
+        border: none;
+        border-radius: 10px;
+        background: #000000;
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.15s, box-shadow 0.3s;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.35);
+      }
+      .lobby-unlock-ok:hover {
+        background: #1a1a1a;
+        transform: scale(1.02);
+        box-shadow: 0 0 18px rgba(0, 0, 0, 0.45);
+      }
+      .lobby-unlock-ok:active { transform: scale(0.98); }
+
       @media (max-width: 480px) {
-        .lobby-header { top: max(28vh, calc(env(safe-area-inset-top, 0px) + 20vh)); }
+        .lobby-header { top: max(14vh, calc(env(safe-area-inset-top, 0px) + 10vh)); }
         .lobby-username { font-size: 1rem; padding: 0 20px; }
         .lobby-edit-btn { padding: 8px 12px; min-width: 44px; min-height: 44px; }
-        .lobby-start {
-          margin-top: 2.6rem;
-          padding: 10px 12px;
-          min-height: 44px;
-          font-size: 0.95rem;
-          gap: 8px;
+        .lobby-bar {
+          margin-top: 36px;
+          width: min(520px, calc(100% - 40px));
+          padding: 8px 8px;
+          gap: 6px;
         }
-        .lobby-start::before,
-        .lobby-start::after { width: 32px; }
+        .lobby-vbtn { padding: 8px 4px 10px; min-height: 80px; }
+        .lobby-vicon svg { width: 22px; height: 22px; }
+        .lobby-vicon--lock svg { width: 26px; height: 26px; }
+        .lobby-vlabel { font-size: 0.75rem; }
+        .lobby-vmeta { font-size: 0.58rem; }
+        .lobby-fly { padding: 0 18px; font-size: 0.9rem; min-width: 52px; min-height: 44px; }
+        .lobby-unlock-panel {
+          width: min(22rem, calc(100% - 32px));
+          margin: 0 16px;
+          padding: 18px 18px 16px;
+        }
+        .lobby-unlock-body { font-size: 0.9rem; }
       }
     `;
     document.head.appendChild(style);

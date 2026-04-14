@@ -372,6 +372,7 @@ export class Game {
       mobile: this.mobile,
       onNameChange: (name) => { this.playerName = name; ProgressionManager.savePlayerName(name); },
       onPlay: (vehicle, options) => {
+        if (!ProgressionManager.isVehicleUnlocked(vehicle)) return;
         this.pendingCampsiteAfterIntro =
           CAMPSITE_HOME_ENABLED && (options?.startAtCampsite ?? false);
         this.playerVehicle = vehicle;
