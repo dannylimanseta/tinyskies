@@ -68,7 +68,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     carpetTrail: true,
     cameraTiltScale: 0.5,
     cameraFollowDistance: 0.32,
-    cameraFollowHeight: 0.16,
+    cameraFollowHeight: 0.34,
     /** Negative = pull in slightly at speed; keep mild so chase distance stays above CameraRig floor. */
     cameraSpeedZoom: -0.22,
     /** Was 50° — wide FOV + tight chase made motion feel like violent spins when zoomed in. */
