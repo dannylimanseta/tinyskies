@@ -15,8 +15,6 @@ import {
 import { createCarpet, carpetWobbleY } from "./CarpetMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
-import { PilotAvatar } from "./PilotAvatar";
-
 const CRUISE_SPEED = 0.6;
 const BRAKE_DECEL = 2.5;
 const ACCEL = 1.8;
@@ -66,6 +64,7 @@ export class Carpet {
   private terrainType: string;
   private prevAltitude = 0;
   private tassels: { obj: Object3D; baseY: number; cx: number; cz: number }[] = [];
+  private capybara: { obj: Object3D; baseY: number; cx: number; cz: number } | null = null;
   private static readonly TASSEL_CURL_MAX = Math.PI / 2;
   private tasselCurl = 0;
   private timeUniform: IUniform<number> | null = null;
@@ -74,8 +73,6 @@ export class Carpet {
   private elevateBlend = 0;
   /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
   private boostTimer = 0;
-
-  private avatar: PilotAvatar;
 
   /** @param spawnSalt Per-session random start position/heading on the globe. */
   constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0, hullColor?: number) {
@@ -90,18 +87,11 @@ export class Carpet {
       const t = this.group.getObjectByName(`tassel${i}`);
       if (t) this.tassels.push({ obj: t, baseY: t.position.y, cx: t.position.x, cz: t.position.z });
     }
+    const capy = this.group.getObjectByName("capybara");
+    if (capy) {
+      this.capybara = { obj: capy, baseY: capy.position.y, cx: capy.position.x, cz: capy.position.z };
+    }
     this.timeUniform = this.group.userData.timeUniform ?? null;
-
-    this.avatar = new PilotAvatar();
-    // Scale down to fit the carpet (PilotAvatar is ~1.92 units tall before its own 0.55 scale).
-    // The carpet body is about 0.09 units long. Wait, s=0.025, bodyLen = s*3.6 = 0.09.
-    // Let's scale the avatar to fit on the carpet.
-    this.avatar.group.scale.setScalar(0.045);
-    // Skateboard stance: face sideways
-    this.avatar.group.rotation.y = Math.PI / 2;
-    // Position on top of the carpet
-    this.avatar.group.position.set(0, 0.005, 0);
-    this.group.add(this.avatar.group);
 
     const spawn = randomSpawnQuaternionAndHeading(seed + spawnSalt);
     this.qPosition.copy(spawn.qPosition);
@@ -176,16 +166,9 @@ export class Carpet {
       t.obj.rotation.x = -this.tasselCurl;
       t.obj.position.y = t.baseY + carpetWobbleY(t.cx, t.cz, time);
     }
-
-    // Avatar leans into the turn slightly, and maybe bobs.
-    // We pass moveX=0, moveZ=0 so it stays idle, but we can manually tilt it.
-    this.avatar.update(dt, 0, 0, 0, false);
-    // Skateboard stance: facing sideways. Leaning forward/backward based on speed or turn.
-    this.avatar.group.rotation.set(
-      this.pitch * 0.5,
-      Math.PI / 2,
-      -this.bankAngle * 0.5
-    );
+    if (this.capybara) {
+      this.capybara.obj.position.y = this.capybara.baseY + carpetWobbleY(this.capybara.cx, this.capybara.cz, time);
+    }
 
     this.speed = Math.min(this.speed, ABSOLUTE_MAX_SPEED);
 

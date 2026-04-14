@@ -117,6 +117,63 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
     carpet.add(tassel);
   });
 
+  // Capybara (Passenger)
+  const capyGroup = new Group();
+  capyGroup.name = "capybara";
+  
+  const capyMat = new MeshPhongMaterial({ color: 0x9c6644, flatShading: true, shininess: 10 });
+  addRimLight(capyMat, 0xddaa88, 0.2, 3.0);
+  const capyDarkMat = new MeshPhongMaterial({ color: 0x4a2e1b, flatShading: true, shininess: 10 });
+  addRimLight(capyDarkMat, 0x885533, 0.2, 3.0);
+  const eyeMat = new MeshPhongMaterial({ color: 0x111111, flatShading: true });
+
+  // Body (loaf)
+  const cBodyW = s * 1.0;
+  const cBodyH = s * 0.8;
+  const cBodyL = s * 1.4;
+  const cBody = new Mesh(new BoxGeometry(cBodyW, cBodyH, cBodyL), capyMat);
+  cBody.position.set(0, cBodyH * 0.5, 0);
+  capyGroup.add(cBody);
+
+  // Head
+  const cHeadW = s * 0.7;
+  const cHeadH = s * 0.6;
+  const cHeadL = s * 0.8;
+  const cHead = new Mesh(new BoxGeometry(cHeadW, cHeadH, cHeadL), capyMat);
+  cHead.position.set(0, cBodyH * 0.85, cBodyL * 0.45);
+  capyGroup.add(cHead);
+
+  // Snout
+  const cSnoutW = s * 0.45;
+  const cSnoutH = s * 0.35;
+  const cSnoutL = s * 0.3;
+  const cSnout = new Mesh(new BoxGeometry(cSnoutW, cSnoutH, cSnoutL), capyDarkMat);
+  cSnout.position.set(0, cBodyH * 0.85 - cHeadH * 0.1, cBodyL * 0.45 + cHeadL * 0.5 + cSnoutL * 0.5);
+  capyGroup.add(cSnout);
+
+  // Ears
+  const cEarS = s * 0.2;
+  const cEarL = new Mesh(new BoxGeometry(cEarS, cEarS, cEarS), capyDarkMat);
+  cEarL.position.set(cHeadW * 0.4, cBodyH * 0.85 + cHeadH * 0.5, cBodyL * 0.45 - cHeadL * 0.2);
+  capyGroup.add(cEarL);
+  
+  const cEarR = new Mesh(new BoxGeometry(cEarS, cEarS, cEarS), capyDarkMat);
+  cEarR.position.set(-cHeadW * 0.4, cBodyH * 0.85 + cHeadH * 0.5, cBodyL * 0.45 - cHeadL * 0.2);
+  capyGroup.add(cEarR);
+
+  // Eyes
+  const cEyeS = s * 0.12;
+  const cEyeL = new Mesh(new BoxGeometry(cEyeS, cEyeS, cEyeS), eyeMat);
+  cEyeL.position.set(cHeadW * 0.35, cBodyH * 0.85 + cHeadH * 0.2, cBodyL * 0.45 + cHeadL * 0.4);
+  capyGroup.add(cEyeL);
+
+  const cEyeR = new Mesh(new BoxGeometry(cEyeS, cEyeS, cEyeS), eyeMat);
+  cEyeR.position.set(-cHeadW * 0.35, cBodyH * 0.85 + cHeadH * 0.2, cBodyL * 0.45 + cHeadL * 0.4);
+  capyGroup.add(cEyeR);
+
+  capyGroup.position.set(0, bodyH * 0.5, -s * 0.4);
+  carpet.add(capyGroup);
+
   carpet.traverse((child) => { child.castShadow = true; });
   carpet.userData.hullMaterial = bodyMat;
   return carpet;
