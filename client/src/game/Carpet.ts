@@ -20,6 +20,10 @@ const BRAKE_DECEL = 2.5;
 const ACCEL = 1.8;
 const MIN_SPEED = 0.28;
 const MAX_SPEED = 0.78;
+/** Diamond / ring collect burst — matches biplane `BOOST_DURATION_SEC`. */
+const DIAMOND_BOOST_SPEED = 1.22;
+const DIAMOND_BOOST_DURATION_SEC = 1.7;
+const ABSOLUTE_MAX_SPEED = 1.45;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
 /** Yaw input catch-up (1/s); matches plane. */
@@ -66,6 +70,8 @@ export class Carpet {
   private turnInputSmoothed = 0;
   /** 0 = low hover, 1 = boosted height — smoothed from Space. */
   private elevateBlend = 0;
+  /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
+  private boostTimer = 0;
 
   /** @param spawnSalt Per-session random start position/heading on the globe. */
   constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0, hullColor?: number) {
@@ -104,7 +110,13 @@ export class Carpet {
   ) {
     if (this.timeUniform) this.timeUniform.value += dt;
 
-    if (forward) {
+    if (this.boostTimer > 0) {
+      this.boostTimer = Math.max(0, this.boostTimer - dt);
+    }
+
+    if (this.boostTimer > 0) {
+      this.speed = DIAMOND_BOOST_SPEED;
+    } else if (forward) {
       this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
     } else if (brake) {
       this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
@@ -150,7 +162,15 @@ export class Carpet {
       t.obj.position.y = t.baseY + carpetWobbleY(t.cx, t.cz, time);
     }
 
+    this.speed = Math.min(this.speed, ABSOLUTE_MAX_SPEED);
+
     this.applyMatrix();
+  }
+
+  /** Temporary surge from collecting a diamond (same idea as biplane `Plane.speedBoost`). */
+  speedBoost() {
+    this.boostTimer = DIAMOND_BOOST_DURATION_SEC;
+    this.speed = Math.min(DIAMOND_BOOST_SPEED, ABSOLUTE_MAX_SPEED);
   }
 
   applyMatrix() {
@@ -167,7 +187,13 @@ export class Carpet {
   }
 
   get speedRatio(): number {
-    return Math.max(0, (this.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
+    if (this.speed <= MIN_SPEED) return 0;
+    const cruiseSpan = MAX_SPEED - MIN_SPEED;
+    if (this.speed <= MAX_SPEED) {
+      return (this.speed - MIN_SPEED) / cruiseSpan;
+    }
+    const boostSpan = DIAMOND_BOOST_SPEED - MAX_SPEED;
+    return 1 + Math.min(1, (this.speed - MAX_SPEED) / boostSpan);
   }
 
   addTo(scene: Scene) {
