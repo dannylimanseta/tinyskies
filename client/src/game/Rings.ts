@@ -53,8 +53,6 @@ const BOAT_FLOAT_MAX = 0.118;
 const CARPET_FLOAT_MIN = 0.06;
 const CARPET_FLOAT_MAX = 0.14;
 
-const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 6600, 8200];
-
 interface DiamondInstance {
   mesh: Mesh;
   qPosition: Quaternion;
@@ -141,15 +139,11 @@ export class RingManager {
   private readonly seed: number;
   private readonly terrainType: string;
 
-  sessionXP = 0;
-  level = 1;
   onCollect: CollectCallback | null = null;
-  onLevelUp: ((level: number) => void) | null = null;
 
   /** Upgrade multipliers pushed by Game.propagateUpgrades(). */
   upgrades = {
     diamondXpMult: 1,
-    deliveryXpMult: 1,
     frequentFlyerEnabled: false,
     /** Set by Game.ts each tick when Night Owl is active (1.0 = no bonus). */
     nightXpMult: 1,
@@ -418,18 +412,9 @@ export class RingManager {
       this.upgrades.frequentFlyerEnabled && this.diamondStreakCount % 5 === 0;
     const freqMult = isFrequentFlyerBonus ? 2 : 1;
 
-    const prevLevel = this.level;
     const xp = Math.round(DIAMOND_XP * this.upgrades.diamondXpMult * freqMult * this.upgrades.nightXpMult);
-    this.sessionXP += xp;
-    this.level = this.computeLevel();
 
-    if (this.onCollect) {
-      this.onCollect(xp, worldPos, isFrequentFlyerBonus ? 1 : 0);
-    }
-
-    if (this.level > prevLevel && this.onLevelUp) {
-      this.onLevelUp(this.level);
-    }
+    this.onCollect?.(xp, worldPos, isFrequentFlyerBonus ? 1 : 0);
 
     const delay = RESPAWN_DELAY_MIN + Math.random() * (RESPAWN_DELAY_MAX - RESPAWN_DELAY_MIN);
     this.pendingRespawns.push({ timer: 0, delay });
@@ -458,44 +443,6 @@ export class RingManager {
     const mat = d.mesh.material as ShaderMaterial;
     mat.uniforms.phaseOffset.value = d.phaseOffset;
     mat.uniforms.spawnScale.value = 0;
-  }
-
-  private computeLevel(): number {
-    for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
-      if (this.sessionXP >= LEVEL_THRESHOLDS[i]) return i + 1;
-    }
-    return 1;
-  }
-
-  getXP() {
-    return this.sessionXP;
-  }
-
-  getLevel() {
-    return this.level;
-  }
-
-  getXPForNextLevel(): number {
-    const idx = this.level;
-    if (idx < LEVEL_THRESHOLDS.length) return LEVEL_THRESHOLDS[idx];
-    return LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1] + (idx - LEVEL_THRESHOLDS.length + 1) * 2000;
-  }
-
-  getXPForCurrentLevel(): number {
-    const idx = this.level - 1;
-    if (idx >= 0 && idx < LEVEL_THRESHOLDS.length) return LEVEL_THRESHOLDS[idx];
-    return 0;
-  }
-
-  /** Add XP without diamond collect side effects (SFX combo, speed boost). */
-  applyBonusXP(amount: number) {
-    if (amount <= 0) return;
-    const prevLevel = this.level;
-    this.sessionXP += amount;
-    this.level = this.computeLevel();
-    if (this.level > prevLevel && this.onLevelUp) {
-      this.onLevelUp(this.level);
-    }
   }
 
   /** Spawn `count` additional bonus diamonds into the scene immediately. */

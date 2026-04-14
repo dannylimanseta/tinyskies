@@ -74,8 +74,8 @@ import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
-import { UpgradeManager } from "./UpgradeManager";
 import { LevelUpCards } from "../ui/LevelUpCards";
+import { ProgressionManager } from "./ProgressionManager";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -249,7 +249,7 @@ export class Game {
   private moonThreat: MoonThreat | null = null;
   private vhsOverlay: HTMLDivElement | null = null;
   private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
-  private upgradeManager!: UpgradeManager;
+  private progression!: ProgressionManager;
   private levelUpCards!: LevelUpCards;
   /** Count of previously spawned bonus collectibles so we only spawn the delta. */
   private prevDiamondCountBonus = 0;
@@ -354,7 +354,8 @@ export class Game {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
     });
-    this.playerName = generateWhimsicalName();
+    this.playerName = ProgressionManager.loadPlayerName() ?? generateWhimsicalName();
+    ProgressionManager.savePlayerName(this.playerName);
 
     this.initPreview();
     this.previewActive = true;
@@ -369,7 +370,7 @@ export class Game {
     this.lobby = new Lobby(this.container, {
       playerName: this.playerName,
       mobile: this.mobile,
-      onNameChange: (name) => { this.playerName = name; },
+      onNameChange: (name) => { this.playerName = name; ProgressionManager.savePlayerName(name); },
       onPlay: (vehicle, options) => {
         this.pendingCampsiteAfterIntro =
           CAMPSITE_HOME_ENABLED && (options?.startAtCampsite ?? false);
@@ -633,7 +634,13 @@ export class Game {
 
     const spawnSessionSalt =
       (Date.now() ^ ((Math.random() * 0xffffffff) | 0) ^ (seed * 7919)) >>> 0;
-    const hullColor = pickRandomVehicleColor(vehicle);
+
+    this.progression = new ProgressionManager(vehicle);
+    this.progression.restore();
+
+    const savedColor = this.progression.getSavedVehicleColor();
+    const hullColor = savedColor ?? pickRandomVehicleColor(vehicle);
+    if (savedColor == null) this.progression.saveVehicleColor(hullColor);
     this.hullColor = hullColor;
 
     const w2 = this.container.clientWidth;
@@ -642,8 +649,6 @@ export class Game {
       ? new CampsiteScene(w2 / h2, this.mobile, this.container)
       : null;
     this.transitionOverlay = new TransitionOverlay(this.container);
-
-    this.upgradeManager = new UpgradeManager();
     this.levelUpCards = new LevelUpCards();
     this.prevDiamondCountBonus = 0;
     this.prevExtraRainbows = 0;
@@ -775,14 +780,13 @@ export class Game {
         this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
       }
       this.hud.showXPGain(xp);
-      this.hud.setXP(
-        this.ringManager.getXP(),
-        this.ringManager.getXPForNextLevel(),
-        this.ringManager.getXPForCurrentLevel(),
-        this.ringManager.getLevel(),
-      );
+      this.progression.addXP(xp);
     };
-    this.ringManager.onLevelUp = (level) => {
+
+    this.progression.onXPChanged = (xp, xpForNext, xpForCurrent, level) => {
+      this.hud.setXP(xp, xpForNext, xpForCurrent, level);
+    };
+    this.progression.onLevelUp = (level) => {
       this.handleLevelUp(level);
     };
 
@@ -797,6 +801,15 @@ export class Game {
     });
     this.vehicleHintsEl = mountControlHints(this.hud.root, vehicle, !this.mobile);
     this.hud.hideUI();
+
+    this.hud.setXP(
+      this.progression.getXP(),
+      this.progression.getXPForNextLevel(),
+      this.progression.getXPForCurrentLevel(),
+      this.progression.getLevel(),
+    );
+    this.propagateUpgrades();
+
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
 
     this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
@@ -902,18 +915,10 @@ export class Game {
         this.packageQuestHUD.showBubble(npcName, dialogue);
         this.packageQuestHUD.hideDeliveryTarget();
 
-        const scaledXp = Math.round(
-          xp * this.ringManager.upgrades.deliveryXpMult * this.ringManager.upgrades.nightXpMult,
-        );
+        const s = this.progression.upgrades.state;
+        const scaledXp = Math.round(xp * s.deliveryXpMult * (s.nightOwlEnabled ? 1 + 0.2 * this.dayNightCycle.getNightWeight() : 1));
         this.hud.showXPGain(scaledXp);
-        // applyBonusXP updates level and fires onLevelUp → handleLevelUp if threshold crossed.
-        this.ringManager.applyBonusXP(scaledXp);
-        this.hud.setXP(
-          this.ringManager.getXP(),
-          this.ringManager.getXPForNextLevel(),
-          this.ringManager.getXPForCurrentLevel(),
-          this.ringManager.getLevel(),
-        );
+        this.progression.addXP(scaledXp);
       };
 
       this.packageQuest.onProgressChange = (progress) => {
@@ -997,7 +1002,8 @@ export class Game {
     this.audioManager.setEndTimesWeight(0);
     this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
 
-    this.upgradeManager?.reset();
+    this.progression?.save();
+    this.progression?.upgrades.reset();
     this.levelUpCards?.dispose();
 
     if (this.vhsGlitchInterval !== null) {
@@ -1456,8 +1462,7 @@ export class Game {
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
-    // Night Owl: keep ringManager's nightXpMult in sync with the current night weight.
-    if (this.upgradeManager?.state.nightOwlEnabled) {
+    if (this.progression?.upgrades.state.nightOwlEnabled) {
       this.ringManager.upgrades.nightXpMult = 1 + 0.2 * this.dayNightCycle.getNightWeight();
     }
 
@@ -1632,14 +1637,8 @@ export class Game {
       this.flockFormationHUD.setProgress(bestProgress);
       if (anyCompleted) {
         this.hud.showFlockFormationCelebrate();
-        this.ringManager.applyBonusXP(FLOCK_FORMATION_XP);
         this.hud.showXPGain(FLOCK_FORMATION_XP);
-        this.hud.setXP(
-          this.ringManager.getXP(),
-          this.ringManager.getXPForNextLevel(),
-          this.ringManager.getXPForCurrentLevel(),
-          this.ringManager.getLevel(),
-        );
+        this.progression.addXP(FLOCK_FORMATION_XP);
         this.vehicleFlashTimer = 0.35;
         this.cameraRig.shake();
       }
@@ -1651,14 +1650,8 @@ export class Game {
         const { justCollected } = arch.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude, dayW);
         if (justCollected) {
           this.hud.showRainbowCelebrate();
-          this.ringManager.applyBonusXP(RAINBOW_XP);
           this.hud.showXPGain(RAINBOW_XP);
-          this.hud.setXP(
-            this.ringManager.getXP(),
-            this.ringManager.getXPForNextLevel(),
-            this.ringManager.getXPForCurrentLevel(),
-            this.ringManager.getLevel(),
-          );
+          this.progression.addXP(RAINBOW_XP);
           this.vehicleFlashTimer = 0.35;
           this.cameraRig.shake();
         }
@@ -1701,14 +1694,8 @@ export class Game {
             .then((d) => { if (d.total) this.globalLanternsLit = d.total; })
             .catch(() => {});
 
-          this.ringManager.applyBonusXP(LANTERN_XP);
           this.hud.showXPGain(LANTERN_XP);
-          this.hud.setXP(
-            this.ringManager.getXP(),
-            this.ringManager.getXPForNextLevel(),
-            this.ringManager.getXPForCurrentLevel(),
-            this.ringManager.getLevel(),
-          );
+          this.progression.addXP(LANTERN_XP);
           this.vehicleFlashTimer = 0.35;
           this.cameraRig.shake();
         }
@@ -1728,14 +1715,8 @@ export class Game {
         );
         if (justCollected) {
           this.hud.showFireflyCelebrate();
-          this.ringManager.applyBonusXP(FIREFLY_XP);
           this.hud.showXPGain(FIREFLY_XP);
-          this.hud.setXP(
-            this.ringManager.getXP(),
-            this.ringManager.getXPForNextLevel(),
-            this.ringManager.getXPForCurrentLevel(),
-            this.ringManager.getLevel(),
-          );
+          this.progression.addXP(FIREFLY_XP);
           this.vehicleFlashTimer = 0.35;
         }
       }
@@ -1750,14 +1731,8 @@ export class Game {
         );
         if (justCollected) {
           this.hud.showVolcanoCelebrate();
-          this.ringManager.applyBonusXP(VOLCANO_XP);
           this.hud.showXPGain(VOLCANO_XP);
-          this.hud.setXP(
-            this.ringManager.getXP(),
-            this.ringManager.getXPForNextLevel(),
-            this.ringManager.getXPForCurrentLevel(),
-            this.ringManager.getLevel(),
-          );
+          this.progression.addXP(VOLCANO_XP);
           this.vehicleFlashTimer = 0.35;
           this.cameraRig.shake();
         }
@@ -2393,27 +2368,26 @@ export class Game {
     this.playLevelUpSfx();
     this.hud.showLevelUp(level);
 
-    const cards = this.upgradeManager.drawCards(3);
-    if (cards.length === 0) return; // pool exhausted
+    const cards = this.progression.upgrades.drawCards(3);
+    if (cards.length === 0) return;
 
     this.controls.enabled = false;
     if (this.touchControls) this.touchControls.enabled = false;
 
     setTimeout(() => {
-      // Guard: don't show cards if we've left the flying phase (e.g. moon impact).
-      // Do NOT re-enable controls here — the cinematic owns them in that case.
       if (this.gamePhase !== "flying") return;
       this.levelUpCards.show(cards, (id) => {
-        this.upgradeManager.apply(id);
+        this.progression.upgrades.apply(id);
         this.propagateUpgrades();
+        this.progression.save();
         this.controls.enabled = true;
         if (this.touchControls) this.touchControls.enabled = true;
       });
-    }, 2000); // wait for LEVEL banner animation to finish
+    }, 2000);
   }
 
   private propagateUpgrades() {
-    const s = this.upgradeManager.state;
+    const s = this.progression.upgrades.state;
 
     if (this.localPlayer instanceof Plane) {
       Object.assign(this.localPlayer.upgrades, {
@@ -2427,9 +2401,7 @@ export class Game {
     }
 
     this.ringManager.upgrades.diamondXpMult = s.diamondXpMult;
-    this.ringManager.upgrades.deliveryXpMult = s.deliveryXpMult;
     this.ringManager.upgrades.frequentFlyerEnabled = s.frequentFlyerEnabled;
-    // nightXpMult is updated live in tick(); just reset it to 1 if night owl is off.
     if (!s.nightOwlEnabled) this.ringManager.upgrades.nightXpMult = 1;
 
     this.spawnExtraCollectibles(s);

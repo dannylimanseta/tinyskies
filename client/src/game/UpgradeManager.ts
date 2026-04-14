@@ -175,6 +175,11 @@ export class UpgradeManager {
     this.appliedIds.add(id);
   }
 
+  /** Replay a batch of previously-earned upgrade IDs onto a fresh state. */
+  restoreUpgrades(ids: string[]) {
+    for (const id of ids) this.apply(id);
+  }
+
   /** Reset to defaults (call on session teardown). */
   reset() {
     this.state = defaultState();
