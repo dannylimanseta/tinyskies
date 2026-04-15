@@ -237,7 +237,7 @@ export class Lobby {
       if (kind === "carpet") {
         unlockTitle.textContent = "Magic Carpet unlocked";
         unlockBody.textContent =
-          "You reached level 2 on a run. Take to the skies on silk and starlight.";
+          "You reached level 2 on a run. Take to the skies as a sightseeing capybara on a magic carpet!";
       } else if (kind === "braziers") {
         unlockTitle.textContent = "Ancient fires awaken";
         unlockBody.textContent =
