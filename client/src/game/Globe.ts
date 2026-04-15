@@ -134,12 +134,14 @@ export class Globe {
   readonly shrineCenters: { normal: Vector3 }[] = [];
   readonly hotspringCenters: { normal: Vector3 }[] = [];
   readonly mushroomCenters: { normal: Vector3 }[] = [];
+  readonly butterflyCenters: { normal: Vector3 }[] = [];
 
   private hotspringSteamInstanced: InstancedMesh | null = null;
   private shrineSparkleInstanced: InstancedMesh | null = null;
   private mushroomSporeInstanced: InstancedMesh | null = null;
+  private butterflyInstanced: InstancedMesh | null = null;
 
-  setLandmarkParticleOpacity(kind: "hotspring" | "shrine" | "mushroom", index: number, opacity: number) {
+  setLandmarkParticleOpacity(kind: "hotspring" | "shrine" | "mushroom" | "butterfly", index: number, opacity: number) {
     let instanced: InstancedMesh | null = null;
     let countPerSite = 0;
     
@@ -152,6 +154,9 @@ export class Globe {
     } else if (kind === "mushroom") {
       instanced = this.mushroomSporeInstanced;
       countPerSite = 45; // SPORES_PER_GROVE
+    } else if (kind === "butterfly") {
+      instanced = this.butterflyInstanced;
+      countPerSite = 25; // BUTTERFLIES_PER_GARDEN
     }
     
     if (!instanced) return;
@@ -265,6 +270,7 @@ export class Globe {
     this.createShrines();
     this.createHotsprings();
     this.createMushrooms();
+    this.createButterflyGardens();
     this.createFloatingTreeClusters();
     this.createBalloons();
     this.createClouds();
@@ -2655,6 +2661,270 @@ transformed.z += sway2;`,
       sporeInstanced.geometry.setAttribute('aColor', new InstancedBufferAttribute(sporeColors, 3));
       sporeInstanced.geometry.setAttribute('aOpacity', new InstancedBufferAttribute(opacities, 1));
       this.mushroomSporeInstanced = sporeInstanced;
+    }
+  }
+
+  private createButterflyGardens() {
+    const GARDEN_COUNT = 4;
+    const MIN_ELEVATION = 0.005;
+    const MAX_ELEVATION = 0.62;
+    const MIN_SEPARATION_DOT = 0.78;
+    const INLAND_CHECKS = 8;
+    const INLAND_CHECK_DIST = 0.07;
+    const MAX_WATER_RATIO = 0.26;
+    const ROUGH_RING_DIST = 0.085;
+    const MAX_ROUGHNESS = 0.26;
+
+    const rand = seededRandom(223344 + this.seed);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 8000 && candidates.length < 220) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    candidates.sort((a, b) => a.elevation - b.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= GARDEN_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const stalkGeo = new CylinderGeometry(0.001, 0.0015, 0.015, 5);
+    stalkGeo.translate(0, 0.0075, 0);
+    const petalGeo = new SphereGeometry(0.004, 5, 4);
+    petalGeo.scale(1, 0.2, 1.5);
+    petalGeo.translate(0, 0, 0.004);
+    const centerGeo = new SphereGeometry(0.003, 5, 4);
+
+    const flowerColors = [0xff66a3, 0x66a3ff, 0xffcc66, 0xb366ff, 0xff9966, 0xffffff];
+    const stalkMat = new MeshPhongMaterial({ color: 0x44aa44, flatShading: true });
+    addRimLight(stalkMat, 0xffffff, 0.3, 2.0);
+    const centerMat = new MeshPhongMaterial({ color: 0xffdd44, flatShading: true });
+
+    const petalMats = flowerColors.map(c => {
+      const m = new MeshPhongMaterial({ color: c, flatShading: true });
+      addRimLight(m, 0xffffff, 0.4, 2.5);
+      return m;
+    });
+
+    const BUTTERFLIES_PER_GARDEN = 25;
+    const totalButterflies = chosen.length * BUTTERFLIES_PER_GARDEN;
+    let butterflyInstanced: InstancedMesh | null = null;
+    let butterflyOffsets: Float32Array | null = null;
+    let butterflyCenters: Float32Array | null = null;
+    let butterflyUps: Float32Array | null = null;
+    let butterflyColors: Float32Array | null = null;
+
+    if (totalButterflies > 0) {
+      const butterflyGeo = new PlaneGeometry(0.015, 0.015);
+      butterflyOffsets = new Float32Array(totalButterflies);
+      butterflyCenters = new Float32Array(totalButterflies * 3);
+      butterflyUps = new Float32Array(totalButterflies * 3);
+      butterflyColors = new Float32Array(totalButterflies * 3);
+
+      const butterflyMat = new ShaderMaterial({
+        vertexShader: `
+          uniform float oceanTime;
+          attribute float aOffset;
+          attribute vec3 aCenter;
+          attribute vec3 aUp;
+          attribute vec3 aColor;
+          attribute float aOpacity;
+          varying vec2 vUv;
+          varying float vAlpha;
+          varying vec3 vColor;
+          void main() {
+            vUv = uv;
+            vColor = aColor;
+            
+            // Fast flapping based on time and offset
+            float flapSpeed = 25.0;
+            float flap = abs(cos(oceanTime * flapSpeed + aOffset * 100.0));
+            
+            // Slow wandering around the center
+            float wanderSpeed = 0.8;
+            float t = oceanTime * wanderSpeed + aOffset * 6.28;
+            
+            vec3 tangent = normalize(cross(aUp, vec3(0.0, 1.0, 0.0)));
+            if (length(tangent) < 0.01) tangent = normalize(cross(aUp, vec3(1.0, 0.0, 0.0)));
+            vec3 bitangent = cross(aUp, tangent);
+            
+            // Orbit radius and height variation
+            float r = 0.04 + sin(t * 1.3) * 0.02;
+            float h = 0.02 + cos(t * 1.7) * 0.015;
+            
+            vec3 pos = aCenter + aUp * h;
+            pos += tangent * (cos(t) * r);
+            pos += bitangent * (sin(t) * r);
+            
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            
+            // Apply flapping scale on X axis in view space (always faces camera but flaps)
+            mvPos.x += position.x * (0.2 + flap * 0.8);
+            mvPos.y += position.y;
+            
+            gl_Position = projectionMatrix * mvPos;
+            
+            vAlpha = aOpacity;
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          varying float vAlpha;
+          varying vec3 vColor;
+          void main() {
+            // Simple butterfly shape (two triangles/wings)
+            float d = length(vUv - vec2(0.5));
+            float wing = smoothstep(0.5, 0.3, d);
+            // Cut out the middle slightly
+            float centerCut = smoothstep(0.0, 0.1, abs(vUv.x - 0.5));
+            float a = wing * centerCut * vAlpha;
+            
+            // Darker edges
+            vec3 color = mix(vColor * 0.4, vColor, smoothstep(0.4, 0.2, d));
+            gl_FragColor = vec4(color, a);
+          }
+        `,
+        uniforms: { oceanTime: this.oceanTime },
+        transparent: true,
+        depthWrite: false,
+        side: DoubleSide,
+      });
+
+      butterflyInstanced = new InstancedMesh(butterflyGeo, butterflyMat, totalButterflies);
+      butterflyInstanced.frustumCulled = false;
+      const dummy = new Matrix4();
+      for (let i = 0; i < totalButterflies; i++) butterflyInstanced.setMatrixAt(i, dummy);
+      this.group.add(butterflyInstanced);
+    }
+
+    const butterflyPalette = [0xffaa00, 0x4488ff, 0xff44aa, 0xffff44, 0xaa44ff];
+
+    for (let gardenIdx = 0; gardenIdx < chosen.length; gardenIdx++) {
+      const normal = chosen[gardenIdx]!;
+      this.butterflyCenters.push({ normal: normal.clone() });
+      const gardenGroup = new Group();
+      
+      const tangent = new Vector3(-normal.y, normal.x, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -normal.z, normal.y);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+
+      // Flowers
+      const numFlowers = 18 + Math.floor(rand() * 8);
+      for (let i = 0; i < numFlowers; i++) {
+        const angle = rand() * Math.PI * 2;
+        const dist = rand() * 0.04;
+        const fNormal = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * dist)
+          .addScaledVector(bitangent, Math.sin(angle) * dist)
+          .normalize();
+
+        const displacement = surfaceDisplacementAt(this.seed, this.terrainType, fNormal.x, fNormal.y, fNormal.z);
+        const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+        const fPos = fNormal.clone().multiplyScalar(surfaceR);
+
+        const scale = 0.6 + rand() * 0.8;
+        const colorIdx = Math.floor(rand() * petalMats.length);
+
+        const flower = new Group();
+        flower.position.copy(fPos);
+        flower.quaternion.setFromUnitVectors(REF_UP, fNormal);
+        flower.rotateX((rand() - 0.5) * 0.3);
+        flower.rotateZ((rand() - 0.5) * 0.3);
+        flower.rotateY(rand() * Math.PI * 2);
+        flower.scale.setScalar(scale);
+
+        const stalk = new Mesh(stalkGeo, stalkMat);
+        stalk.castShadow = true;
+        stalk.receiveShadow = true;
+        flower.add(stalk);
+
+        const center = new Mesh(centerGeo, centerMat);
+        center.position.y = 0.015;
+        flower.add(center);
+
+        for (let p = 0; p < 5; p++) {
+          const petal = new Mesh(petalGeo, petalMats[colorIdx]);
+          petal.position.y = 0.015;
+          petal.rotation.y = (p / 5) * Math.PI * 2;
+          petal.rotation.x = 0.2; // Slight tilt outward
+          flower.add(petal);
+        }
+
+        gardenGroup.add(flower);
+      }
+      
+      // Butterflies
+      if (butterflyInstanced && butterflyOffsets && butterflyCenters && butterflyUps && butterflyColors) {
+        for (let j = 0; j < BUTTERFLIES_PER_GARDEN; j++) {
+          const idx = gardenIdx * BUTTERFLIES_PER_GARDEN + j;
+          butterflyOffsets[idx] = rand();
+          
+          // Center of this garden
+          const centerPos = normal.clone().multiplyScalar(this.radius + surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z));
+          
+          butterflyCenters[idx * 3 + 0] = centerPos.x;
+          butterflyCenters[idx * 3 + 1] = centerPos.y;
+          butterflyCenters[idx * 3 + 2] = centerPos.z;
+          butterflyUps[idx * 3 + 0] = normal.x;
+          butterflyUps[idx * 3 + 1] = normal.y;
+          butterflyUps[idx * 3 + 2] = normal.z;
+          
+          const colorHex = butterflyPalette[Math.floor(rand() * butterflyPalette.length)]!;
+          butterflyColors[idx * 3 + 0] = ((colorHex >> 16) & 255) / 255;
+          butterflyColors[idx * 3 + 1] = ((colorHex >> 8) & 255) / 255;
+          butterflyColors[idx * 3 + 2] = (colorHex & 255) / 255;
+        }
+      }
+
+      this.group.add(gardenGroup);
+    }
+    
+    if (butterflyInstanced && butterflyOffsets && butterflyCenters && butterflyUps && butterflyColors) {
+      const opacities = new Float32Array(totalButterflies).fill(1);
+      butterflyInstanced.geometry.setAttribute('aOffset', new InstancedBufferAttribute(butterflyOffsets, 1));
+      butterflyInstanced.geometry.setAttribute('aCenter', new InstancedBufferAttribute(butterflyCenters, 3));
+      butterflyInstanced.geometry.setAttribute('aUp', new InstancedBufferAttribute(butterflyUps, 3));
+      butterflyInstanced.geometry.setAttribute('aColor', new InstancedBufferAttribute(butterflyColors, 3));
+      butterflyInstanced.geometry.setAttribute('aOpacity', new InstancedBufferAttribute(opacities, 1));
+      this.butterflyInstanced = butterflyInstanced;
     }
   }
 

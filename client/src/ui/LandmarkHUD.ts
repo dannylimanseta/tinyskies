@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<LandmarkType, string> = {
   shrine: "Shrine",
   hotspring: "Hot Spring",
   mushroom: "Mushroom Grove",
+  butterfly: "Butterfly Garden",
 };
 
 export class LandmarkHUD {

@@ -240,6 +240,8 @@ export class Game {
   private lastBrazierProgress: number[] = [];
   /** Offline-only edge detect for all-five shield (no server). */
   private prevAllFiveBraziers = false;
+  /** Only show the moon-resumed banner after a locally-announced brazier pause. */
+  private shouldShowBrazierMoonResume = false;
   /** If braziers were locked at join, stash server sync until they unlock mid-run. */
   private pendingBrazierSync: BrazierSyncPayload | null = null;
   private panicDialogueCooldown = 0;
@@ -563,6 +565,8 @@ export class Game {
       this.audioManager.playSFX(EXPLOSION_SFX_NAME, EXPLOSION_SFX_VOLUME);
     };
     this.moonThreat.onApproachPauseEnd = () => {
+      if (!this.shouldShowBrazierMoonResume) return;
+      this.shouldShowBrazierMoonResume = false;
       this.hud.showBrazierMoonResumed();
     };
     this.moonThreat.addTo(this.scene);
@@ -941,10 +945,12 @@ export class Game {
     const hotspringN = this.globe.hotspringCenters.length;
     const shrineN = this.globe.shrineCenters.length;
     const mushroomN = this.globe.mushroomCenters.length;
-    if (this.playerVehicle === "carpet" && hotspringN + shrineN + mushroomN > 0) {
+    const butterflyN = this.globe.butterflyCenters.length;
+    if (this.playerVehicle === "carpet" && hotspringN + shrineN + mushroomN + butterflyN > 0) {
       const hsNormals = this.globe.hotspringCenters.map((h) => h.normal.clone().normalize());
       const shrineNormals = this.globe.shrineCenters.map((h) => h.normal.clone().normalize());
       const mushroomNormals = this.globe.mushroomCenters.map((h) => h.normal.clone().normalize());
+      const butterflyNormals = this.globe.butterflyCenters.map((h) => h.normal.clone().normalize());
       
       // Pass empty arrays so they are never marked as "completed" from a previous run
       this.carpetSelfiePhotoUI = new HotspringPhotoUI(this.hud.root);
@@ -955,6 +961,8 @@ export class Game {
         new Array(shrineN).fill(false),
         mushroomNormals,
         new Array(mushroomN).fill(false),
+        butterflyNormals,
+        new Array(butterflyN).fill(false),
       );
       this.carpetLandmarkSelfieQuest.onProgressChange = (p) => {
         this.carpetSelfiePhotoUI?.setProgress(p);
@@ -967,6 +975,8 @@ export class Game {
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_shrine.jpg", "Shrine selfie");
         } else if (payload.kind === "mushroom") {
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_mushroom_garden.jpg", "Mushroom garden selfie");
+        } else if (payload.kind === "butterfly") {
+          this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_butterfly_garden.jpg", "Butterfly garden selfie");
         }
         const s = this.progression.upgrades.state;
         const scaledXp = Math.round(
@@ -983,6 +993,7 @@ export class Game {
       for (let i = 0; i < hotspringN; i++) this.globe.setLandmarkParticleOpacity("hotspring", i, 0.0);
       for (let i = 0; i < shrineN; i++) this.globe.setLandmarkParticleOpacity("shrine", i, 0.0);
       for (let i = 0; i < mushroomN; i++) this.globe.setLandmarkParticleOpacity("mushroom", i, 0.0);
+      for (let i = 0; i < butterflyN; i++) this.globe.setLandmarkParticleOpacity("butterfly", i, 0.0);
     }
 
     window.addEventListener("resize", this.onResize);
@@ -1317,6 +1328,7 @@ export class Game {
 
     this.dayNightCycle.moonProgress = 0;
     this.moonThreat?.reset();
+    this.shouldShowBrazierMoonResume = false;
     this.applyDayNightPreset();
     this.gamePhase = "flying";
     this.moonCinematicStep = "done";
@@ -1350,9 +1362,11 @@ export class Game {
   private static readonly MAX_WORLD_FULL_RETRIES = 3;
 
   /** All-five brazier shield: shared room event or offline-only detection. */
-  private applyBrazierMoonShield(remainingMs: number) {
+  private applyBrazierMoonShield(remainingMs: number, announce = true) {
     this.braziers?.extinguishAll();
     this.moonThreat?.beginApproachPause(remainingMs);
+    if (!announce) return;
+    this.shouldShowBrazierMoonResume = true;
     this.hud.showBrazierMoonSlowed();
   }
 
@@ -1397,7 +1411,7 @@ export class Game {
     });
 
     this.socketClient.onBrazierMoonPause((payload) => {
-      this.applyBrazierMoonShield(payload.remainingMs);
+      this.applyBrazierMoonShield(payload.remainingMs, payload.announce !== false);
     });
 
     this.socketClient.onPaintballFired((ev) => {

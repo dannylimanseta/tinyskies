@@ -9,7 +9,7 @@ export const LANDMARK_SELFIE_XP = 40;
 /** @deprecated use LANDMARK_SELFIE_XP */
 export const HOTSPRING_SELFIE_XP = LANDMARK_SELFIE_XP;
 
-export type LandmarkSelfieKind = "hotspring" | "shrine" | "mushroom";
+export type LandmarkSelfieKind = "hotspring" | "shrine" | "mushroom" | "butterfly";
 
 type Site = {
   kind: LandmarkSelfieKind;
@@ -38,6 +38,8 @@ export class CarpetLandmarkSelfieQuest {
     shrineDone: boolean[],
     mushroomNormals: readonly Vector3[],
     mushroomDone: boolean[],
+    butterflyNormals: readonly Vector3[],
+    butterflyDone: boolean[],
   ) {
     this.sites = [];
     for (let i = 0; i < hotspringNormals.length; i++) {
@@ -62,6 +64,14 @@ export class CarpetLandmarkSelfieQuest {
         kindIndex: i,
         normal: mushroomNormals[i]!.clone(),
         completed: !!mushroomDone[i],
+      });
+    }
+    for (let i = 0; i < butterflyNormals.length; i++) {
+      this.sites.push({
+        kind: "butterfly",
+        kindIndex: i,
+        normal: butterflyNormals[i]!.clone(),
+        completed: !!butterflyDone[i],
       });
     }
   }
