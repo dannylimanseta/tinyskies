@@ -31,6 +31,7 @@ import { addRimLight } from "./RimLight";
 import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, sampleTerrain } from "./SimplexNoise";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
+import { getVolcanoPlacementNormal, VOLCANO_COUNT } from "./Volcano";
 
 const ATMOSPHERE_VERTEX = `
 varying vec3 vNormal;
@@ -1826,8 +1827,12 @@ transformed.z += sway2;`,
     const MIN_ELEVATION = 0.22;
     const MAX_ELEVATION = 0.60;
     const MIN_SEPARATION_DOT = 0.90;
+    const VOLCANO_EXCLUSION_DOT = 0.97;
 
     const rand = seededRandom(4321 + this.seed);
+    const volcanoNormals = Array.from({ length: VOLCANO_COUNT }, (_unused, index) =>
+      getVolcanoPlacementNormal(this.seed, this.terrainType, index),
+    );
 
     type Candidate = { normal: Vector3; elevation: number };
     const candidates: Candidate[] = [];
@@ -1852,6 +1857,7 @@ transformed.z += sway2;`,
       if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (volcanoNormals.some((v) => normal.dot(v) > VOLCANO_EXCLUSION_DOT)) continue;
 
       candidates.push({ normal, elevation });
     }

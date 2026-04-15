@@ -37,6 +37,61 @@ const REWARD_COOLDOWN_SEC = 90;
 
 const REF_UP = new Vector3(0, 1, 0);
 
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 16807 + 0) % 2147483647;
+    return (s & 0x7fffffff) / 0x7fffffff;
+  };
+}
+
+export function getVolcanoPlacementNormal(
+  worldSeed: number,
+  terrainType: string,
+  volcanoIndex: number,
+): Vector3 {
+  const rand = seededRandom(worldSeed + volcanoIndex * 314159);
+
+  let bestNormal: Vector3 | null = null;
+  let bestElevation = 0;
+
+  for (let attempts = 0; attempts < 3000; attempts++) {
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const nx = Math.sin(phi) * Math.cos(theta);
+    const ny = Math.cos(phi);
+    const nz = Math.sin(phi) * Math.sin(theta);
+
+    const sample = sampleTerrain(worldSeed, terrainType, nx, ny, nz);
+    if (!sample.isLand) continue;
+    const elevation = sample.elevation;
+    if (elevation < 0.4) continue;
+
+    if (elevation > bestElevation) {
+      bestElevation = elevation;
+      bestNormal = new Vector3(nx, ny, nz);
+    }
+
+    if (bestElevation > 0.6) break;
+  }
+
+  if (!bestNormal) {
+    for (let k = 0; k < 128; k++) {
+      const y = 1 - (k / 127) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = k * 0.6180339887 * Math.PI * 2;
+      const nx = Math.cos(theta) * r;
+      const ny = y;
+      const nz = Math.sin(theta) * r;
+      if (!sampleTerrain(worldSeed, terrainType, nx, ny, nz).isLand) continue;
+      bestNormal = new Vector3(nx, ny, nz);
+      break;
+    }
+  }
+
+  return bestNormal ?? new Vector3(0, 1, 0);
+}
+
 /* ── Volcano body profile ──────────────────────────────────────── */
 
 const S = 0.35;
@@ -409,48 +464,7 @@ export class Volcano {
     terrainType: string,
     volcanoIndex: number,
   ) {
-    const rand = this.seededRandom(worldSeed + volcanoIndex * 314159);
-
-    let bestNormal: Vector3 | null = null;
-    let bestElevation = 0;
-
-    for (let attempts = 0; attempts < 3000; attempts++) {
-      const theta = rand() * Math.PI * 2;
-      const phi = Math.acos(2 * rand() - 1);
-      const nx = Math.sin(phi) * Math.cos(theta);
-      const ny = Math.cos(phi);
-      const nz = Math.sin(phi) * Math.sin(theta);
-
-      const sample = sampleTerrain(worldSeed, terrainType, nx, ny, nz);
-      if (!sample.isLand) continue;
-      const elevation = sample.elevation;
-      if (elevation < 0.4) continue;
-
-      if (elevation > bestElevation) {
-        bestElevation = elevation;
-        bestNormal = new Vector3(nx, ny, nz);
-      }
-
-      if (bestElevation > 0.6) break;
-    }
-
-    if (!bestNormal) {
-      for (let k = 0; k < 128; k++) {
-        const y = 1 - (k / 127) * 2;
-        const r = Math.sqrt(Math.max(0, 1 - y * y));
-        const theta = k * 0.6180339887 * Math.PI * 2;
-        const nx = Math.cos(theta) * r;
-        const ny = y;
-        const nz = Math.sin(theta) * r;
-        if (!sampleTerrain(worldSeed, terrainType, nx, ny, nz).isLand) continue;
-        bestNormal = new Vector3(nx, ny, nz);
-        break;
-      }
-    }
-
-    if (!bestNormal) {
-      bestNormal = new Vector3(0, 1, 0);
-    }
+    const bestNormal = getVolcanoPlacementNormal(worldSeed, terrainType, volcanoIndex);
 
     this.normal.copy(bestNormal);
     const displacement = surfaceDisplacementAt(
@@ -476,11 +490,7 @@ export class Volcano {
   }
 
   private seededRandom(seed: number): () => number {
-    let s = seed;
-    return () => {
-      s = (s * 16807 + 0) % 2147483647;
-      return (s & 0x7fffffff) / 0x7fffffff;
-    };
+    return seededRandom(seed);
   }
 
   /* ── Lava blob lifecycle ─────────────────────────────────────── */
