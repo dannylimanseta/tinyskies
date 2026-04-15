@@ -2129,7 +2129,75 @@ transformed.z += sway2;`,
 
     const REF_UP = new Vector3(0, 1, 0);
 
-    for (const normal of chosen) {
+    const SPARKLES_PER_SHRINE = 40;
+    const totalSparkles = chosen.length * SPARKLES_PER_SHRINE;
+    let sparkleInstanced: InstancedMesh | null = null;
+    let sparkleOffsets: Float32Array | null = null;
+    let sparkleCenters: Float32Array | null = null;
+    let sparkleUps: Float32Array | null = null;
+
+    if (totalSparkles > 0) {
+      const sparkleGeo = new PlaneGeometry(0.02, 0.02);
+      sparkleOffsets = new Float32Array(totalSparkles);
+      sparkleCenters = new Float32Array(totalSparkles * 3);
+      sparkleUps = new Float32Array(totalSparkles * 3);
+
+      const sparkleMat = new ShaderMaterial({
+        vertexShader: `
+          uniform float oceanTime;
+          attribute float aOffset;
+          attribute vec3 aCenter;
+          attribute vec3 aUp;
+          varying vec2 vUv;
+          varying float vAlpha;
+          void main() {
+            vUv = uv;
+            float t = fract(oceanTime * 0.2 + aOffset);
+            
+            float s = 0.2 + sin(t * 3.14159) * 1.5;
+            
+            vec3 pos = aCenter + aUp * (t * 0.8);
+            
+            vec3 tangent = normalize(cross(aUp, vec3(0.0, 1.0, 0.0)));
+            if (length(tangent) < 0.01) tangent = normalize(cross(aUp, vec3(1.0, 0.0, 0.0)));
+            vec3 bitangent = cross(aUp, tangent);
+            
+            pos += tangent * sin(oceanTime * 1.5 + aOffset * 6.28) * 0.12 * t;
+            pos += bitangent * cos(oceanTime * 1.2 + aOffset * 6.28) * 0.12 * t;
+            
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            mvPos.xy += position.xy * s;
+            
+            gl_Position = projectionMatrix * mvPos;
+            
+            vAlpha = sin(t * 3.14159);
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          varying float vAlpha;
+          void main() {
+            float d = length(vUv - vec2(0.5)) * 2.0;
+            float a = (1.0 - smoothstep(0.1, 0.8, d)) * vAlpha;
+            vec3 color = vec3(1.0, 0.9, 0.6); // Warm magical gold
+            gl_FragColor = vec4(color, a);
+          }
+        `,
+        uniforms: { oceanTime: this.oceanTime },
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      });
+
+      sparkleInstanced = new InstancedMesh(sparkleGeo, sparkleMat, totalSparkles);
+      sparkleInstanced.frustumCulled = false;
+      const dummy = new Matrix4();
+      for (let i = 0; i < totalSparkles; i++) sparkleInstanced.setMatrixAt(i, dummy);
+      this.group.add(sparkleInstanced);
+    }
+
+    for (let shrineIdx = 0; shrineIdx < chosen.length; shrineIdx++) {
+      const normal = chosen[shrineIdx]!;
       this.shrineCenters.push({ normal: normal.clone() });
 
       const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
@@ -2141,6 +2209,38 @@ transformed.z += sway2;`,
       shrine.rotateY(rand() * Math.PI * 2);
       shrine.castShadow = true;
       this.group.add(shrine);
+      
+      if (sparkleInstanced && sparkleOffsets && sparkleCenters && sparkleUps) {
+        const shrinePos = normal.clone().multiplyScalar(surfaceR);
+        const tangent = new Vector3(-normal.y, normal.x, 0);
+        if (tangent.lengthSq() < 0.001) tangent.set(0, -normal.z, normal.y);
+        tangent.normalize();
+        const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+        
+        for (let j = 0; j < SPARKLES_PER_SHRINE; j++) {
+          const idx = shrineIdx * SPARKLES_PER_SHRINE + j;
+          sparkleOffsets[idx] = rand();
+          
+          const angle = rand() * Math.PI * 2;
+          const dist = rand() * 0.08; // Spread around the shrine
+          const startPos = shrinePos.clone()
+            .addScaledVector(tangent, Math.cos(angle) * dist)
+            .addScaledVector(bitangent, Math.sin(angle) * dist);
+            
+          sparkleCenters[idx * 3 + 0] = startPos.x;
+          sparkleCenters[idx * 3 + 1] = startPos.y;
+          sparkleCenters[idx * 3 + 2] = startPos.z;
+          sparkleUps[idx * 3 + 0] = normal.x;
+          sparkleUps[idx * 3 + 1] = normal.y;
+          sparkleUps[idx * 3 + 2] = normal.z;
+        }
+      }
+    }
+    
+    if (sparkleInstanced && sparkleOffsets && sparkleCenters && sparkleUps) {
+      sparkleInstanced.geometry.setAttribute('aOffset', new InstancedBufferAttribute(sparkleOffsets, 1));
+      sparkleInstanced.geometry.setAttribute('aCenter', new InstancedBufferAttribute(sparkleCenters, 3));
+      sparkleInstanced.geometry.setAttribute('aUp', new InstancedBufferAttribute(sparkleUps, 3));
     }
   }
 
