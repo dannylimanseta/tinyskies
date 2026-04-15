@@ -16,7 +16,7 @@ const SHORT_LABELS: Record<Vehicle, string> = {
 const VEHICLE_SVGS: Record<Vehicle, string> = {
   plane: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`,
   boat: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 2v3"/></svg>`,
-  carpet: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16l2 4H2l2-4Z"/><path d="M4 10v-2"/><path d="M20 10v-2"/><path d="M2 14v2"/><path d="M22 14v2"/></svg>`,
+  carpet: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 14c-3-3-6-3-9 0s-6 3-9 0l-1 2c3 3 6 3 9 0s6-3 9 0l1-2z"/><path d="M3 16v3"/><path d="M21 16v3"/><path d="M4 14v2"/><path d="M22 14v2"/><path d="M12 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M18 8l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/><path d="M7 9l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/></svg>`,
 };
 
 /* ── Whimsical Name Generator ──────────────────────────────────────── */
