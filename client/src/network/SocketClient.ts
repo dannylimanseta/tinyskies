@@ -20,6 +20,7 @@ export class SocketClient {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 10,
+      transports: ["websocket"],
     });
 
     this.socket.on("connect", () => {

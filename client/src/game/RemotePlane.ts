@@ -435,6 +435,8 @@ export class RemotePlaneManager {
 
   dispose() {
     for (const [, rp] of this.planes) {
+      this.scene.remove(rp.group);
+      this.scene.remove(rp.beacon.mesh);
       rp.dispose();
     }
     this.planes.clear();

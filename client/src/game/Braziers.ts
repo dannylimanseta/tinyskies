@@ -756,7 +756,7 @@ export class Braziers {
         }
       } else if (!s.lit && s.fadeOutT < 1) {
         s.fadeOutT = Math.min(1, s.fadeOutT + dt / FADE_OUT_DUR);
-      } else {
+      } else if (newlyLitIndices.length === 0) {
         if (playerWorldPos.distanceTo(s.worldPos) < LIGHT_RADIUS) {
           s.lit = true;
           s.burnEndsAtMs = Date.now() + BRAZIER_BURN_MS;
