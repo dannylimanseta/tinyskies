@@ -134,6 +134,7 @@ export class Globe {
   readonly stonehengeGroups: Group[] = [];
   readonly shrineCenters: { normal: Vector3 }[] = [];
   readonly hotspringCenters: { normal: Vector3 }[] = [];
+  readonly mushroomCenters: { normal: Vector3 }[] = [];
 
   /** Shared teardrop geometry for shrine-tree InstancedMeshes (one buffer, many draws). */
   private shrineTeardropGeo: LatheGeometry | null = null;
@@ -233,6 +234,7 @@ export class Globe {
     this.createStonehenges();
     this.createShrines();
     this.createHotsprings();
+    this.createMushrooms();
     this.createFloatingTreeClusters();
     this.createBalloons();
     this.createClouds();
@@ -2372,6 +2374,312 @@ transformed.z += sway2;`,
         console.error("[Globe] Failed to load /3D/hotspring.glb:", err);
       },
     );
+  }
+
+  /** Inland mushroom groves — 4 per world, away from coastlines and other landmarks. */
+  private createMushrooms() {
+    const MUSHROOM_COUNT = 4;
+    const MIN_ELEVATION = 0.05;
+    const MAX_ELEVATION = 0.65;
+    const MIN_SEPARATION_DOT = 0.78;
+    const INLAND_CHECKS = 8;
+    const INLAND_CHECK_DIST = 0.07;
+    const MAX_WATER_RATIO = 0.26;
+    const ROUGH_RING_DIST = 0.085;
+    const MAX_ROUGHNESS = 0.26;
+
+    const rand = seededRandom(445566 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 8000 && candidates.length < 220) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      const tangent = new Vector3(-ny, nx, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+      let waterCount = 0;
+      for (let c = 0; c < INLAND_CHECKS; c++) {
+        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
+        const cn = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
+          .normalize();
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) waterCount++;
+      }
+      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, noise, params, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    candidates.sort((a, b) => a.elevation - b.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= MUSHROOM_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const stalkGeo = new CylinderGeometry(0.0015, 0.0025, 0.02, 5);
+    stalkGeo.translate(0, 0.01, 0);
+    const capGeo = new SphereGeometry(0.008, 7, 5);
+    capGeo.scale(1, 0.6, 1);
+    capGeo.translate(0, 0.02, 0);
+
+    const pastelColors = [0xffb3ba, 0xbaffc9, 0xbae1ff, 0xe6b3ff, 0xffffba, 0xffdfba];
+    const stalkMat = new MeshPhongMaterial({ color: 0xddddcc, flatShading: true });
+    addRimLight(stalkMat, 0xffffff, 0.3, 2.0);
+
+    const capMats = pastelColors.map(c => {
+      const m = new MeshPhongMaterial({ color: c, flatShading: true });
+      addRimLight(m, 0xffffff, 0.4, 2.5);
+      return m;
+    });
+
+    const SPORES_PER_GROVE = 45;
+    const STREAMS_PER_GROVE = 3;
+    const SPORES_PER_STREAM = SPORES_PER_GROVE / STREAMS_PER_GROVE;
+    const totalSpores = chosen.length * SPORES_PER_GROVE;
+    let sporeInstanced: InstancedMesh | null = null;
+    let sporeOffsets: Float32Array | null = null;
+    let sporeCenters: Float32Array | null = null;
+    let sporeUps: Float32Array | null = null;
+    let sporeColors: Float32Array | null = null;
+
+    if (totalSpores > 0) {
+      const sporeGeo = new PlaneGeometry(0.015, 0.015);
+      sporeOffsets = new Float32Array(totalSpores);
+      sporeCenters = new Float32Array(totalSpores * 3);
+      sporeUps = new Float32Array(totalSpores * 3);
+      sporeColors = new Float32Array(totalSpores * 3);
+
+      const sporeMat = new ShaderMaterial({
+        vertexShader: `
+          uniform float oceanTime;
+          attribute float aOffset;
+          attribute vec3 aCenter;
+          attribute vec3 aUp;
+          attribute vec3 aColor;
+          varying vec2 vUv;
+          varying float vAlpha;
+          varying vec3 vColor;
+          void main() {
+            vUv = uv;
+            vColor = aColor;
+            float t = fract(oceanTime * 0.15 + aOffset);
+            
+            float s = 0.5 + t * 1.0;
+            
+            vec3 pos = aCenter + aUp * (t * 0.7);
+            
+            vec3 tangent = normalize(cross(aUp, vec3(0.0, 1.0, 0.0)));
+            if (length(tangent) < 0.01) tangent = normalize(cross(aUp, vec3(1.0, 0.0, 0.0)));
+            vec3 bitangent = cross(aUp, tangent);
+            
+            float streamPhase = aCenter.x * 10.0 + aCenter.z * 10.0;
+            float streamSwayX = sin(oceanTime * 1.2 + streamPhase + t * 4.0) * 0.06 * t;
+            float streamSwayY = cos(oceanTime * 0.9 + streamPhase + t * 3.0) * 0.06 * t;
+            
+            float individualSwayX = sin(oceanTime * 3.0 + aOffset * 6.28) * 0.015 * t;
+            float individualSwayY = cos(oceanTime * 2.5 + aOffset * 6.28) * 0.015 * t;
+            
+            pos += tangent * (streamSwayX + individualSwayX);
+            pos += bitangent * (streamSwayY + individualSwayY);
+            
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            mvPos.xy += position.xy * s;
+            
+            gl_Position = projectionMatrix * mvPos;
+            
+            float streamAlpha = sin(oceanTime * 0.5 + streamPhase) * 0.5 + 0.5;
+            vAlpha = sin(t * 3.14159) * streamAlpha;
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          varying float vAlpha;
+          varying vec3 vColor;
+          void main() {
+            float d = length(vUv - vec2(0.5)) * 2.0;
+            float a = (1.0 - smoothstep(0.3, 1.0, d)) * vAlpha * 0.85;
+            gl_FragColor = vec4(vColor, a);
+          }
+        `,
+        uniforms: { oceanTime: this.oceanTime },
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      });
+
+      sporeInstanced = new InstancedMesh(sporeGeo, sporeMat, totalSpores);
+      sporeInstanced.frustumCulled = false;
+      const dummy = new Matrix4();
+      for (let i = 0; i < totalSpores; i++) sporeInstanced.setMatrixAt(i, dummy);
+      this.group.add(sporeInstanced);
+    }
+
+    for (let groveIdx = 0; groveIdx < chosen.length; groveIdx++) {
+      const normal = chosen[groveIdx]!;
+      this.mushroomCenters.push({ normal: normal.clone() });
+      const groveGroup = new Group();
+      
+      const tangent = new Vector3(-normal.y, normal.x, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -normal.z, normal.y);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+
+      // 1. Ring of larger mushrooms
+      const numLarge = 6 + Math.floor(rand() * 3);
+      for (let i = 0; i < numLarge; i++) {
+        const angle = (i / numLarge) * Math.PI * 2 + rand() * 0.5;
+        const dist = 0.04 + rand() * 0.005;
+        const mNormal = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * dist)
+          .addScaledVector(bitangent, Math.sin(angle) * dist)
+          .normalize();
+
+        const displacement = surfaceDisplacementAt(this.seed, this.terrainType, mNormal.x, mNormal.y, mNormal.z);
+        const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+        const mPos = mNormal.clone().multiplyScalar(surfaceR);
+
+        const scale = 2.0 + rand() * 1.2;
+        const capColorIdx = Math.floor(rand() * capMats.length);
+
+        const stalk = new Mesh(stalkGeo, stalkMat);
+        stalk.scale.setScalar(scale);
+        stalk.position.copy(mPos);
+        stalk.quaternion.setFromUnitVectors(REF_UP, mNormal);
+        stalk.rotateX((rand() - 0.5) * 0.3);
+        stalk.rotateZ((rand() - 0.5) * 0.3);
+        stalk.rotateY(rand() * Math.PI * 2);
+        stalk.castShadow = true;
+        stalk.receiveShadow = true;
+        groveGroup.add(stalk);
+
+        const cap = new Mesh(capGeo, capMats[capColorIdx]);
+        cap.scale.setScalar(scale);
+        cap.position.copy(stalk.position);
+        cap.quaternion.copy(stalk.quaternion);
+        cap.castShadow = true;
+        cap.receiveShadow = true;
+        groveGroup.add(cap);
+      }
+
+      // 2. Scatter of smaller mushrooms
+      const numMushrooms = 15 + Math.floor(rand() * 10);
+      for (let i = 0; i < numMushrooms; i++) {
+        const angle = rand() * Math.PI * 2;
+        const dist = rand() * 0.035;
+        const mNormal = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * dist)
+          .addScaledVector(bitangent, Math.sin(angle) * dist)
+          .normalize();
+
+        const displacement = surfaceDisplacementAt(this.seed, this.terrainType, mNormal.x, mNormal.y, mNormal.z);
+        const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+        const mPos = mNormal.clone().multiplyScalar(surfaceR);
+
+        const scale = 0.5 + rand() * 1.2;
+        const capColorIdx = Math.floor(rand() * capMats.length);
+
+        const stalk = new Mesh(stalkGeo, stalkMat);
+        stalk.scale.setScalar(scale);
+        stalk.position.copy(mPos);
+        stalk.quaternion.setFromUnitVectors(REF_UP, mNormal);
+        stalk.rotateX((rand() - 0.5) * 0.4);
+        stalk.rotateZ((rand() - 0.5) * 0.4);
+        stalk.rotateY(rand() * Math.PI * 2);
+        stalk.castShadow = true;
+        stalk.receiveShadow = true;
+        groveGroup.add(stalk);
+
+        const cap = new Mesh(capGeo, capMats[capColorIdx]);
+        cap.scale.setScalar(scale);
+        cap.position.copy(stalk.position);
+        cap.quaternion.copy(stalk.quaternion);
+        cap.castShadow = true;
+        cap.receiveShadow = true;
+        groveGroup.add(cap);
+      }
+      
+      // 3. Spores
+      if (sporeInstanced && sporeOffsets && sporeCenters && sporeUps && sporeColors) {
+        for (let s = 0; s < STREAMS_PER_GROVE; s++) {
+          const angle = rand() * Math.PI * 2;
+          const dist = rand() * 0.03;
+          const streamNormal = normal.clone()
+            .addScaledVector(tangent, Math.cos(angle) * dist)
+            .addScaledVector(bitangent, Math.sin(angle) * dist)
+            .normalize();
+            
+          const streamPos = streamNormal.clone().multiplyScalar(this.radius + surfaceDisplacementAt(this.seed, this.terrainType, streamNormal.x, streamNormal.y, streamNormal.z));
+          
+          for (let j = 0; j < SPORES_PER_STREAM; j++) {
+            const idx = groveIdx * SPORES_PER_GROVE + s * SPORES_PER_STREAM + j;
+            sporeOffsets[idx] = rand();
+            sporeCenters[idx * 3 + 0] = streamPos.x;
+            sporeCenters[idx * 3 + 1] = streamPos.y;
+            sporeCenters[idx * 3 + 2] = streamPos.z;
+            sporeUps[idx * 3 + 0] = streamNormal.x;
+            sporeUps[idx * 3 + 1] = streamNormal.y;
+            sporeUps[idx * 3 + 2] = streamNormal.z;
+            
+            const colorHex = pastelColors[Math.floor(rand() * pastelColors.length)]!;
+            sporeColors[idx * 3 + 0] = ((colorHex >> 16) & 255) / 255;
+            sporeColors[idx * 3 + 1] = ((colorHex >> 8) & 255) / 255;
+            sporeColors[idx * 3 + 2] = (colorHex & 255) / 255;
+          }
+        }
+      }
+
+      this.group.add(groveGroup);
+    }
+    
+    if (sporeInstanced && sporeOffsets && sporeCenters && sporeUps && sporeColors) {
+      sporeInstanced.geometry.setAttribute('aOffset', new InstancedBufferAttribute(sporeOffsets, 1));
+      sporeInstanced.geometry.setAttribute('aCenter', new InstancedBufferAttribute(sporeCenters, 3));
+      sporeInstanced.geometry.setAttribute('aUp', new InstancedBufferAttribute(sporeUps, 3));
+      sporeInstanced.geometry.setAttribute('aColor', new InstancedBufferAttribute(sporeColors, 3));
+    }
   }
 
   private ensureShrineMaterials() {

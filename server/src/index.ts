@@ -98,17 +98,22 @@ io.on("connection", (socket) => {
 const SEED_WORLD_COUNT = 20;
 
 async function ensureWorldsSeeded() {
-  const total = await prisma.world.count();
-  const systemCount = await prisma.world.count({ where: { createdBy: "System" } });
+  const worlds = await prisma.world.findMany({
+    select: { name: true, createdBy: true },
+  });
+  const systemCount = worlds.filter((world) => world.createdBy === "System").length;
+  const missingCount = Math.max(0, SEED_WORLD_COUNT - systemCount);
 
-  if (systemCount >= SEED_WORLD_COUNT && total === systemCount) return;
+  if (missingCount === 0) return;
 
-  console.log(`Reseeding worlds (${total} total, ${systemCount} system — need exactly ${SEED_WORLD_COUNT})...`);
-  await prisma.world.deleteMany();
+  console.log(
+    `Seeding ${missingCount} missing system world(s) ` +
+    `(${worlds.length} total, ${systemCount} system)...`,
+  );
 
-  const usedNames = new Set<string>();
+  const usedNames = new Set(worlds.map((world) => world.name));
   const toCreate = [];
-  for (let i = 0; i < SEED_WORLD_COUNT; i++) {
+  for (let i = 0; i < missingCount; i++) {
     const name = generateUniqueWorldName(usedNames);
     usedNames.add(name);
     toCreate.push({
@@ -123,7 +128,7 @@ async function ensureWorldsSeeded() {
   }
 
   await prisma.world.createMany({ data: toCreate });
-  console.log(`Seeded ${toCreate.length} fresh world(s)`);
+  console.log(`Seeded ${toCreate.length} system world(s)`);
 }
 
 async function bootstrap() {
