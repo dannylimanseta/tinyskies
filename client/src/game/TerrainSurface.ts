@@ -3,8 +3,14 @@
  * Must match Globe mesh vertices and boat / prop placement.
  */
 import { MathUtils } from "three";
-import { createNoise3D, terrainNoise } from "./SimplexNoise";
-import { getTerrainParams } from "./TerrainPresets";
+import {
+  createNoise3D,
+  sampleTerrainValue,
+  terrainNoise,
+  terrainElevationFromValue,
+  terrainIsLand,
+  terrainWaterDepthFromValue,
+} from "./SimplexNoise";
 
 export const MOUNTAIN_HEIGHT = 0.52;
 
@@ -61,25 +67,9 @@ export function surfaceDisplacementAt(
   ny: number,
   nz: number,
 ): number {
-  const noise = noiseForSeed(seed);
   const ruggedNoise = noiseForSeed(seed + 9001);
-  const params = getTerrainParams(terrainType);
-  const value = terrainNoise(
-    noise,
-    nx,
-    ny,
-    nz,
-    params.octaves,
-    params.lacunarity,
-    params.persistence,
-    params.scale,
-  );
-  if (value > params.threshold) {
-    const elevation = (value - params.threshold) / (1 - params.threshold);
-    return landDisplacement(nx, ny, nz, elevation, ruggedNoise);
-  }
-  const depth = Math.min(1, (params.threshold - value) * 4);
-  return -OCEAN_DEPTH * depth;
+  const value = sampleTerrainValue(seed, terrainType, nx, ny, nz);
+  return surfaceDisplacementFromValue(seed, terrainType, nx, ny, nz, value, ruggedNoise);
 }
 
 /**
@@ -93,14 +83,13 @@ export function surfaceDisplacementFromValue(
   ny: number,
   nz: number,
   value: number,
+  ruggedNoise: ReturnType<typeof createNoise3D> = noiseForSeed(seed + 9001),
 ): number {
-  const ruggedNoise = noiseForSeed(seed + 9001);
-  const params = getTerrainParams(terrainType);
-  if (value > params.threshold) {
-    const elevation = (value - params.threshold) / (1 - params.threshold);
+  if (terrainIsLand(terrainType, value)) {
+    const elevation = terrainElevationFromValue(terrainType, value);
     return landDisplacement(nx, ny, nz, elevation, ruggedNoise);
   }
-  const depth = Math.min(1, (params.threshold - value) * 4);
+  const depth = terrainWaterDepthFromValue(terrainType, value);
   return -OCEAN_DEPTH * depth;
 }
 

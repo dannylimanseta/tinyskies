@@ -19,8 +19,7 @@ import {
   Vector2,
   Vector3,
 } from "three";
-import { createNoise3D, terrainNoise } from "./SimplexNoise";
-import { getTerrainParams } from "./TerrainPresets";
+import { createNoise3D, sampleTerrain, terrainNoise } from "./SimplexNoise";
 import {
   cartesianFromSpherical,
   tangentFrame,
@@ -410,8 +409,6 @@ export class Volcano {
     terrainType: string,
     volcanoIndex: number,
   ) {
-    const noise = createNoise3D(worldSeed);
-    const params = getTerrainParams(terrainType);
     const rand = this.seededRandom(worldSeed + volcanoIndex * 314159);
 
     let bestNormal: Vector3 | null = null;
@@ -424,12 +421,9 @@ export class Volcano {
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const sample = sampleTerrain(worldSeed, terrainType, nx, ny, nz);
+      if (!sample.isLand) continue;
+      const elevation = sample.elevation;
       if (elevation < 0.4) continue;
 
       if (elevation > bestElevation) {
@@ -438,6 +432,20 @@ export class Volcano {
       }
 
       if (bestElevation > 0.6) break;
+    }
+
+    if (!bestNormal) {
+      for (let k = 0; k < 128; k++) {
+        const y = 1 - (k / 127) * 2;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = k * 0.6180339887 * Math.PI * 2;
+        const nx = Math.cos(theta) * r;
+        const ny = y;
+        const nz = Math.sin(theta) * r;
+        if (!sampleTerrain(worldSeed, terrainType, nx, ny, nz).isLand) continue;
+        bestNormal = new Vector3(nx, ny, nz);
+        break;
+      }
     }
 
     if (!bestNormal) {

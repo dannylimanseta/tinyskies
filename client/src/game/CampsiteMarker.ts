@@ -20,8 +20,7 @@ import {
   SRGBColorSpace,
   Vector3,
 } from "three";
-import { createNoise3D, terrainNoise } from "./SimplexNoise";
-import { getTerrainParams } from "./TerrainPresets";
+import { sampleTerrain } from "./SimplexNoise";
 import {
   cartesianFromSpherical,
   quaternionFromSurfaceNormal,
@@ -209,7 +208,15 @@ interface SmokeWisp {
   baseScale: number;
 }
 
-const STORAGE_KEY = "globefly_campsite";
+interface StoredCampsiteLocation {
+  seed: number;
+  terrainType: string;
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
+const STORAGE_KEY = "globefly_campsite_v2";
 
 export class CampsiteMarker {
   readonly group = new Group();
@@ -391,24 +398,41 @@ export class CampsiteMarker {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        const data = JSON.parse(stored);
-        if (data.nx != null && data.ny != null && data.nz != null) {
-          return data;
+        const data = JSON.parse(stored) as Partial<StoredCampsiteLocation>;
+        if (
+          data.seed === worldSeed &&
+          data.terrainType === terrainType &&
+          typeof data.nx === "number" &&
+          typeof data.ny === "number" &&
+          typeof data.nz === "number" &&
+          this.isValidStoredLocation(worldSeed, terrainType, data.nx, data.ny, data.nz)
+        ) {
+          return { nx: data.nx, ny: data.ny, nz: data.nz };
         }
       } catch { /* regenerate */ }
     }
 
     const loc = this.findLandLocation(worldSeed, terrainType);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(loc));
+    const storedLoc: StoredCampsiteLocation = { seed: worldSeed, terrainType, ...loc };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(storedLoc));
     return loc;
+  }
+
+  private isValidStoredLocation(
+    worldSeed: number,
+    terrainType: string,
+    nx: number,
+    ny: number,
+    nz: number,
+  ): boolean {
+    const sample = sampleTerrain(worldSeed, terrainType, nx, ny, nz);
+    return sample.isLand && sample.elevation >= 0.15 && sample.elevation <= 0.5;
   }
 
   private findLandLocation(
     worldSeed: number,
     terrainType: string,
   ): { nx: number; ny: number; nz: number } {
-    const noise = createNoise3D(worldSeed);
-    const params = getTerrainParams(terrainType);
     const rand = seededRandom(worldSeed + 5551234);
 
     let bestNormal = { nx: 0, ny: 1, nz: 0 };
@@ -421,12 +445,9 @@ export class CampsiteMarker {
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const sample = sampleTerrain(worldSeed, terrainType, nx, ny, nz);
+      if (!sample.isLand) continue;
+      const elevation = sample.elevation;
       if (elevation < 0.15 || elevation > 0.5) continue;
 
       const score = 1.0 - Math.abs(elevation - 0.3);
@@ -435,6 +456,20 @@ export class CampsiteMarker {
         bestNormal = { nx, ny, nz };
       }
       if (bestScore > 0.8) break;
+    }
+
+    if (bestScore >= 0) return bestNormal;
+
+    for (let k = 0; k < 128; k++) {
+      const y = 1 - (k / 127) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = k * 0.6180339887 * Math.PI * 2;
+      const nx = Math.cos(theta) * r;
+      const ny = y;
+      const nz = Math.sin(theta) * r;
+      if (this.isValidStoredLocation(worldSeed, terrainType, nx, ny, nz)) {
+        return { nx, ny, nz };
+      }
     }
 
     return bestNormal;

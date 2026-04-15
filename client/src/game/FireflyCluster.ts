@@ -12,9 +12,11 @@ import {
 } from "three";
 import {
   cartesianFromSpherical,
+  quaternionFromSurfaceNormal,
   randomSpawnQuaternionAndHeading,
   tangentFrame,
 } from "./SphericalMath";
+import { isLand } from "./SimplexNoise";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
 export const FIREFLY_CLUSTER_COUNT = 6;
@@ -177,11 +179,25 @@ export class FireflyCluster {
     return n & 0xffffff;
   }
 
+  private setClusterLocation(qPosition: Quaternion, surfAlt: number) {
+    const frame = tangentFrame(qPosition);
+    this.qPosition.copy(qPosition);
+    this.up.copy(frame.up);
+    this.north.copy(frame.north);
+    this.east.copy(frame.east);
+    this.clusterCenter.copy(
+      cartesianFromSpherical(this.qPosition, surfAlt + HOVER_HEIGHT, this.globeRadius),
+    );
+  }
+
   private spawnOnLand(seed: number, index: number) {
     const MAX_ATTEMPTS = 20;
     for (let a = 0; a < MAX_ATTEMPTS; a++) {
       const spawn = randomSpawnQuaternionAndHeading(seed + index * 419430467 + a * 104729);
       const frame = tangentFrame(spawn.qPosition);
+      if (!isLand(this.seed, this.terrainType, frame.up.x, frame.up.y, frame.up.z)) {
+        continue;
+      }
       const surfAlt = surfaceAltitudeAt(
         this.seed,
         this.terrainType,
@@ -189,26 +205,35 @@ export class FireflyCluster {
         frame.up.y,
         frame.up.z,
       );
-      if (surfAlt > 0) {
-        this.qPosition.copy(spawn.qPosition);
-        this.up.copy(frame.up);
-        this.north.copy(frame.north);
-        this.east.copy(frame.east);
-        this.clusterCenter.copy(
-          cartesianFromSpherical(this.qPosition, surfAlt + HOVER_HEIGHT, this.globeRadius),
-        );
-        return;
-      }
+      this.setClusterLocation(spawn.qPosition, surfAlt);
+      return;
     }
+
+    for (let k = 0; k < 128; k++) {
+      const y = 1 - (k / 127) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = k * 0.6180339887 * Math.PI * 2;
+      const nx = Math.cos(theta) * r;
+      const ny = y;
+      const nz = Math.sin(theta) * r;
+      if (!isLand(this.seed, this.terrainType, nx, ny, nz)) continue;
+
+      const qPosition = quaternionFromSurfaceNormal(nx, ny, nz);
+      const surfAlt = surfaceAltitudeAt(this.seed, this.terrainType, nx, ny, nz);
+      this.setClusterLocation(qPosition, surfAlt);
+      return;
+    }
+
     const spawn = randomSpawnQuaternionAndHeading(seed + index * 419430467);
     const frame = tangentFrame(spawn.qPosition);
-    this.qPosition.copy(spawn.qPosition);
-    this.up.copy(frame.up);
-    this.north.copy(frame.north);
-    this.east.copy(frame.east);
-    this.clusterCenter.copy(
-      cartesianFromSpherical(this.qPosition, HOVER_HEIGHT, this.globeRadius),
+    const surfAlt = surfaceAltitudeAt(
+      this.seed,
+      this.terrainType,
+      frame.up.x,
+      frame.up.y,
+      frame.up.z,
     );
+    this.setClusterLocation(spawn.qPosition, surfAlt);
   }
 
   private respawn(seed: number, index: number) {

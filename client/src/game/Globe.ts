@@ -29,8 +29,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addRimLight } from "./RimLight";
 import { MOON_APPROACH_DIR } from "./MoonThreat";
-import { createNoise3D, terrainNoise, isLand } from "./SimplexNoise";
-import { getTerrainParams } from "./TerrainPresets";
+import { createNoise3D, sampleTerrain } from "./SimplexNoise";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
 
 const ATMOSPHERE_VERTEX = `
@@ -272,6 +271,35 @@ export class Globe {
     this.createAtmosphere();
   }
 
+  private sampleTerrainAt(nx: number, ny: number, nz: number) {
+    return sampleTerrain(this.seed, this.terrainType, nx, ny, nz);
+  }
+
+  private sampleTerrainForNormal(normal: Vector3) {
+    return this.sampleTerrainAt(normal.x, normal.y, normal.z);
+  }
+
+  private waterRatioAround(normal: Vector3, sampleDist: number, checks: number): number {
+    const tangent = new Vector3(-normal.y, normal.x, 0);
+    if (tangent.lengthSq() < 0.001) tangent.set(0, -normal.z, normal.y);
+    tangent.normalize();
+    const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+    let waterCount = 0;
+
+    for (let c = 0; c < checks; c++) {
+      const angle = (c / checks) * Math.PI * 2;
+      const cn = normal.clone()
+        .addScaledVector(tangent, Math.cos(angle) * sampleDist)
+        .addScaledVector(bitangent, Math.sin(angle) * sampleDist)
+        .normalize();
+      if (!this.sampleTerrainForNormal(cn).isLand) {
+        waterCount++;
+      }
+    }
+
+    return waterCount / checks;
+  }
+
   private createSurface() {
     const geo = new SphereGeometry(this.radius, this.segments, this.segments);
     const posAttr = geo.attributes.position;
@@ -279,9 +307,7 @@ export class Globe {
     const colors = new Float32Array(vertexCount * 3);
     const oceanDepth = new Float32Array(vertexCount);
 
-    const noise = createNoise3D(this.seed);
     const patchNoise = createNoise3D(this.seed + 555);
-    const params = getTerrainParams(this.terrainType);
 
     const landColors = [
       new Color(0x3a7d2a), new Color(0x4a8f3f),
@@ -307,16 +333,13 @@ export class Globe {
       const ny = y / len;
       const nz = z / len;
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
 
       let color: Color;
       let displacement = 0;
 
-      if (value > params.threshold) {
-        const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (terrain.isLand) {
+        const elevation = terrain.elevation;
 
         if (elevation > 0.7) {
           color = mountainColor.clone().lerp(snowColor, (elevation - 0.7) / 0.3);
@@ -341,15 +364,15 @@ export class Globe {
         }
 
         displacement = surfaceDisplacementFromValue(
-          this.seed, this.terrainType, nx, ny, nz, value,
+          this.seed, this.terrainType, nx, ny, nz, terrain.value,
         );
         oceanDepth[i] = -1;
       } else {
-        const depth = Math.min(1, (params.threshold - value) * 4);
+        const depth = terrain.waterDepth;
         color = oceanShallow.clone().lerp(oceanDeep, depth);
         oceanDepth[i] = depth;
         displacement = surfaceDisplacementFromValue(
-          this.seed, this.terrainType, nx, ny, nz, value,
+          this.seed, this.terrainType, nx, ny, nz, terrain.value,
         );
       }
 
@@ -522,9 +545,7 @@ gl_FragColor.rgb += rim;
 
   private createTrees() {
     const rand = seededRandom(42 + this.seed);
-    const noise = createNoise3D(this.seed);
     const forestNoise = createNoise3D(this.seed + 999);
-    const params = getTerrainParams(this.terrainType);
 
     const LAND_HEIGHT = 0.02;
 
@@ -547,13 +568,10 @@ gl_FragColor.rgb += rim;
       const ny = Math.sin(phi) * Math.sin(theta);
       const nz = Math.cos(phi);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
 
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const elevation = terrain.elevation;
       if (elevation > 0.6) continue;
 
       const forest = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
@@ -724,8 +742,6 @@ transformed.z += sway2;`,
 
   private createCoconutTrees() {
     const rand = seededRandom(300 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     const LAND_HEIGHT = 0.02;
     const MAX_ELEVATION = 0.10;
@@ -746,41 +762,14 @@ transformed.z += sway2;`,
       const ny = Math.sin(phi) * Math.sin(theta);
       const nz = Math.cos(phi);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
 
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const elevation = terrain.elevation;
       if (elevation > MAX_ELEVATION) continue;
 
       const centerNormal = new Vector3(nx, ny, nz);
-      let hasNearbyWater = false;
-
-      for (let c = 0; c < WATER_CHECKS; c++) {
-        const checkAngle = (c / WATER_CHECKS) * Math.PI * 2;
-        const tangent = new Vector3(-ny, nx, 0);
-        if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-        tangent.normalize();
-        const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
-
-        const cn = centerNormal.clone()
-          .addScaledVector(tangent, Math.cos(checkAngle) * WATER_CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(checkAngle) * WATER_CHECK_DIST)
-          .normalize();
-
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) {
-          hasNearbyWater = true;
-          break;
-        }
-      }
-
-      if (!hasNearbyWater) continue;
+      if (this.waterRatioAround(centerNormal, WATER_CHECK_DIST, WATER_CHECKS) <= 0) continue;
 
       const clusterCount = 4 + Math.floor(rand() * 5);
 
@@ -801,11 +790,7 @@ transformed.z += sway2;`,
             .normalize();
         }
 
-        const tv = terrainNoise(
-          noise, treeNormal.x, treeNormal.y, treeNormal.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (tv <= params.threshold) continue;
+        if (!this.sampleTerrainForNormal(treeNormal).isLand) continue;
 
         const displacement = surfaceDisplacementAt(
           this.seed,
@@ -958,8 +943,6 @@ transformed.z += sway2;`,
 
   private createRocks() {
     const rand = seededRandom(500 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     const LAND_HEIGHT = 0.02;
 
@@ -1000,13 +983,10 @@ transformed.z += sway2;`,
       const ny = Math.sin(phi) * Math.sin(theta);
       const nz = Math.cos(phi);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
 
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const elevation = terrain.elevation;
       if (elevation > 0.7) continue;
 
       const coastlineChance = elevation < 0.1 ? 0.9 : elevation < 0.25 ? 0.5 : 0.2;
@@ -1032,11 +1012,7 @@ transformed.z += sway2;`,
         }
 
         const rn = rockNormal;
-        const rv = terrainNoise(
-          noise, rn.x, rn.y, rn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (rv <= params.threshold) continue;
+        if (!this.sampleTerrainForNormal(rn).isLand) continue;
 
         const displacement = surfaceDisplacementAt(this.seed, this.terrainType, rn.x, rn.y, rn.z);
         const surfaceRadius = this.radius + displacement - PROP_TERRAIN_SINK;
@@ -1072,11 +1048,7 @@ transformed.z += sway2;`,
             .addScaledVector(bitangent, Math.sin(tAngle) * tDist)
             .normalize();
 
-          const tv = terrainNoise(
-            noise, treeNormal.x, treeNormal.y, treeNormal.z,
-            params.octaves, params.lacunarity, params.persistence, params.scale,
-          );
-          if (tv <= params.threshold) continue;
+          if (!this.sampleTerrainForNormal(treeNormal).isLand) continue;
 
           const tDisp = surfaceDisplacementAt(
             this.seed,
@@ -1377,8 +1349,6 @@ transformed.z += sway2;`,
 
   private createVillages() {
     const rand = seededRandom(200 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     const LAND_HEIGHT = 0.02;
     const MIN_ELEVATION = 0.08;
@@ -1394,13 +1364,10 @@ transformed.z += sway2;`,
       const ny = Math.sin(phi) * Math.sin(theta);
       const nz = Math.cos(phi);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
 
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const elevation = terrain.elevation;
       if (elevation < MIN_ELEVATION || elevation > 0.35) continue;
 
       const tooClose = villageCenters.some((v) => {
@@ -1440,13 +1407,10 @@ transformed.z += sway2;`,
         const ny = houseNormal.y;
         const nz = houseNormal.z;
 
-        const value = terrainNoise(
-          noise, nx, ny, nz,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (value <= params.threshold) continue;
+        const terrain = this.sampleTerrainAt(nx, ny, nz);
+        if (!terrain.isLand) continue;
 
-        const elevation = (value - params.threshold) / (1 - params.threshold);
+        const elevation = terrain.elevation;
         if (elevation < MIN_ELEVATION * 0.5) continue;
 
         const displacement = surfaceDisplacementAt(this.seed, this.terrainType, nx, ny, nz);
@@ -1476,11 +1440,7 @@ transformed.z += sway2;`,
             .addScaledVector(new Vector3().crossVectors(houseNormal, new Vector3(-houseNormal.y, houseNormal.x, 0).normalize()).normalize(), Math.sin(tAngle) * tDist)
             .normalize();
 
-          const tv = terrainNoise(
-            noise, treeNormal.x, treeNormal.y, treeNormal.z,
-            params.octaves, params.lacunarity, params.persistence, params.scale,
-          );
-          if (tv <= params.threshold) continue;
+          if (!this.sampleTerrainForNormal(treeNormal).isLand) continue;
           const treeDisplacement = surfaceDisplacementAt(
             this.seed,
             this.terrainType,
@@ -1738,8 +1698,6 @@ transformed.z += sway2;`,
 
   private createWindmills() {
     const rand = seededRandom(555 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
     const REF_UP = new Vector3(0, 1, 0);
 
     const CLUSTER_COUNT = 4;
@@ -1761,12 +1719,9 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation < 0.05 || elevation > 0.2) continue;
 
       const centerNormal = new Vector3(nx, ny, nz);
@@ -1780,26 +1735,7 @@ transformed.z += sway2;`,
       );
       if (tooCloseToLighthouse) continue;
 
-      const tangent = new Vector3(-ny, nx, 0);
-      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-      tangent.normalize();
-      const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
-      let waterCount = 0;
-
-      for (let c = 0; c < WATER_CHECKS; c++) {
-        const angle = (c / WATER_CHECKS) * Math.PI * 2;
-        const cn = centerNormal.clone()
-          .addScaledVector(tangent, Math.cos(angle) * CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(angle) * CHECK_DIST)
-          .normalize();
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) waterCount++;
-      }
-
-      const waterRatio = waterCount / WATER_CHECKS;
+      const waterRatio = this.waterRatioAround(centerNormal, CHECK_DIST, WATER_CHECKS);
       if (waterRatio < MIN_WATER_RATIO || waterRatio > MAX_WATER_RATIO) continue;
 
       candidates.push({ normal: centerNormal, score: 1 - elevation });
@@ -1836,11 +1772,7 @@ transformed.z += sway2;`,
             .addScaledVector(bitangent, Math.sin(a) * d)
             .normalize();
 
-          const v = terrainNoise(
-            noise, normal.x, normal.y, normal.z,
-            params.octaves, params.lacunarity, params.persistence, params.scale,
-          );
-          if (v <= params.threshold) continue;
+          if (!this.sampleTerrainForNormal(normal).isLand) continue;
         }
 
         this.windmillCenters.push({ normal: normal.clone() });
@@ -1890,8 +1822,6 @@ transformed.z += sway2;`,
     const MIN_SEPARATION_DOT = 0.90;
 
     const rand = seededRandom(4321 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     type Candidate = { normal: Vector3; elevation: number };
     const candidates: Candidate[] = [];
@@ -1905,12 +1835,9 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
 
       const normal = new Vector3(nx, ny, nz);
@@ -1963,8 +1890,6 @@ transformed.z += sway2;`,
     const MAX_WATER_RATIO = 0.10;   // at most 1 in 10 surrounding points can be water
 
     const rand = seededRandom(8888 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     type Candidate = { normal: Vector3; elevation: number };
     const candidates: Candidate[] = [];
@@ -1978,35 +1903,14 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
 
       const normal = new Vector3(nx, ny, nz);
 
-      // Inland check: sample a ring of points around the candidate.
-      const tangent = new Vector3(-ny, nx, 0);
-      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-      tangent.normalize();
-      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
-      let waterCount = 0;
-      for (let c = 0; c < INLAND_CHECKS; c++) {
-        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
-        const cn = normal.clone()
-          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
-          .normalize();
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) waterCount++;
-      }
-      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
 
       // Keep away from all other landmarks.
       if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
@@ -2051,8 +1955,6 @@ transformed.z += sway2;`,
   /** Std-dev of normalized land elevation on a small ring — lower = flatter ground. */
   private terrainRingElevationRoughness(
     normal: Vector3,
-    noise: ReturnType<typeof createNoise3D>,
-    params: ReturnType<typeof getTerrainParams>,
     ringDist: number,
   ): number {
     const ref = Math.abs(normal.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
@@ -2065,12 +1967,9 @@ transformed.z += sway2;`,
         .addScaledVector(tang, Math.cos(a) * ringDist)
         .addScaledVector(bitang, Math.sin(a) * ringDist)
         .normalize();
-      const v = terrainNoise(
-        noise, cn.x, cn.y, cn.z,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (v <= params.threshold) return 999;
-      values.push((v - params.threshold) / (1 - params.threshold));
+      const sample = this.sampleTerrainForNormal(cn);
+      if (!sample.isLand) return 999;
+      values.push(sample.elevation);
     }
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     return Math.sqrt(values.reduce((s, x) => s + (x - mean) ** 2, 0) / values.length);
@@ -2088,9 +1987,7 @@ transformed.z += sway2;`,
     const MAX_ROUGHNESS = 0.055;
 
     const rand = seededRandom(7777 + this.seed);
-    const noise = createNoise3D(this.seed);
     const forestNoise = createNoise3D(this.seed + 999);
-    const params = getTerrainParams(this.terrainType);
 
     type Candidate = { normal: Vector3; elevation: number };
     const candidates: Candidate[] = [];
@@ -2104,12 +2001,9 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
 
       const forest = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
@@ -2117,26 +2011,9 @@ transformed.z += sway2;`,
 
       const normal = new Vector3(nx, ny, nz);
 
-      const tangent = new Vector3(-ny, nx, 0);
-      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-      tangent.normalize();
-      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
-      let waterCount = 0;
-      for (let c = 0; c < INLAND_CHECKS; c++) {
-        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
-        const cn = normal.clone()
-          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
-          .normalize();
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) waterCount++;
-      }
-      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
 
-      const rough = this.terrainRingElevationRoughness(normal, noise, params, ROUGH_RING_DIST);
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
       if (rough > MAX_ROUGHNESS) continue;
 
       if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
@@ -2292,8 +2169,6 @@ transformed.z += sway2;`,
     const MAX_ROUGHNESS = 0.26;
 
     const rand = seededRandom(16161 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     type Candidate = { normal: Vector3; elevation: number };
     const candidates: Candidate[] = [];
@@ -2307,36 +2182,16 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
 
       const normal = new Vector3(nx, ny, nz);
 
-      const tangent = new Vector3(-ny, nx, 0);
-      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-      tangent.normalize();
-      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
-      let waterCount = 0;
-      for (let c = 0; c < INLAND_CHECKS; c++) {
-        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
-        const cn = normal.clone()
-          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
-          .normalize();
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) waterCount++;
-      }
-      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
 
-      const rough = this.terrainRingElevationRoughness(normal, noise, params, ROUGH_RING_DIST);
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
       if (rough > MAX_ROUGHNESS) continue;
 
       if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
@@ -2528,8 +2383,6 @@ transformed.z += sway2;`,
     const MAX_ROUGHNESS = 0.26;
 
     const rand = seededRandom(445566 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     type Candidate = { normal: Vector3; elevation: number };
     const candidates: Candidate[] = [];
@@ -2543,36 +2396,16 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
 
       const normal = new Vector3(nx, ny, nz);
 
-      const tangent = new Vector3(-ny, nx, 0);
-      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-      tangent.normalize();
-      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
-      let waterCount = 0;
-      for (let c = 0; c < INLAND_CHECKS; c++) {
-        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
-        const cn = normal.clone()
-          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
-          .normalize();
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) waterCount++;
-      }
-      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
 
-      const rough = this.terrainRingElevationRoughness(normal, noise, params, ROUGH_RING_DIST);
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
       if (rough > MAX_ROUGHNESS) continue;
 
       if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
@@ -3096,8 +2929,6 @@ transformed.z += sway2;`,
   private createFloatingTreeClusters() {
     const rand        = seededRandom(888 + this.seed);
     const forestNoise = createNoise3D(this.seed + 999);
-    const terrainNd   = createNoise3D(this.seed);
-    const params      = getTerrainParams(this.terrainType);
     const shades      = [0x4a9a3a, 0x55a545, 0x48953a, 0x8aaa35, 0xb59a30];
     const shadeColors = shades.map((h) => new Color(h));
     const C           = Globe.FT_CLUSTERS;
@@ -3164,9 +2995,7 @@ transformed.z += sway2;`,
       const n  = new Vector3(nx, ny, nz);
 
       // Must be on land.
-      const tv = terrainNoise(terrainNd, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale);
-      if (tv <= params.threshold) continue;
+      if (!this.sampleTerrainAt(nx, ny, nz).isLand) continue;
 
       // Forest density check.
       const fv = forestNoise(nx * 2.5, ny * 2.5, nz * 2.5);
@@ -4057,8 +3886,6 @@ transformed.z += sway2;`,
     const MIN_SEPARATION_DOT = 0.92;
 
     const rand = seededRandom(777 + this.seed);
-    const noise = createNoise3D(this.seed);
-    const params = getTerrainParams(this.terrainType);
 
     type Candidate = { normal: Vector3; waterRatio: number };
     const candidates: Candidate[] = [];
@@ -4072,35 +3899,13 @@ transformed.z += sway2;`,
       const ny = Math.cos(phi);
       const nz = Math.sin(phi) * Math.sin(theta);
 
-      const value = terrainNoise(
-        noise, nx, ny, nz,
-        params.octaves, params.lacunarity, params.persistence, params.scale,
-      );
-      if (value <= params.threshold) continue;
-      const elevation = (value - params.threshold) / (1 - params.threshold);
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
       if (elevation > 0.15) continue;
 
       const centerNormal = new Vector3(nx, ny, nz);
-      let waterCount = 0;
-      const tangent = new Vector3(-ny, nx, 0);
-      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
-      tangent.normalize();
-      const bitangent = new Vector3().crossVectors(centerNormal, tangent).normalize();
-
-      for (let c = 0; c < WATER_CHECKS; c++) {
-        const angle = (c / WATER_CHECKS) * Math.PI * 2;
-        const cn = centerNormal.clone()
-          .addScaledVector(tangent, Math.cos(angle) * CHECK_DIST)
-          .addScaledVector(bitangent, Math.sin(angle) * CHECK_DIST)
-          .normalize();
-        const cv = terrainNoise(
-          noise, cn.x, cn.y, cn.z,
-          params.octaves, params.lacunarity, params.persistence, params.scale,
-        );
-        if (cv <= params.threshold) waterCount++;
-      }
-
-      const waterRatio = waterCount / WATER_CHECKS;
+      const waterRatio = this.waterRatioAround(centerNormal, CHECK_DIST, WATER_CHECKS);
       if (waterRatio < MIN_WATER_RATIO) continue;
 
       const tooCloseToVillage = this.villageCenters.some(

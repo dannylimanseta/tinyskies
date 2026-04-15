@@ -5,7 +5,8 @@ const STORAGE_KEY = "globefly_vehicle_progress";
 const NAME_KEY = "globefly_player_name";
 const UNLOCK_ACK_KEY = "globefly_unlocks_ack";
 /** Campsite bookmark; cleared with `clearAll` for a full local reset. */
-const CAMPSITE_KEY = "globefly_campsite";
+const CAMPSITE_KEY = "globefly_campsite_v2";
+const LEGACY_CAMPSITE_KEY = "globefly_campsite";
 
 /** Carpet unlocks when any vehicle has reached at least this level. */
 export const UNLOCK_CARPET_MIN_MAX_LEVEL = 2;
@@ -202,6 +203,7 @@ export class ProgressionManager {
       localStorage.removeItem(NAME_KEY);
       localStorage.removeItem(UNLOCK_ACK_KEY);
       localStorage.removeItem(CAMPSITE_KEY);
+      localStorage.removeItem(LEGACY_CAMPSITE_KEY);
     } catch {}
   }
 

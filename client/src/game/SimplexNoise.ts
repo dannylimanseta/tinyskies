@@ -124,30 +124,219 @@ export function terrainNoise(
   return value / maxAmplitude;
 }
 
-import { getTerrainParams } from "./TerrainPresets";
+import { getTerrainParams, type TerrainParams } from "./TerrainPresets";
 
-let cachedSeed: number | null = null;
-let cachedType: string | null = null;
-let cachedNoise: Noise3DFn | null = null;
+interface TerrainVector {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface TerrainFieldValue {
+  params: TerrainParams;
+  rawValue: number;
+  value: number;
+}
+
+export interface TerrainSample {
+  rawValue: number;
+  value: number;
+  isLand: boolean;
+  elevation: number;
+  waterDepth: number;
+}
+
+const terrainNoiseBySeed = new Map<number, Noise3DFn>();
+const backboneAxesBySeed = new Map<number, readonly TerrainVector[]>();
+
+function cachedNoise3D(seed: number): Noise3DFn {
+  let noise = terrainNoiseBySeed.get(seed);
+  if (!noise) {
+    noise = createNoise3D(seed);
+    terrainNoiseBySeed.set(seed, noise);
+  }
+  return noise;
+}
+
+function seededRandom(seed: number): () => number {
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 0x100000000;
+  };
+}
+
+function smoothstep(min: number, max: number, x: number): number {
+  if (x <= min) return 0;
+  if (x >= max) return 1;
+  const t = (x - min) / (max - min);
+  return t * t * (3 - 2 * t);
+}
+
+function dotVector(ax: number, ay: number, az: number, b: TerrainVector): number {
+  return ax * b.x + ay * b.y + az * b.z;
+}
+
+function crossVector(a: TerrainVector, b: TerrainVector): TerrainVector {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function normalizeVector(v: TerrainVector): TerrainVector {
+  const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1;
+  return {
+    x: v.x / len,
+    y: v.y / len,
+    z: v.z / len,
+  };
+}
+
+function randomUnitVector(rand: () => number): TerrainVector {
+  const z = rand() * 2 - 1;
+  const theta = rand() * Math.PI * 2;
+  const r = Math.sqrt(Math.max(0, 1 - z * z));
+  return {
+    x: Math.cos(theta) * r,
+    y: z,
+    z: Math.sin(theta) * r,
+  };
+}
+
+function backboneAxesForSeed(seed: number): readonly TerrainVector[] {
+  let axes = backboneAxesBySeed.get(seed);
+  if (axes) return axes;
+
+  const rand = seededRandom((seed ^ 0x9e3779b9) >>> 0);
+  const axisA = randomUnitVector(rand);
+  let helper = randomUnitVector(rand);
+  if (Math.abs(dotVector(axisA.x, axisA.y, axisA.z, helper)) > 0.92) {
+    helper = Math.abs(axisA.y) < 0.9
+      ? { x: 0, y: 1, z: 0 }
+      : { x: 1, y: 0, z: 0 };
+  }
+
+  let axisPerp = crossVector(axisA, helper);
+  if (axisPerp.x === 0 && axisPerp.y === 0 && axisPerp.z === 0) {
+    axisPerp = crossVector(axisA, { x: 0, y: 1, z: 0 });
+  }
+  axisPerp = normalizeVector(axisPerp);
+
+  const spread = 0.95 + rand() * 0.45;
+  const spreadSin = Math.sin(spread);
+  const spreadCos = Math.cos(spread);
+  const axisB = normalizeVector({
+    x: axisA.x * spreadCos + axisPerp.x * spreadSin,
+    y: axisA.y * spreadCos + axisPerp.y * spreadSin,
+    z: axisA.z * spreadCos + axisPerp.z * spreadSin,
+  });
+  const axisC = normalizeVector({
+    x: axisA.x * spreadCos - axisPerp.x * spreadSin,
+    y: axisA.y * spreadCos - axisPerp.y * spreadSin,
+    z: axisA.z * spreadCos - axisPerp.z * spreadSin,
+  });
+
+  axes = [axisA, axisB, axisC];
+  backboneAxesBySeed.set(seed, axes);
+  return axes;
+}
+
+function oceanBackboneMask(
+  seed: number,
+  params: TerrainParams,
+  nx: number,
+  ny: number,
+  nz: number,
+): number {
+  if (params.oceanBackboneStrength <= 0 || params.oceanBackboneWidth <= 0) {
+    return 0;
+  }
+
+  const innerWidth = params.oceanBackboneWidth;
+  const outerWidth = innerWidth * 1.9;
+  let mask = 0;
+  for (const axis of backboneAxesForSeed(seed)) {
+    const dist = Math.abs(dotVector(nx, ny, nz, axis));
+    const band = 1 - smoothstep(innerWidth, outerWidth, dist);
+    if (band > mask) mask = band;
+  }
+  return mask;
+}
+
+function sampleTerrainFieldValue(
+  seed: number,
+  terrainType: string,
+  nx: number,
+  ny: number,
+  nz: number,
+): TerrainFieldValue {
+  const params = getTerrainParams(terrainType);
+  const rawValue = terrainNoise(
+    cachedNoise3D(seed),
+    nx,
+    ny,
+    nz,
+    params.octaves,
+    params.lacunarity,
+    params.persistence,
+    params.scale,
+  );
+  const value = rawValue - oceanBackboneMask(seed, params, nx, ny, nz) * params.oceanBackboneStrength;
+  return { params, rawValue, value };
+}
+
+export function terrainIsLand(terrainType: string, value: number): boolean {
+  return value > getTerrainParams(terrainType).threshold;
+}
+
+export function terrainElevationFromValue(terrainType: string, value: number): number {
+  const params = getTerrainParams(terrainType);
+  if (value <= params.threshold) return 0;
+  return (value - params.threshold) / (1 - params.threshold);
+}
+
+export function terrainWaterDepthFromValue(terrainType: string, value: number): number {
+  const params = getTerrainParams(terrainType);
+  if (value > params.threshold) return 0;
+  return Math.min(1, (params.threshold - value) * 4);
+}
+
+export function sampleTerrainValue(
+  seed: number,
+  terrainType: string,
+  nx: number,
+  ny: number,
+  nz: number,
+): number {
+  return sampleTerrainFieldValue(seed, terrainType, nx, ny, nz).value;
+}
+
+export function sampleTerrain(
+  seed: number,
+  terrainType: string,
+  nx: number,
+  ny: number,
+  nz: number,
+): TerrainSample {
+  const sampled = sampleTerrainFieldValue(seed, terrainType, nx, ny, nz);
+  return {
+    rawValue: sampled.rawValue,
+    value: sampled.value,
+    isLand: sampled.value > sampled.params.threshold,
+    elevation: terrainElevationFromValue(terrainType, sampled.value),
+    waterDepth: terrainWaterDepthFromValue(terrainType, sampled.value),
+  };
+}
 
 /**
  * Reusable helper: returns true if the point on the unit sphere is land.
- * Caches the noise function for repeated calls with the same seed/type.
  */
 export function isLand(
   seed: number,
   terrainType: string,
   nx: number, ny: number, nz: number,
 ): boolean {
-  if (cachedSeed !== seed || cachedType !== terrainType) {
-    cachedNoise = createNoise3D(seed);
-    cachedSeed = seed;
-    cachedType = terrainType;
-  }
-  const params = getTerrainParams(terrainType);
-  const value = terrainNoise(
-    cachedNoise!, nx, ny, nz,
-    params.octaves, params.lacunarity, params.persistence, params.scale,
-  );
-  return value > params.threshold;
+  return terrainIsLand(terrainType, sampleTerrainValue(seed, terrainType, nx, ny, nz));
 }
