@@ -70,7 +70,7 @@ export const PAINTBALL_COOLDOWN_MS = 500;
 /** Projectile travel speed in world units per second. */
 export const PAINTBALL_SPEED = 7;
 /** Max travel distance = globeRadius * this factor. */
-export const PAINTBALL_RANGE_FACTOR = 0.72;
+export const PAINTBALL_RANGE_FACTOR = 1.0;
 /**
  * Hit test: max distance from shot ray to the **victim’s globe position point** (not full mesh).
  * Wider than a true hull but much smaller than 0.22 — tune feel vs. “free” hits.
