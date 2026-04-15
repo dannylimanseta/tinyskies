@@ -18,6 +18,7 @@ import {
   TextureLoader,
   Vector3,
   Color,
+  Line3,
   type Mesh as MeshT,
 } from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
@@ -500,8 +501,14 @@ export class PaintballSystem {
     const now = performance.now();
     const fadeMs = SPLATTER_LIFETIME_SEC * 1000;
 
+    const _line = new Line3();
+    const _closest = new Vector3();
+    const _bPos = new Vector3();
+
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
+      const oldPos = p.mesh.position.clone();
+      
       const step = p.speed * dt;
       p.traveled += step;
       const theta = p.traveled / p.r0;
@@ -511,13 +518,16 @@ export class PaintballSystem {
         .multiplyScalar(r * Math.cos(theta))
         .addScaledVector(p.wHat, r * Math.sin(theta));
 
+      const newPos = p.mesh.position;
+      _line.start.copy(oldPos);
+      _line.end.copy(newPos);
+
       const tr = p.traveled / p.maxRange;
       const fade = Math.max(0, 1 - Math.pow(Math.min(1, tr), 1.15));
       p.mat.uniforms.uOpacity!.value = fade;
 
       let hitBalloon = false;
       if (this.globe) {
-        const _bPos = new Vector3();
         for (let bIdx = 0; bIdx < this.globe.balloonCount; bIdx++) {
           const b = this.globe.balloons[bIdx];
           if (b) {
@@ -529,7 +539,12 @@ export class PaintballSystem {
             const radius = 0.15 * b.inner.scale.y;
             const hitDistSq = (radius * 1.2) * (radius * 1.2); // slightly larger hit box
             
-            if (p.mesh.position.distanceToSquared(_bPos) < hitDistSq) {
+            _line.closestPointToPoint(_bPos, true, _closest);
+            
+            if (_closest.distanceToSquared(_bPos) < hitDistSq) {
+              // Move the projectile to the exact hit point for the splash effect
+              p.mesh.position.copy(_closest);
+              
               this.globe.hitBalloon(bIdx);
               // Add splatter decal to balloon
               const balloonInner = b.inner;
