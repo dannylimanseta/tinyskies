@@ -102,6 +102,7 @@ type Projectile = {
   mat: ShaderMaterial;
   maxRange: number;
   speed: number;
+  color: number;
 };
 
 type SplatterFade = {
@@ -181,7 +182,8 @@ function collectDecalTargetMeshes(root: Object3D): MeshT[] {
   root.traverse((obj) => {
     const m = obj as MeshT;
     if (!m.isMesh || !m.geometry) return;
-    if ((m.userData as { paintSplatterSurface?: boolean }).paintSplatterSurface !== true) return;
+    // Allow balloons to be painted as well
+    if ((m.userData as { paintSplatterSurface?: boolean }).paintSplatterSurface !== true && !m.name.includes("balloon")) return;
     if (!isVisibleInHierarchy(m)) return;
     const g = m.geometry as BufferGeometry;
     if (!g.attributes?.position || g.attributes.position.count < 3) return;
@@ -214,6 +216,7 @@ export class PaintballSystem {
     private onPaintballShoot?: () => void,
     /** One-shot when a paintball hits a plane. `distant` = true when our shot hit someone else. */
     private onPaintballImpact?: (splatSeed: number, distant: boolean) => void,
+    private globe?: import("./Globe").Globe,
   ) {
     const loader = new TextureLoader();
     loader.load(
@@ -322,6 +325,7 @@ export class PaintballSystem {
       mat,
       maxRange,
       speed: ev.speed,
+      color: ev.color,
     });
     return true;
   }
@@ -511,7 +515,45 @@ export class PaintballSystem {
       const fade = Math.max(0, 1 - Math.pow(Math.min(1, tr), 1.15));
       p.mat.uniforms.uOpacity!.value = fade;
 
-      if (p.traveled >= p.maxRange || fade <= 0.02) {
+      let hitBalloon = false;
+      if (this.globe) {
+        const _bPos = new Vector3();
+        for (let bIdx = 0; bIdx < this.globe.balloonCount; bIdx++) {
+          if (this.globe.getBalloonWorldPosition(bIdx, _bPos)) {
+            // Balloon radius is roughly 0.08 in world space based on scaling
+            if (p.mesh.position.distanceToSquared(_bPos) < 0.015) {
+              this.globe.hitBalloon(bIdx);
+              // Add splatter decal to balloon
+              const balloonInner = this.globe.balloons[bIdx]?.inner;
+              if (balloonInner) {
+                const splatSeed = (Math.random() * 0xffffffff) >>> 0;
+                let splatWorld = this.addSplatterDecal(balloonInner, p.color, splatSeed);
+                if (!splatWorld) {
+                  balloonInner.updateMatrixWorld(true);
+                  splatWorld = balloonInner.getWorldPosition(new Vector3());
+                }
+                this.splashPool.play(
+                  this.scene,
+                  splatWorld,
+                  decalTintColor(p.color).getHex(),
+                  splatSeed,
+                );
+                // Play impact sound locally if we shot it
+                const myId = this.getSocketId() ?? "local";
+                if (p.shooterId === myId) {
+                  this.onPaintballImpact?.(splatSeed, false);
+                } else {
+                  this.onPaintballImpact?.(splatSeed, true);
+                }
+              }
+              hitBalloon = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (hitBalloon || p.traveled >= p.maxRange || fade <= 0.02) {
         this.disposeProjectile(p, i);
       }
     }

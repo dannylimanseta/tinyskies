@@ -122,7 +122,7 @@ export class Globe {
   readonly lighthouseCenters: { normal: Vector3 }[] = [];
   private lighthouseBeams: Mesh[] = [];
   private lighthouseBeamTime = 0;
-  private balloons: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number }[] = [];
+  readonly balloons: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; wobbleAmp: number; wobblePhase: number; wobbleBank: number; }[] = [];
   /** Number of hot-air balloons (for proximity greeting logic). */
   readonly balloonCount = BALLOON_COUNT;
   private balloonTime = 0;
@@ -3705,6 +3705,9 @@ transformed.z += sway2;`,
         normal: normal.clone(),
         baseAlt,
         phase: rand() * Math.PI * 2,
+        wobbleAmp: 0,
+        wobblePhase: 0,
+        wobbleBank: 0,
       });
     }
   }
@@ -4169,7 +4172,24 @@ transformed.z += sway2;`,
       const alt = b.baseAlt + bob;
       b.pivot.position.copy(b.normal).multiplyScalar(alt);
       b.inner.rotation.y += dt * 0.05;
+      
+      if (b.wobbleAmp > 0.002) {
+        b.wobblePhase += dt * 15;
+        b.wobbleBank = Math.sin(b.wobblePhase) * b.wobbleAmp;
+        b.wobbleAmp *= Math.exp(-3.5 * dt);
+      } else {
+        b.wobbleAmp = 0;
+        b.wobbleBank = 0;
+      }
+      b.inner.rotation.z = b.wobbleBank;
     }
+  }
+
+  hitBalloon(index: number) {
+    const b = this.balloons[index];
+    if (!b) return;
+    b.wobbleAmp = 0.35;
+    b.wobblePhase = 0;
   }
 
   /** World-space point near the basket (for distance checks). */

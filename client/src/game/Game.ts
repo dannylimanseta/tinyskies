@@ -728,6 +728,7 @@ export class Game {
           this.audioManager.playSFX(id, distant ? 0.35 : 0.88);
         }
       },
+      this.globe
     );
 
     this.speedLines = new SpeedLines();
