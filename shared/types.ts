@@ -61,6 +61,8 @@ export interface BrazierLitEvent {
 /** Tells each client to pause its local moon approach for `remainingMs`. */
 export interface BrazierMoonPausePayload {
   remainingMs: number;
+  /** False when syncing an already-active pause to a newly joined client. */
+  announce?: boolean;
 }
 
 /** ms between paintball shots (client UX + server authority). */

@@ -204,6 +204,7 @@ export class Room {
     const syncPayload = this.getBrazierSyncPayload();
     const moonPausePayload: BrazierMoonPausePayload = {
       remainingMs: BRAZIER_MOON_PAUSE_MS,
+      announce: true,
     };
 
     for (const [, p] of this.players) {
