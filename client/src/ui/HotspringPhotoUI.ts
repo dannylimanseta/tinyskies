@@ -1,6 +1,6 @@
 import { CircularProgressRing } from "./CircularProgressRing";
 
-const SELFIE_URL = "/2D/capybara_hotspring.jpg";
+const DEFAULT_SELFIE_URL = "/2D/capybara_hotspring.jpg";
 const STARBURST_URL = "/2D/starburst.png";
 const STYLE_ID = "hotspring-selfie-overlay-styles";
 
@@ -126,7 +126,7 @@ export class HotspringPhotoUI {
   /**
    * Full-screen selfie card; auto-dismisses after a short beat + slide/fade.
    */
-  showSelfie() {
+  showSelfie(imageUrl: string = DEFAULT_SELFIE_URL, alt = "Selfie") {
     if (this.overlayEl) return;
 
     const overlay = document.createElement("div");
@@ -145,8 +145,8 @@ export class HotspringPhotoUI {
 
     const img = document.createElement("img");
     img.className = "hotspring-selfie-img";
-    img.src = SELFIE_URL;
-    img.alt = "Hot spring selfie";
+    img.src = imageUrl;
+    img.alt = alt;
     img.decoding = "async";
 
     stack.appendChild(star);

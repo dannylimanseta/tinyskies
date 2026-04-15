@@ -1,25 +1,26 @@
-const STORAGE_KEY = "globefly_carpet_hotspring_selfies_v1";
+const HOTSPRING_STORAGE_KEY = "globefly_carpet_hotspring_selfies_v1";
+const SHRINE_STORAGE_KEY = "globefly_carpet_shrine_selfies_v1";
 
-type Store = Record<string, boolean[]>;
+type BoolArrayStore = Record<string, boolean[]>;
 
-function loadStore(): Store {
+function loadKeyedStore(key: string): BoolArrayStore {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Store;
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw) as BoolArrayStore;
   } catch { /* ignore */ }
   return {};
 }
 
-function saveStore(data: Store) {
+function saveKeyedStore(storageKey: string, data: BoolArrayStore) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(storageKey, JSON.stringify(data));
   } catch { /* ignore */ }
 }
 
 /** Per-world seed: which hotspring indices already granted the selfie XP (carpet only). */
 export function loadHotspringSelfieFlags(worldSeed: number, count: number): boolean[] {
   const key = String(worldSeed);
-  const all = loadStore();
+  const all = loadKeyedStore(HOTSPRING_STORAGE_KEY);
   const arr = all[key];
   if (!arr || arr.length !== count) return new Array(count).fill(false);
   return arr.map(Boolean);
@@ -27,10 +28,29 @@ export function loadHotspringSelfieFlags(worldSeed: number, count: number): bool
 
 export function markHotspringSelfieTaken(worldSeed: number, index: number, count: number) {
   const key = String(worldSeed);
-  const all = loadStore();
+  const all = loadKeyedStore(HOTSPRING_STORAGE_KEY);
   const prev = all[key];
   const next = prev && prev.length === count ? [...prev] : new Array(count).fill(false);
   next[index] = true;
   all[key] = next;
-  saveStore(all);
+  saveKeyedStore(HOTSPRING_STORAGE_KEY, all);
+}
+
+/** Per-world seed: which shrine indices already granted the selfie XP (carpet only). */
+export function loadShrineSelfieFlags(worldSeed: number, count: number): boolean[] {
+  const key = String(worldSeed);
+  const all = loadKeyedStore(SHRINE_STORAGE_KEY);
+  const arr = all[key];
+  if (!arr || arr.length !== count) return new Array(count).fill(false);
+  return arr.map(Boolean);
+}
+
+export function markShrineSelfieTaken(worldSeed: number, index: number, count: number) {
+  const key = String(worldSeed);
+  const all = loadKeyedStore(SHRINE_STORAGE_KEY);
+  const prev = all[key];
+  const next = prev && prev.length === count ? [...prev] : new Array(count).fill(false);
+  next[index] = true;
+  all[key] = next;
+  saveKeyedStore(SHRINE_STORAGE_KEY, all);
 }

@@ -77,10 +77,12 @@ import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
 import { LevelUpCards } from "../ui/LevelUpCards";
 import { ProgressionManager } from "./ProgressionManager";
-import { HotspringPhotoQuest, HOTSPRING_SELFIE_XP } from "./HotspringPhotoQuest";
+import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import {
   loadHotspringSelfieFlags,
   markHotspringSelfieTaken,
+  loadShrineSelfieFlags,
+  markShrineSelfieTaken,
 } from "./HotspringPhotoPersistence";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 
@@ -91,8 +93,8 @@ import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
  */
 const _farQ = new Quaternion();
 const _moonCollisionScratch = new Vector3();
-const _hotspringRefUp = new Vector3(0, 1, 0);
-const _hotspringPlayerNormal = new Vector3();
+const _carpetSelfieRefUp = new Vector3(0, 1, 0);
+const _carpetSelfiePlayerNormal = new Vector3();
 const BALLOON_GREET_DIST = 1.2;
 const BALLOON_GREET_EXIT_DIST = 1.75;
 /** Seconds before the same balloon can greet again after you leave. */
@@ -217,8 +219,8 @@ export class Game {
   private landmarkDetector!: LandmarkDetector;
   private packageQuest: PackageQuestManager | null = null;
   private packageQuestHUD!: PackageQuestHUD;
-  private hotspringPhotoQuest: HotspringPhotoQuest | null = null;
-  private hotspringPhotoUI: HotspringPhotoUI | null = null;
+  private carpetLandmarkSelfieQuest: CarpetLandmarkSelfieQuest | null = null;
+  private carpetSelfiePhotoUI: HotspringPhotoUI | null = null;
   private birdFlocks: BirdFlock[] = [];
   private rainbowArches: RainbowArch[] = [];
   private lanternClusters: FloatingLanterns[] = [];
@@ -938,20 +940,33 @@ export class Game {
     }
 
     const hotspringN = this.globe.hotspringCenters.length;
-    if (hotspringN > 0) {
+    const shrineN = this.globe.shrineCenters.length;
+    if (hotspringN + shrineN > 0) {
       const hsSaved = loadHotspringSelfieFlags(seed, hotspringN);
+      const shrineSaved = loadShrineSelfieFlags(seed, shrineN);
       const hsNormals = this.globe.hotspringCenters.map((h) => h.normal.clone().normalize());
-      this.hotspringPhotoUI = new HotspringPhotoUI(this.hud.root);
-      this.hotspringPhotoQuest = new HotspringPhotoQuest(hsNormals, hsSaved);
-      this.hotspringPhotoQuest.onProgressChange = (p) => {
-        this.hotspringPhotoUI?.setProgress(p);
+      const shrineNormals = this.globe.shrineCenters.map((h) => h.normal.clone().normalize());
+      this.carpetSelfiePhotoUI = new HotspringPhotoUI(this.hud.root);
+      this.carpetLandmarkSelfieQuest = new CarpetLandmarkSelfieQuest(
+        hsNormals,
+        hsSaved,
+        shrineNormals,
+        shrineSaved,
+      );
+      this.carpetLandmarkSelfieQuest.onProgressChange = (p) => {
+        this.carpetSelfiePhotoUI?.setProgress(p);
       };
-      this.hotspringPhotoQuest.onPhotoTaken = (hotspringIndex) => {
-        markHotspringSelfieTaken(seed, hotspringIndex, hotspringN);
-        this.hotspringPhotoUI?.showSelfie();
+      this.carpetLandmarkSelfieQuest.onPhotoTaken = (payload) => {
+        if (payload.kind === "hotspring") {
+          markHotspringSelfieTaken(seed, payload.kindIndex, hotspringN);
+          this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_hotspring.jpg", "Hot spring selfie");
+        } else {
+          markShrineSelfieTaken(seed, payload.kindIndex, shrineN);
+          this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_shrine.jpg", "Shrine selfie");
+        }
         const s = this.progression.upgrades.state;
         const scaledXp = Math.round(
-          HOTSPRING_SELFIE_XP *
+          LANDMARK_SELFIE_XP *
             s.deliveryXpMult *
             (s.nightOwlEnabled ? 1 + 0.2 * this.dayNightCycle.getNightWeight() : 1),
         );
@@ -1005,9 +1020,9 @@ export class Game {
     this.packageQuest?.dispose();
     this.packageQuest = null;
     this.packageQuestHUD.dispose();
-    this.hotspringPhotoUI?.dispose();
-    this.hotspringPhotoUI = null;
-    this.hotspringPhotoQuest = null;
+    this.carpetSelfiePhotoUI?.dispose();
+    this.carpetSelfiePhotoUI = null;
+    this.carpetLandmarkSelfieQuest = null;
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
     for (const r of this.rainbowArches) r.dispose();
@@ -1889,8 +1904,8 @@ export class Game {
       this.packageQuest.moonProgress = this.moonThreat.progress;
     }
     this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
-    _hotspringPlayerNormal.copy(_hotspringRefUp).applyQuaternion(this.localPlayer.qPosition).normalize();
-    this.hotspringPhotoQuest?.update(dt, _hotspringPlayerNormal, this.playerVehicle === "carpet");
+    _carpetSelfiePlayerNormal.copy(_carpetSelfieRefUp).applyQuaternion(this.localPlayer.qPosition).normalize();
+    this.carpetLandmarkSelfieQuest?.update(dt, _carpetSelfiePlayerNormal, this.playerVehicle === "carpet");
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
     if (this.packageQuest?.isCarrying) {
       const dm = this.packageQuest.getDeliverySurfaceDistanceMetres(questPlayerPos);
@@ -2665,7 +2680,7 @@ export class Game {
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
     this.packageQuestHUD.dispose();
-    this.hotspringPhotoUI?.dispose();
+    this.carpetSelfiePhotoUI?.dispose();
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
     for (const r of this.rainbowArches) r.dispose();
