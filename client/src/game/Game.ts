@@ -78,14 +78,6 @@ import { CAMPSITE_HOME_ENABLED } from "../config/features";
 import { LevelUpCards } from "../ui/LevelUpCards";
 import { ProgressionManager } from "./ProgressionManager";
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
-import {
-  loadHotspringSelfieFlags,
-  markHotspringSelfieTaken,
-  loadShrineSelfieFlags,
-  markShrineSelfieTaken,
-  loadMushroomSelfieFlags,
-  markMushroomSelfieTaken,
-} from "./HotspringPhotoPersistence";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 
 /**
@@ -946,33 +938,29 @@ export class Game {
     const shrineN = this.globe.shrineCenters.length;
     const mushroomN = this.globe.mushroomCenters.length;
     if (hotspringN + shrineN + mushroomN > 0) {
-      const hsSaved = loadHotspringSelfieFlags(seed, hotspringN);
-      const shrineSaved = loadShrineSelfieFlags(seed, shrineN);
-      const mushroomSaved = loadMushroomSelfieFlags(seed, mushroomN);
       const hsNormals = this.globe.hotspringCenters.map((h) => h.normal.clone().normalize());
       const shrineNormals = this.globe.shrineCenters.map((h) => h.normal.clone().normalize());
       const mushroomNormals = this.globe.mushroomCenters.map((h) => h.normal.clone().normalize());
+      
+      // Pass empty arrays so they are never marked as "completed" from a previous run
       this.carpetSelfiePhotoUI = new HotspringPhotoUI(this.hud.root);
       this.carpetLandmarkSelfieQuest = new CarpetLandmarkSelfieQuest(
         hsNormals,
-        hsSaved,
+        new Array(hotspringN).fill(false),
         shrineNormals,
-        shrineSaved,
+        new Array(shrineN).fill(false),
         mushroomNormals,
-        mushroomSaved,
+        new Array(mushroomN).fill(false),
       );
       this.carpetLandmarkSelfieQuest.onProgressChange = (p) => {
         this.carpetSelfiePhotoUI?.setProgress(p);
       };
       this.carpetLandmarkSelfieQuest.onPhotoTaken = (payload) => {
         if (payload.kind === "hotspring") {
-          markHotspringSelfieTaken(seed, payload.kindIndex, hotspringN);
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_hotspring.jpg", "Hot spring selfie");
         } else if (payload.kind === "shrine") {
-          markShrineSelfieTaken(seed, payload.kindIndex, shrineN);
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_shrine.jpg", "Shrine selfie");
         } else if (payload.kind === "mushroom") {
-          markMushroomSelfieTaken(seed, payload.kindIndex, mushroomN);
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_mushroom_garden.jpg", "Mushroom garden selfie");
         }
         const s = this.progression.upgrades.state;
