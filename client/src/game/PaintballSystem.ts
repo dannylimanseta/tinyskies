@@ -182,8 +182,7 @@ function collectDecalTargetMeshes(root: Object3D): MeshT[] {
   root.traverse((obj) => {
     const m = obj as MeshT;
     if (!m.isMesh || !m.geometry) return;
-    // Allow balloons to be painted as well
-    if ((m.userData as { paintSplatterSurface?: boolean }).paintSplatterSurface !== true && !m.name.includes("balloon")) return;
+    if ((m.userData as { paintSplatterSurface?: boolean }).paintSplatterSurface !== true) return;
     if (!isVisibleInHierarchy(m)) return;
     const g = m.geometry as BufferGeometry;
     if (!g.attributes?.position || g.attributes.position.count < 3) return;

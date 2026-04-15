@@ -3669,6 +3669,7 @@ transformed.z += sway2;`,
       addRimLight(mat, 0xffeedd, 0.3, 3.0);
       const mesh = new Mesh(fullGeo, mat);
       mesh.castShadow = true;
+      mesh.userData.paintSplatterSurface = true;
       balloon.add(mesh);
 
       const burnerGeo = new SphereGeometry(S * 0.05, 6, 4);
