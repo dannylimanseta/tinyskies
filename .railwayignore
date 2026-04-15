@@ -1,0 +1,4 @@
+# Railway `railway up` uploads a snapshot of the project. The server Docker image
+# only needs root package files, `shared/`, and `server/` (see server/Dockerfile).
+# Excluding the Vite client cuts upload size and avoids snapshot/timeouts.
+client/
