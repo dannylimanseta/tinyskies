@@ -133,7 +133,7 @@ export class Lobby {
             <div class="lobby-vehicles" role="radiogroup" aria-label="Vehicle">
               ${this.buildVehicleButtonsHTML()}
             </div>
-            <button type="button" class="lobby-fly" id="btn-fly">GO</button>
+            <button type="button" class="lobby-fly" id="btn-fly">GO!</button>
           </div>
         </div>
         <div class="lobby-unlock-modal" id="lobby-unlock-modal" aria-hidden="true">
@@ -341,7 +341,8 @@ export class Lobby {
         transform: translateY(0);
       }
       .lobby-title {
-        font-size: clamp(2.5rem, 10vw, 6rem);
+        font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
+        font-size: clamp(3.5rem, 14vw, 8.4rem);
         font-weight: 800;
         margin: 0;
         color: white;
@@ -502,13 +503,12 @@ export class Lobby {
         border-radius: 10px;
         background: #000000;
         color: #ffffff;
-        font-family: inherit;
-        font-size: 1rem;
+        font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
+        font-size: 1.5rem;
         font-weight: 700;
         letter-spacing: 0.06em;
         cursor: pointer;
-        transition: background 0.2s, transform 0.15s, box-shadow 0.3s, opacity 0.2s;
-        animation: lobby-fly-pulse 2s ease-in-out infinite;
+        transition: background 0.2s, transform 0.15s, opacity 0.2s;
         flex-shrink: 0;
       }
       .lobby-fly:hover:not(:disabled) {
@@ -519,12 +519,7 @@ export class Lobby {
       .lobby-fly:disabled {
         opacity: 0.52;
         cursor: default;
-        animation: none;
         transform: none;
-      }
-      @keyframes lobby-fly-pulse {
-        0%, 100% { box-shadow: 0 0 8px rgba(0, 0, 0, 0.35); }
-        50% { box-shadow: 0 0 18px rgba(0, 0, 0, 0.55); }
       }
 
       .lobby-unlock-modal {

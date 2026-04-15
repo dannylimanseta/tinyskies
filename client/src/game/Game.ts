@@ -426,11 +426,11 @@ export class Game {
       alignItems: "center",
       justifyContent: "center",
       background: "#000",
-      fontFamily: "'Inter', system-ui, sans-serif",
+      fontFamily: "'Darumadrop One', 'Inter', system-ui, sans-serif",
     });
     const title = this.loadingEl.querySelector(".loading-title") as HTMLElement;
     Object.assign(title.style, {
-      fontSize: "clamp(2rem, 8vw, 3rem)",
+      fontSize: "clamp(2.8rem, 11.2vw, 4.2rem)",
       fontWeight: "800",
       margin: "0",
       background: "linear-gradient(135deg, #4488ff 0%, #44ddff 100%)",
@@ -459,7 +459,7 @@ export class Game {
     if (!this.loadingEl) return;
     this.loadingEl.innerHTML = `
       <div style="text-align:center;padding:0 24px;">
-        <h1 class="loading-title" style="font-size:clamp(2rem,8vw,3rem);font-weight:800;margin:0;
+        <h1 class="loading-title" style="font-family:'Darumadrop One', 'Inter', system-ui, sans-serif;font-size:clamp(2.8rem,11.2vw,4.2rem);font-weight:800;margin:0;
           background:linear-gradient(135deg,#4488ff,#44ddff);
           -webkit-background-clip:text;-webkit-text-fill-color:transparent;
           background-clip:text;animation:none;">Tiny Skies</h1>
@@ -1167,8 +1167,8 @@ export class Game {
     const title = document.createElement("h1");
     title.textContent = "Tiny Skies";
     Object.assign(title.style, {
-      fontFamily: "'Inter', system-ui, sans-serif",
-      fontSize: "clamp(2.5rem, 10vw, 6rem)",
+      fontFamily: "'Darumadrop One', 'Inter', system-ui, sans-serif",
+      fontSize: "clamp(3.5rem, 14vw, 8.4rem)",
       fontWeight: "800",
       margin: "0",
       color: "#ffffff",
