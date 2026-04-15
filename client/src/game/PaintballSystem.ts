@@ -519,12 +519,20 @@ export class PaintballSystem {
       if (this.globe) {
         const _bPos = new Vector3();
         for (let bIdx = 0; bIdx < this.globe.balloonCount; bIdx++) {
-          if (this.globe.getBalloonWorldPosition(bIdx, _bPos)) {
-            // Balloon radius is roughly 0.08 in world space based on scaling
-            if (p.mesh.position.distanceToSquared(_bPos) < 0.015) {
+          const b = this.globe.balloons[bIdx];
+          if (b) {
+            // Get the center of the balloon envelope in world space
+            // The envelope geometry is translated by 0.22 in Y in the balloon's local space
+            _bPos.set(0, 0.22, 0).applyMatrix4(b.inner.matrixWorld);
+            
+            // Envelope radius is 0.15 * scale. We can approximate the squared distance.
+            const radius = 0.15 * b.inner.scale.y;
+            const hitDistSq = (radius * 1.2) * (radius * 1.2); // slightly larger hit box
+            
+            if (p.mesh.position.distanceToSquared(_bPos) < hitDistSq) {
               this.globe.hitBalloon(bIdx);
               // Add splatter decal to balloon
-              const balloonInner = this.globe.balloons[bIdx]?.inner;
+              const balloonInner = b.inner;
               if (balloonInner) {
                 const splatSeed = (Math.random() * 0xffffffff) >>> 0;
                 let splatWorld = this.addSplatterDecal(balloonInner, p.color, splatSeed);
