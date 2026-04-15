@@ -937,7 +937,7 @@ export class Game {
     const hotspringN = this.globe.hotspringCenters.length;
     const shrineN = this.globe.shrineCenters.length;
     const mushroomN = this.globe.mushroomCenters.length;
-    if (hotspringN + shrineN + mushroomN > 0) {
+    if (this.playerVehicle === "carpet" && hotspringN + shrineN + mushroomN > 0) {
       const hsNormals = this.globe.hotspringCenters.map((h) => h.normal.clone().normalize());
       const shrineNormals = this.globe.shrineCenters.map((h) => h.normal.clone().normalize());
       const mushroomNormals = this.globe.mushroomCenters.map((h) => h.normal.clone().normalize());
@@ -956,6 +956,7 @@ export class Game {
         this.carpetSelfiePhotoUI?.setProgress(p);
       };
       this.carpetLandmarkSelfieQuest.onPhotoTaken = (payload) => {
+        this.globe.setLandmarkParticleOpacity(payload.kind, payload.kindIndex, 0.0);
         if (payload.kind === "hotspring") {
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_hotspring.jpg", "Hot spring selfie");
         } else if (payload.kind === "shrine") {
@@ -973,6 +974,11 @@ export class Game {
         this.progression.addXP(scaledXp);
         this.progression.save();
       };
+    } else {
+      // Not a carpet, or no landmarks: hide all selfie particles
+      for (let i = 0; i < hotspringN; i++) this.globe.setLandmarkParticleOpacity("hotspring", i, 0.0);
+      for (let i = 0; i < shrineN; i++) this.globe.setLandmarkParticleOpacity("shrine", i, 0.0);
+      for (let i = 0; i < mushroomN; i++) this.globe.setLandmarkParticleOpacity("mushroom", i, 0.0);
     }
 
     window.addEventListener("resize", this.onResize);

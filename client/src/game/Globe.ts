@@ -136,6 +136,10 @@ export class Globe {
   readonly hotspringCenters: { normal: Vector3 }[] = [];
   readonly mushroomCenters: { normal: Vector3 }[] = [];
 
+  private hotspringSteamInstanced: InstancedMesh | null = null;
+  private shrineSparkleInstanced: InstancedMesh | null = null;
+  private mushroomSporeInstanced: InstancedMesh | null = null;
+
   setLandmarkParticleOpacity(kind: "hotspring" | "shrine" | "mushroom", index: number, opacity: number) {
     let instanced: InstancedMesh | null = null;
     let countPerSite = 0;
@@ -2634,6 +2638,7 @@ transformed.z += sway2;`,
           attribute vec3 aCenter;
           attribute vec3 aUp;
           attribute vec3 aColor;
+          attribute float aOpacity;
           varying vec2 vUv;
           varying float vAlpha;
           varying vec3 vColor;
@@ -2666,7 +2671,7 @@ transformed.z += sway2;`,
             gl_Position = projectionMatrix * mvPos;
             
             float streamAlpha = sin(oceanTime * 0.5 + streamPhase) * 0.5 + 0.5;
-            vAlpha = sin(t * 3.14159) * streamAlpha;
+            vAlpha = sin(t * 3.14159) * streamAlpha * aOpacity;
           }
         `,
         fragmentShader: `

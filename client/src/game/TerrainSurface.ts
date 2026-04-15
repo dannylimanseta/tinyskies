@@ -42,7 +42,7 @@ function landDisplacement(
   );
   const r01 = (rugged + 1) * 0.5;
   const peakMask = Math.pow(
-    MathUtils.smoothstep(0.52, 0.86, elevation),
+    MathUtils.smoothstep(elevation, 0.52, 0.86),
     1.35,
   );
   const jagged = 1 + 0.38 * Math.pow(r01, 1.2) * peakMask;
