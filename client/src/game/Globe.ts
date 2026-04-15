@@ -21,6 +21,7 @@ import {
   MathUtils,
   Quaternion,
   Float32BufferAttribute,
+  InstancedBufferAttribute,
   BufferGeometry,
   type Scene,
 } from "three";
@@ -2233,6 +2234,87 @@ transformed.z += sway2;`,
       const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
       return { normal, surfaceR };
     });
+
+    const STEAM_PER_SPRING = 6;
+    const totalSteam = placements.length * STEAM_PER_SPRING;
+    if (totalSteam > 0) {
+      const steamGeo = new PlaneGeometry(0.12, 0.12);
+      const offsets = new Float32Array(totalSteam);
+      const centers = new Float32Array(totalSteam * 3);
+      const upVectors = new Float32Array(totalSteam * 3);
+
+      for (let i = 0; i < placements.length; i++) {
+        const { normal, surfaceR } = placements[i]!;
+        const pos = normal.clone().multiplyScalar(surfaceR + 0.02);
+        
+        for (let j = 0; j < STEAM_PER_SPRING; j++) {
+          const idx = i * STEAM_PER_SPRING + j;
+          offsets[idx] = j / STEAM_PER_SPRING + (seededRandom(this.seed + idx)() * 0.2);
+          centers[idx * 3 + 0] = pos.x;
+          centers[idx * 3 + 1] = pos.y;
+          centers[idx * 3 + 2] = pos.z;
+          upVectors[idx * 3 + 0] = normal.x;
+          upVectors[idx * 3 + 1] = normal.y;
+          upVectors[idx * 3 + 2] = normal.z;
+        }
+      }
+      
+      steamGeo.setAttribute('aOffset', new InstancedBufferAttribute(offsets, 1));
+      steamGeo.setAttribute('aCenter', new InstancedBufferAttribute(centers, 3));
+      steamGeo.setAttribute('aUp', new InstancedBufferAttribute(upVectors, 3));
+
+      const steamMat = new ShaderMaterial({
+        vertexShader: `
+          uniform float oceanTime;
+          attribute float aOffset;
+          attribute vec3 aCenter;
+          attribute vec3 aUp;
+          varying vec2 vUv;
+          varying float vAlpha;
+          void main() {
+            vUv = uv;
+            float t = fract(oceanTime * 0.35 + aOffset);
+            
+            float s = 1.0 + t * 2.5;
+            
+            vec3 pos = aCenter + aUp * (t * 0.4);
+            
+            vec3 tangent = normalize(cross(aUp, vec3(0.0, 1.0, 0.0)));
+            if (length(tangent) < 0.01) tangent = normalize(cross(aUp, vec3(1.0, 0.0, 0.0)));
+            vec3 bitangent = cross(aUp, tangent);
+            
+            pos += tangent * sin(oceanTime * 1.5 + aOffset * 6.28) * 0.08 * t;
+            pos += bitangent * cos(oceanTime * 1.2 + aOffset * 6.28) * 0.08 * t;
+            
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            mvPos.xy += position.xy * s;
+            
+            gl_Position = projectionMatrix * mvPos;
+            
+            vAlpha = sin(t * 3.14159) * (1.0 - t);
+          }
+        `,
+        fragmentShader: `
+          varying vec2 vUv;
+          varying float vAlpha;
+          void main() {
+            float d = length(vUv - vec2(0.5)) * 2.0;
+            float a = (1.0 - smoothstep(0.2, 1.0, d)) * vAlpha * 0.4;
+            gl_FragColor = vec4(0.9, 0.9, 0.9, a);
+          }
+        `,
+        uniforms: { oceanTime: this.oceanTime },
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      });
+
+      const steamInstanced = new InstancedMesh(steamGeo, steamMat, totalSteam);
+      steamInstanced.frustumCulled = false;
+      const dummy = new Matrix4();
+      for (let i = 0; i < totalSteam; i++) steamInstanced.setMatrixAt(i, dummy);
+      this.group.add(steamInstanced);
+    }
 
     const loader = new GLTFLoader();
     loader.load(
