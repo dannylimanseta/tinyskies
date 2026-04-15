@@ -27,6 +27,7 @@ export class HUD {
   private brazierIconEls: HTMLElement[] = [];
   private brazierFillEls: Element[] = [];
   private brazierTrackerShown = false;
+  private centeredToastEls: HTMLDivElement[] = [];
 
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
@@ -110,6 +111,34 @@ export class HUD {
     this.applyStyles();
   }
 
+  private layoutCenteredToasts() {
+    this.centeredToastEls = this.centeredToastEls.filter((el) => el.isConnected);
+    let offset = 0;
+    for (const el of this.centeredToastEls) {
+      el.style.setProperty("--hud-toast-stack-offset", `${offset}px`);
+      offset += el.offsetHeight + 12;
+    }
+  }
+
+  private removeCenteredToast(el: HTMLDivElement) {
+    const idx = this.centeredToastEls.indexOf(el);
+    if (idx !== -1) this.centeredToastEls.splice(idx, 1);
+    el.remove();
+    this.layoutCenteredToasts();
+  }
+
+  private showCenteredToast(className: string, text: string, durationMs: number) {
+    const el = document.createElement("div");
+    el.className = `${className} hud-center-toast`;
+    el.textContent = text;
+    this.el.appendChild(el);
+    this.centeredToastEls.push(el);
+    this.layoutCenteredToasts();
+
+    requestAnimationFrame(() => el.classList.add("hud-center-toast-animate"));
+    setTimeout(() => this.removeCenteredToast(el), durationMs);
+  }
+
   setWorldName(name: string) {
     this.worldNameEl.textContent = name;
   }
@@ -153,33 +182,15 @@ export class HUD {
 
   /** Shown when bird flock formation completes; matches XP popup line + float styling, below the flock ring. */
   showFlockFormationCelebrate() {
-    const el = document.createElement("div");
-    el.className = "hud-flock-celebration";
-    el.textContent = "You flew with the birds";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-flock-celebration-animate"));
-    setTimeout(() => el.remove(), 1600);
+    this.showCenteredToast("hud-flock-celebration", "You flew with the birds", 1600);
   }
 
   showRainbowCelebrate() {
-    const el = document.createElement("div");
-    el.className = "hud-rainbow-celebration";
-    el.textContent = "You flew through a rainbow";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-rainbow-celebration-animate"));
-    setTimeout(() => el.remove(), 1600);
+    this.showCenteredToast("hud-rainbow-celebration", "You flew through a rainbow", 1600);
   }
 
   showLanternCelebrate(count: number) {
-    const el = document.createElement("div");
-    el.className = "hud-lantern-celebration";
-    el.textContent = `You have lighted ${count} lanterns`;
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-lantern-celebration-animate"));
-    setTimeout(() => el.remove(), 1600);
+    this.showCenteredToast("hud-lantern-celebration", `You have lighted ${count} lanterns`, 1600);
   }
 
   private globalLanternEl: HTMLDivElement | null = null;
@@ -231,66 +242,34 @@ export class HUD {
   }
 
   showFireflyCelebrate() {
-    const el = document.createElement("div");
-    el.className = "hud-firefly-celebration";
-    el.textContent = "Fireflies!";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-firefly-celebration-animate"));
-    setTimeout(() => el.remove(), 1400);
+    this.showCenteredToast("hud-firefly-celebration", "Fireflies!", 1400);
   }
 
   showVolcanoCelebrate() {
-    const el = document.createElement("div");
-    el.className = "hud-volcano-celebration";
-    el.textContent = "Extreme flying!";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-volcano-celebration-animate"));
-    setTimeout(() => el.remove(), 1600);
+    this.showCenteredToast("hud-volcano-celebration", "Extreme flying!", 1600);
   }
 
   showBrazierLit() {
-    const el = document.createElement("div");
-    el.className = "hud-brazier-celebration";
-    el.textContent = "Brazier lit!";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-brazier-celebration-animate"));
-    setTimeout(() => el.remove(), 2000);
+    this.showCenteredToast("hud-brazier-celebration", "Brazier lit!", 2000);
   }
 
   /** Floating banner when another player in this world lights a brazier. */
   showBrazierRemoteLit(playerName: string) {
-    const el = document.createElement("div");
-    el.className = "hud-brazier-remote-lit";
-    el.textContent = `${playerName} lit a brazier`;
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-brazier-remote-lit-animate"));
-    setTimeout(() => el.remove(), 2200);
+    this.showCenteredToast("hud-brazier-remote-lit", `${playerName} lit a brazier`, 2200);
   }
 
   /** All-five brazier shield: moon approach pauses locally for a short time. */
   showBrazierMoonSlowed() {
-    const el = document.createElement("div");
-    el.className = "hud-brazier-moon-slowed";
-    el.textContent = "The braziers have slowed the moon — for a little while.";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-brazier-moon-slowed-animate"));
-    setTimeout(() => el.remove(), 3200);
+    this.showCenteredToast(
+      "hud-brazier-moon-slowed",
+      "The braziers have slowed the moon — for a little while.",
+      3200,
+    );
   }
 
   /** After shield pause ends — moon approach advances again. */
   showBrazierMoonResumed() {
-    const el = document.createElement("div");
-    el.className = "hud-brazier-moon-resumed";
-    el.textContent = "The moon has resumed its movement.";
-    this.el.appendChild(el);
-
-    requestAnimationFrame(() => el.classList.add("hud-brazier-moon-resumed-animate"));
-    setTimeout(() => el.remove(), 3200);
+    this.showCenteredToast("hud-brazier-moon-resumed", "The moon has resumed its movement.", 3200);
   }
 
   /** Create the persistent flame-progress tracker (call once after braziers are ready). */
@@ -1122,6 +1101,15 @@ export class HUD {
         transform: translate(-50%, -50%) scale(1);
       }
 
+      .hud-center-toast {
+        --hud-toast-stack-offset: 0px;
+        transform: translate(-50%, calc(-50% - 72px + var(--hud-toast-stack-offset)));
+      }
+      .hud-center-toast-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px + var(--hud-toast-stack-offset)));
+      }
+
       @keyframes hudEntranceInLeft {
         from { opacity: 0; transform: translateX(-18px); }
         to { opacity: 1; transform: translateX(0); }
@@ -1249,6 +1237,13 @@ export class HUD {
 
         .hud-levelup { font-size: 1.8rem; }
         .hud-levelup::before, .hud-levelup::after { width: 40px; }
+
+        .hud-center-toast {
+          transform: translate(-50%, calc(-50% - 58px + var(--hud-toast-stack-offset)));
+        }
+        .hud-center-toast-animate {
+          transform: translate(-50%, calc(-50% - 78px + var(--hud-toast-stack-offset)));
+        }
       }
     `;
     document.head.appendChild(style);

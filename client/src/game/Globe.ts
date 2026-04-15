@@ -2774,24 +2774,25 @@ transformed.z += sway2;`,
             vColor = aColor;
             
             // Fast flapping based on time and offset
-            float flapSpeed = 25.0;
+            float flapSpeed = 30.0 + fract(aOffset * 10.0) * 10.0;
             float flap = abs(cos(oceanTime * flapSpeed + aOffset * 100.0));
             
-            // Slow wandering around the center
-            float wanderSpeed = 0.8;
-            float t = oceanTime * wanderSpeed + aOffset * 6.28;
+            // More chaotic wandering
+            float t = oceanTime * (0.4 + fract(aOffset * 21.0) * 0.4) + aOffset * 6.28;
             
             vec3 tangent = normalize(cross(aUp, vec3(0.0, 1.0, 0.0)));
             if (length(tangent) < 0.01) tangent = normalize(cross(aUp, vec3(1.0, 0.0, 0.0)));
             vec3 bitangent = cross(aUp, tangent);
             
-            // Orbit radius and height variation
-            float r = 0.04 + sin(t * 1.3) * 0.02;
-            float h = 0.02 + cos(t * 1.7) * 0.015;
+            // Orbit radius and height variation with darting
+            float rX = (0.03 + fract(aOffset * 34.0) * 0.04) * sin(t * 1.31) * cos(t * 0.73);
+            float rZ = (0.03 + fract(aOffset * 56.0) * 0.04) * cos(t * 1.17) * sin(t * 0.89);
+            float dart = sin(oceanTime * 5.0 + aOffset * 10.0) * 0.005;
+            float h = 0.015 + fract(aOffset * 78.0) * 0.02 + sin(t * 2.23) * 0.015 + cos(t * 0.5) * 0.01 + dart;
             
             vec3 pos = aCenter + aUp * h;
-            pos += tangent * (cos(t) * r);
-            pos += bitangent * (sin(t) * r);
+            pos += tangent * rX * 1.5;
+            pos += bitangent * rZ * 1.5;
             
             vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
             
@@ -2847,10 +2848,10 @@ transformed.z += sway2;`,
       const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
 
       // Flowers
-      const numFlowers = 18 + Math.floor(rand() * 8);
+      const numFlowers = 36 + Math.floor(rand() * 16);
       for (let i = 0; i < numFlowers; i++) {
         const angle = rand() * Math.PI * 2;
-        const dist = rand() * 0.04;
+        const dist = rand() * 0.055;
         const fNormal = normal.clone()
           .addScaledVector(tangent, Math.cos(angle) * dist)
           .addScaledVector(bitangent, Math.sin(angle) * dist)
