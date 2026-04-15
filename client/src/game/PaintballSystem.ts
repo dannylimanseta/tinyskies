@@ -18,7 +18,6 @@ import {
   TextureLoader,
   Vector3,
   Color,
-  Line3,
   type Mesh as MeshT,
 } from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
@@ -501,14 +500,8 @@ export class PaintballSystem {
     const now = performance.now();
     const fadeMs = SPLATTER_LIFETIME_SEC * 1000;
 
-    const _line = new Line3();
-    const _closest = new Vector3();
-    const _bPos = new Vector3();
-
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
-      const oldPos = p.mesh.position.clone();
-      
       const step = p.speed * dt;
       p.traveled += step;
       const theta = p.traveled / p.r0;
@@ -518,60 +511,59 @@ export class PaintballSystem {
         .multiplyScalar(r * Math.cos(theta))
         .addScaledVector(p.wHat, r * Math.sin(theta));
 
-      const newPos = p.mesh.position;
-      _line.start.copy(oldPos);
-      _line.end.copy(newPos);
-
       const tr = p.traveled / p.maxRange;
       const fade = Math.max(0, 1 - Math.pow(Math.min(1, tr), 1.15));
       p.mat.uniforms.uOpacity!.value = fade;
 
       let hitBalloon = false;
       if (this.globe) {
+        const _bPos = new Vector3();
+        const BALLOON_HIT_R = 0.18;
+        const BALLOON_HIT_R_SQ = BALLOON_HIT_R * BALLOON_HIT_R;
+        // Swept-sphere: check along the great-circle arc the projectile
+        // traveled this frame so fast shots can't skip through.
+        const prevTheta = (p.traveled - step) / p.r0;
+        const prevPos = new Vector3()
+          .copy(p.rHat)
+          .multiplyScalar(r * Math.cos(prevTheta))
+          .addScaledVector(p.wHat, r * Math.sin(prevTheta));
+        const curPos = p.mesh.position;
+        const segDir = new Vector3().subVectors(curPos, prevPos);
+        const segLen = segDir.length();
+        if (segLen > 1e-6) segDir.divideScalar(segLen);
+
         for (let bIdx = 0; bIdx < this.globe.balloonCount; bIdx++) {
-          const b = this.globe.balloons[bIdx];
-          if (b) {
-            // Get the center of the balloon envelope in world space
-            // The envelope geometry is translated by 0.22 in Y in the balloon's local space
-            _bPos.set(0, 0.22, 0).applyMatrix4(b.inner.matrixWorld);
-            
-            // Envelope radius is 0.15 * scale. We can approximate the squared distance.
-            const radius = 0.15 * b.inner.scale.y;
-            const hitDistSq = (radius * 1.2) * (radius * 1.2); // slightly larger hit box
-            
-            _line.closestPointToPoint(_bPos, true, _closest);
-            
-            if (_closest.distanceToSquared(_bPos) < hitDistSq) {
-              // Move the projectile to the exact hit point for the splash effect
-              p.mesh.position.copy(_closest);
-              
-              this.globe.hitBalloon(bIdx);
-              // Add splatter decal to balloon
-              const balloonInner = b.inner;
-              if (balloonInner) {
-                const splatSeed = (Math.random() * 0xffffffff) >>> 0;
-                let splatWorld = this.addSplatterDecal(balloonInner, p.color, splatSeed);
-                if (!splatWorld) {
-                  balloonInner.updateMatrixWorld(true);
-                  splatWorld = balloonInner.getWorldPosition(new Vector3());
-                }
-                this.splashPool.play(
-                  this.scene,
-                  splatWorld,
-                  decalTintColor(p.color).getHex(),
-                  splatSeed,
-                );
-                // Play impact sound locally if we shot it
-                const myId = this.getSocketId() ?? "local";
-                if (p.shooterId === myId) {
-                  this.onPaintballImpact?.(splatSeed, false);
-                } else {
-                  this.onPaintballImpact?.(splatSeed, true);
-                }
+          if (!this.globe.getBalloonWorldPosition(bIdx, _bPos)) continue;
+
+          // Closest point on line segment [prevPos, curPos] to balloon center
+          const toBalloon = new Vector3().subVectors(_bPos, prevPos);
+          const t = Math.max(0, Math.min(segLen, toBalloon.dot(segDir)));
+          const closest = new Vector3().copy(prevPos).addScaledVector(segDir, t);
+          if (closest.distanceToSquared(_bPos) < BALLOON_HIT_R_SQ) {
+            this.globe.hitBalloon(bIdx);
+            const balloonInner = this.globe.balloons[bIdx]?.inner;
+            if (balloonInner) {
+              const splatSeed = (Math.random() * 0xffffffff) >>> 0;
+              let splatWorld = this.addSplatterDecal(balloonInner, p.color, splatSeed);
+              if (!splatWorld) {
+                balloonInner.updateMatrixWorld(true);
+                splatWorld = balloonInner.getWorldPosition(new Vector3());
               }
-              hitBalloon = true;
-              break;
+              this.splashPool.play(
+                this.scene,
+                splatWorld,
+                decalTintColor(p.color).getHex(),
+                splatSeed,
+              );
+              const myId = this.getSocketId() ?? "local";
+              if (p.shooterId === myId) {
+                this.onPaintballImpact?.(splatSeed, false);
+              } else {
+                this.onPaintballImpact?.(splatSeed, true);
+              }
             }
+            hitBalloon = true;
+            break;
           }
         }
       }
