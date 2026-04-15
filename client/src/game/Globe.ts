@@ -2796,9 +2796,18 @@ transformed.z += sway2;`,
             
             vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
             
+            // Add a slight tilt to the butterfly based on its movement direction and flap
+            float tilt = sin(t * 1.31) * 0.3 + flap * 0.15;
+            float s = sin(tilt);
+            float c = cos(tilt);
+            
+            // Rotate the quad in view space
+            float rx = position.x * c - position.y * s;
+            float ry = position.x * s + position.y * c;
+            
             // Apply flapping scale on X axis in view space (always faces camera but flaps)
-            mvPos.x += position.x * (0.2 + flap * 0.8);
-            mvPos.y += position.y;
+            mvPos.x += rx * (0.2 + flap * 0.8);
+            mvPos.y += ry;
             
             gl_Position = projectionMatrix * mvPos;
             
