@@ -4,6 +4,7 @@ import {
   SphereGeometry,
   PlaneGeometry,
   BoxGeometry,
+  Box3,
   CylinderGeometry,
   MeshPhongMaterial,
   ShaderMaterial,
@@ -24,6 +25,7 @@ import {
   type Scene,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addRimLight } from "./RimLight";
 import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, terrainNoise, isLand } from "./SimplexNoise";
@@ -74,6 +76,27 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+/** Smallest projection of mesh vertices onto `normal` (world space). AABB corners can lie outside the mesh and skew grounding. */
+function minMeshVertexProjectionAlongNormal(root: Object3D, normal: Vector3): number {
+  let min = Infinity;
+  const v = new Vector3();
+  root.updateMatrixWorld(true);
+  root.traverse((child) => {
+    if (!(child as Mesh).isMesh) return;
+    const mesh = child as Mesh;
+    const pos = mesh.geometry.attributes.position;
+    if (!pos) return;
+    const count = pos.count;
+    for (let i = 0; i < count; i++) {
+      v.fromBufferAttribute(pos, i);
+      v.applyMatrix4(mesh.matrixWorld);
+      const d = v.dot(normal);
+      if (d < min) min = d;
+    }
+  });
+  return min;
+}
+
 export class Globe {
   readonly group = new Group();
   readonly radius: number;
@@ -109,6 +132,7 @@ export class Globe {
   readonly stonehengeCenters: { normal: Vector3 }[] = [];
   readonly stonehengeGroups: Group[] = [];
   readonly shrineCenters: { normal: Vector3 }[] = [];
+  readonly hotspringCenters: { normal: Vector3 }[] = [];
 
   /** Shared teardrop geometry for shrine-tree InstancedMeshes (one buffer, many draws). */
   private shrineTeardropGeo: LatheGeometry | null = null;
@@ -207,6 +231,7 @@ export class Globe {
     this.createObservatories();
     this.createStonehenges();
     this.createShrines();
+    this.createHotsprings();
     this.createFloatingTreeClusters();
     this.createBalloons();
     this.createClouds();
@@ -2114,6 +2139,157 @@ transformed.z += sway2;`,
       shrine.castShadow = true;
       this.group.add(shrine);
     }
+  }
+
+  /** Inland hot springs (GLB) — 4 per world, away from coastlines and other landmarks. */
+  private createHotsprings() {
+    const HOTSPRING_COUNT = 4;
+    const MIN_ELEVATION = 0.005;
+    const MAX_ELEVATION = 0.62;
+    const MIN_SEPARATION_DOT = 0.78;
+    const INLAND_CHECKS = 8;
+    const INLAND_CHECK_DIST = 0.07;
+    const MAX_WATER_RATIO = 0.26;
+    const ROUGH_RING_DIST = 0.085;
+    const MAX_ROUGHNESS = 0.26;
+
+    const rand = seededRandom(16161 + this.seed);
+    const noise = createNoise3D(this.seed);
+    const params = getTerrainParams(this.terrainType);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 8000 && candidates.length < 220) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const value = terrainNoise(
+        noise, nx, ny, nz,
+        params.octaves, params.lacunarity, params.persistence, params.scale,
+      );
+      if (value <= params.threshold) continue;
+      const elevation = (value - params.threshold) / (1 - params.threshold);
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      const tangent = new Vector3(-ny, nx, 0);
+      if (tangent.lengthSq() < 0.001) tangent.set(0, -nz, ny);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+      let waterCount = 0;
+      for (let c = 0; c < INLAND_CHECKS; c++) {
+        const angle = (c / INLAND_CHECKS) * Math.PI * 2;
+        const cn = normal.clone()
+          .addScaledVector(tangent, Math.cos(angle) * INLAND_CHECK_DIST)
+          .addScaledVector(bitangent, Math.sin(angle) * INLAND_CHECK_DIST)
+          .normalize();
+        const cv = terrainNoise(
+          noise, cn.x, cn.y, cn.z,
+          params.octaves, params.lacunarity, params.persistence, params.scale,
+        );
+        if (cv <= params.threshold) waterCount++;
+      }
+      if (waterCount / INLAND_CHECKS > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, noise, params, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    candidates.sort((a, b) => a.elevation - b.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= HOTSPRING_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+    if (chosen.length === 0) return;
+
+    const REF_UP = new Vector3(0, 1, 0);
+    const spin = seededRandom(20202 + this.seed);
+
+    for (const normal of chosen) {
+      this.hotspringCenters.push({ normal: normal.clone() });
+    }
+
+    const placements = chosen.map((normal) => {
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+      return { normal, surfaceR };
+    });
+
+    const loader = new GLTFLoader();
+    loader.load(
+      "/3D/hotspring.glb",
+      (gltf) => {
+      const template = gltf.scene;
+      template.updateMatrixWorld(true);
+      const box = new Box3().setFromObject(template);
+      const size = new Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z, 1e-4);
+      const targetSize = 0.288;
+      const uniformScale = targetSize / maxDim;
+
+      for (const { normal, surfaceR } of placements) {
+        const model = template.clone(true);
+        model.scale.setScalar(uniformScale);
+        model.position.copy(normal.clone().multiplyScalar(surfaceR));
+        model.quaternion.setFromUnitVectors(REF_UP, normal);
+        model.rotateY(spin() * Math.PI * 2);
+        model.updateMatrixWorld(true);
+        let minAlong = minMeshVertexProjectionAlongNormal(model, normal);
+        if (!Number.isFinite(minAlong)) {
+          const bb = new Box3().setFromObject(model);
+          const corners = [
+            new Vector3(bb.min.x, bb.min.y, bb.min.z),
+            new Vector3(bb.max.x, bb.min.y, bb.min.z),
+            new Vector3(bb.min.x, bb.max.y, bb.min.z),
+            new Vector3(bb.max.x, bb.max.y, bb.min.z),
+            new Vector3(bb.min.x, bb.min.y, bb.max.z),
+            new Vector3(bb.max.x, bb.min.y, bb.max.z),
+            new Vector3(bb.min.x, bb.max.y, bb.max.z),
+            new Vector3(bb.max.x, bb.max.y, bb.max.z),
+          ];
+          minAlong = Infinity;
+          for (const c of corners) {
+            const d = c.dot(normal);
+            if (d < minAlong) minAlong = d;
+          }
+        }
+        const lift = surfaceR - minAlong;
+        model.position.addScaledVector(normal, lift);
+
+        model.traverse((child) => {
+          if ((child as Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        this.group.add(model);
+      }
+    },
+      undefined,
+      (err) => {
+        console.error("[Globe] Failed to load /3D/hotspring.glb:", err);
+      },
+    );
   }
 
   private ensureShrineMaterials() {

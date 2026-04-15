@@ -842,6 +842,7 @@ export class Game {
     landmarkRegistry.registerObservatories(this.globe.observatoryCenters, seed);
     landmarkRegistry.registerStonehenges(this.globe.stonehengeCenters, seed);
     landmarkRegistry.registerShrines(this.globe.shrineCenters, seed);
+    landmarkRegistry.registerHotsprings(this.globe.hotspringCenters, seed);
     this.landmarkDetector = new LandmarkDetector(landmarkRegistry);
     this.landmarkHUD = new LandmarkHUD(this.hud.root);
     this.hud.registerLandmarkHUD(this.landmarkHUD);
@@ -2405,7 +2406,7 @@ export class Game {
         this.controls.enabled = true;
         if (this.touchControls) this.touchControls.enabled = true;
       });
-    }, 2000);
+    }, 450);
   }
 
   private propagateUpgrades() {

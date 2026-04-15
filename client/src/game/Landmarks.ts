@@ -1,6 +1,17 @@
 import { Quaternion, Vector3 } from "three";
 
-export type LandmarkType = "village" | "peak" | "forest" | "coast" | "island" | "lighthouse" | "windmill" | "observatory" | "stonehenge" | "shrine";
+export type LandmarkType =
+  | "village"
+  | "peak"
+  | "forest"
+  | "coast"
+  | "island"
+  | "lighthouse"
+  | "windmill"
+  | "observatory"
+  | "stonehenge"
+  | "shrine"
+  | "hotspring";
 
 export interface Landmark {
   type: LandmarkType;
@@ -85,6 +96,15 @@ const SHRINE_SUFFIXES = [
   " Shrine", " Gate", " Sanctuary", " Grove", " Rest", " Torii", " Path", " Garden",
 ];
 
+const HOTSPRING_PREFIXES = [
+  "Misty", "Steam", "Warm", "Golden", "Cedar", "Lotus", "Moon", "Dawn", "Willow", "Stone",
+  "Hidden", "Ancient", "Silver", "Cloud", "Pine", "River", "Hill", "Valley", "Sun", "Star",
+];
+
+const HOTSPRING_SUFFIXES = [
+  " Hot Spring", " Springs", " Bath", " Pool", " Onsen", " Waters", " Soak", " Basin",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
   village:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   peak:         { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
@@ -96,6 +116,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   observatory:  { prefixes: OBSERVATORY_PREFIXES, suffixes: OBSERVATORY_SUFFIXES },
   stonehenge:   { prefixes: STONEHENGE_PREFIXES,  suffixes: STONEHENGE_SUFFIXES },
   shrine:       { prefixes: SHRINE_PREFIXES,      suffixes: SHRINE_SUFFIXES },
+  hotspring:    { prefixes: HOTSPRING_PREFIXES,   suffixes: HOTSPRING_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -224,6 +245,22 @@ export class LandmarkRegistry {
         type: "shrine",
         name: names[i]!,
         normal: shrines[i]!.normal.clone().normalize(),
+        enterDot: 0.995,
+        exitDot: 0.991,
+      });
+    }
+  }
+
+  registerHotsprings(
+    hotsprings: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, hotsprings.length, "hotspring");
+    for (let i = 0; i < hotsprings.length; i++) {
+      this.landmarks.push({
+        type: "hotspring",
+        name: names[i]!,
+        normal: hotsprings[i]!.normal.clone().normalize(),
         enterDot: 0.995,
         exitDot: 0.991,
       });
