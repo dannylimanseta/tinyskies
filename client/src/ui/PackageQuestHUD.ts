@@ -1,4 +1,5 @@
 import { getNpcPortraitUrl } from "../game/PackageDialogue";
+import { CircularProgressRing } from "./CircularProgressRing";
 
 /** Match phones / small tablets; CSS alone isn’t enough because showBubble sets inline `transform`. */
 function isNarrowDialogueViewport(): boolean {
@@ -7,8 +8,7 @@ function isNarrowDialogueViewport(): boolean {
 }
 
 export class PackageQuestHUD {
-  private progressEl: HTMLDivElement;
-  private svgCircle: SVGCircleElement;
+  private progressRing: CircularProgressRing;
   private bubbleEl: HTMLDivElement;
   private bubbleIconEl: HTMLDivElement;
   private bubbleContentEl: HTMLDivElement;
@@ -18,7 +18,6 @@ export class PackageQuestHUD {
   private bannerNameEl: HTMLSpanElement;
   private bannerDistEl: HTMLSpanElement;
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
-  private circumference: number;
   private whisperEl: HTMLDivElement;
   private whisperTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -26,28 +25,7 @@ export class PackageQuestHUD {
   onVisibilityChange?: (visible: boolean, npcName?: string) => void;
 
   constructor(parent: HTMLElement) {
-    this.progressEl = document.createElement("div");
-    this.progressEl.className = "pkg-progress";
-
-    const size = 72;
-    const stroke = 4;
-    const radius = (size - stroke) / 2;
-    this.circumference = 2 * Math.PI * radius;
-
-    this.progressEl.innerHTML = `
-      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size / 2}" cy="${size / 2}" r="${radius}"
-          fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${stroke}" />
-        <circle class="pkg-progress-ring" cx="${size / 2}" cy="${size / 2}" r="${radius}"
-          fill="none" stroke="rgba(255,255,255,0.70)" stroke-width="${stroke}"
-          stroke-linecap="round"
-          stroke-dasharray="${this.circumference}"
-          stroke-dashoffset="${this.circumference}"
-          transform="rotate(-90 ${size / 2} ${size / 2})" />
-      </svg>
-    `;
-    parent.appendChild(this.progressEl);
-    this.svgCircle = this.progressEl.querySelector(".pkg-progress-ring")!;
+    this.progressRing = new CircularProgressRing(parent);
 
     this.bubbleEl = document.createElement("div");
     this.bubbleEl.className = "pkg-bubble";
@@ -120,9 +98,7 @@ export class PackageQuestHUD {
   }
 
   setProgress(value: number) {
-    const offset = this.circumference * (1 - value);
-    this.svgCircle.style.strokeDashoffset = `${offset}`;
-    this.progressEl.style.opacity = value > 0 ? "1" : "0";
+    this.progressRing.setProgress(value);
   }
 
   showBubble(npcName: string, text: string) {
@@ -187,20 +163,6 @@ export class PackageQuestHUD {
     const style = document.createElement("style");
     style.id = "pkg-quest-hud-styles";
     style.textContent = `
-      .pkg-progress {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, calc(-50% - 80px));
-        opacity: 0;
-        transition: opacity 0.2s ease;
-        pointer-events: none;
-        z-index: 12;
-      }
-      .pkg-progress-ring {
-        transition: stroke-dashoffset 0.1s linear;
-      }
-
       .pkg-bubble {
         position: absolute;
         top: 80px;
@@ -360,7 +322,7 @@ export class PackageQuestHUD {
       clearTimeout(this.bubbleTimer);
       this.bubbleTimer = null;
     }
-    this.progressEl.remove();
+    this.progressRing.dispose();
     this.bubbleEl.remove();
     this.bannerEl.remove();
   }
