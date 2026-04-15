@@ -702,7 +702,10 @@ export class Game {
       () => this.socketClient?.id,
       () => this.socketClient,
       this.remotePlanes,
-      () => this.cameraRig.shake(0.038, 0.26),
+      () => {
+        this.cameraRig.shake(0.038, 0.26);
+        this.hud.showPaintballSplatter();
+      },
       (victimId) => {
         const myId = this.socketClient?.id;
         if (myId && victimId === myId && this.localPlayer instanceof Plane) {

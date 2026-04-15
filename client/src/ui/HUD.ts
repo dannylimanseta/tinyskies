@@ -208,6 +208,28 @@ export class HUD {
     }, 2500);
   }
 
+  showPaintballSplatter() {
+    const el = document.createElement("div");
+    el.className = "hud-paintball-splatter";
+    
+    // Random rotation and position near edges
+    const angle = Math.random() * 360;
+    const isTop = Math.random() > 0.5;
+    const isLeft = Math.random() > 0.5;
+    
+    const xOffset = 10 + Math.random() * 20; // 10% to 30% from edge
+    const yOffset = 10 + Math.random() * 20;
+    
+    el.style.setProperty('--rot', `${angle}deg`);
+    el.style[isTop ? 'top' : 'bottom'] = `${yOffset}%`;
+    el.style[isLeft ? 'left' : 'right'] = `${xOffset}%`;
+    
+    this.el.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add("hud-paintball-splatter-animate"));
+    setTimeout(() => el.remove(), 2500);
+  }
+
   showFireflyCelebrate() {
     const el = document.createElement("div");
     el.className = "hud-firefly-celebration";
@@ -764,6 +786,31 @@ export class HUD {
       .hud-firefly-celebration-animate {
         opacity: 1;
         transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      .hud-paintball-splatter {
+        position: absolute;
+        width: 150px;
+        height: 150px;
+        background-image: url("/2D/splatter_1.png");
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        pointer-events: none;
+        opacity: 0;
+        transform-origin: center;
+        z-index: 50;
+        transform: rotate(var(--rot, 0deg));
+      }
+      .hud-paintball-splatter-animate {
+        animation: splatter-fade 2.5s forwards;
+      }
+      @keyframes splatter-fade {
+        0% { opacity: 0; transform: rotate(var(--rot, 0deg)) scale(0.5); }
+        10% { opacity: 0.85; transform: rotate(var(--rot, 0deg)) scale(1.1); }
+        20% { opacity: 0.8; transform: rotate(var(--rot, 0deg)) scale(1); }
+        70% { opacity: 0.8; transform: rotate(var(--rot, 0deg)) scale(1); }
+        100% { opacity: 0; transform: rotate(var(--rot, 0deg)) scale(1); }
       }
 
       @media (max-width: 768px) {

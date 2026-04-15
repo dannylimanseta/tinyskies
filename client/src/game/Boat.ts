@@ -12,7 +12,7 @@ import {
   tangentFrame,
 } from "./SphericalMath";
 import { createBoat } from "./BoatMesh";
-import { isLand } from "./SimplexNoise";
+import { isLand, isMainOcean } from "./SimplexNoise";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
 /** Default cruise is deliberately slow; max speed stays modest. */
@@ -35,7 +35,7 @@ export function randomOceanQuaternion(
   worldSeed: number,
   terrainType: string,
   spawnSalt: number,
-  maxAttempts = 120,
+  maxAttempts = 180,
 ): Quaternion {
   const rnd = seededRandom(spawnSalt + 777);
   for (let i = 0; i < maxAttempts; i++) {
@@ -44,27 +44,32 @@ export function randomOceanQuaternion(
     const nx = Math.sin(phi) * Math.cos(theta);
     const ny = Math.sin(phi) * Math.sin(theta);
     const nz = Math.cos(phi);
-    if (!isLand(worldSeed, terrainType, nx, ny, nz)) {
+    if (isMainOcean(worldSeed, terrainType, nx, ny, nz)) {
       return quaternionFromSurfaceNormal(nx, ny, nz);
     }
   }
-  for (let k = 0; k < 96; k++) {
-    const phi = (k / 96) * Math.PI;
+  for (let k = 0; k < 192; k++) {
+    const phi = (k / 192) * Math.PI;
     const theta = k * 0.6180339887 * Math.PI * 2;
     const nx = Math.sin(phi) * Math.cos(theta);
     const ny = Math.sin(phi) * Math.sin(theta);
     const nz = Math.cos(phi);
-    if (!isLand(worldSeed, terrainType, nx, ny, nz)) {
+    if (isMainOcean(worldSeed, terrainType, nx, ny, nz)) {
       return quaternionFromSurfaceNormal(nx, ny, nz);
     }
   }
-  return findOceanQuaternionExhaustive(worldSeed, terrainType);
+  return findOceanQuaternionExhaustive(worldSeed, terrainType, true);
 }
 
 /** Dense Fibonacci sphere search — avoids returning identity (often land). */
-function findOceanQuaternionExhaustive(worldSeed: number, terrainType: string): Quaternion {
+function findOceanQuaternionExhaustive(
+  worldSeed: number,
+  terrainType: string,
+  preferMainOcean = false,
+): Quaternion {
   const n = 4096;
   const golden = Math.PI * (3 - Math.sqrt(5));
+  let fallback: Quaternion | null = null;
   for (let i = 0; i < n; i++) {
     const y = 1 - (i / Math.max(1, n - 1)) * 2;
     const r = Math.sqrt(Math.max(0, 1 - y * y));
@@ -73,10 +78,15 @@ function findOceanQuaternionExhaustive(worldSeed: number, terrainType: string): 
     const ny = y;
     const nz = Math.sin(theta) * r;
     if (!isLand(worldSeed, terrainType, nx, ny, nz)) {
-      return quaternionFromSurfaceNormal(nx, ny, nz);
+      if (!preferMainOcean || isMainOcean(worldSeed, terrainType, nx, ny, nz)) {
+        return quaternionFromSurfaceNormal(nx, ny, nz);
+      }
+      if (!fallback) {
+        fallback = quaternionFromSurfaceNormal(nx, ny, nz);
+      }
     }
   }
-  return quaternionFromSurfaceNormal(0, 0, 1);
+  return fallback ?? quaternionFromSurfaceNormal(0, 0, 1);
 }
 
 const BOB_AMPLITUDE = 0.009;

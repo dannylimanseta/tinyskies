@@ -138,6 +138,13 @@ interface TerrainFieldValue {
   value: number;
 }
 
+interface OceanRegionCacheEntry {
+  width: number;
+  height: number;
+  mainOceanId: number;
+  componentByCell: Int32Array;
+}
+
 export interface TerrainSample {
   rawValue: number;
   value: number;
@@ -148,6 +155,7 @@ export interface TerrainSample {
 
 const terrainNoiseBySeed = new Map<number, Noise3DFn>();
 const backboneAxesBySeed = new Map<number, readonly TerrainVector[]>();
+const oceanRegionCache = new Map<string, OceanRegionCacheEntry>();
 
 function cachedNoise3D(seed: number): Noise3DFn {
   let noise = terrainNoiseBySeed.get(seed);
@@ -328,6 +336,123 @@ export function sampleTerrain(
     elevation: terrainElevationFromValue(terrainType, sampled.value),
     waterDepth: terrainWaterDepthFromValue(terrainType, sampled.value),
   };
+}
+
+function oceanRegionCacheKey(seed: number, terrainType: string): string {
+  return `${seed}:${terrainType}`;
+}
+
+function indexForOceanGrid(x: number, y: number, width: number): number {
+  return y * width + x;
+}
+
+function oceanRegionFor(seed: number, terrainType: string): OceanRegionCacheEntry {
+  const key = oceanRegionCacheKey(seed, terrainType);
+  const cached = oceanRegionCache.get(key);
+  if (cached) return cached;
+
+  const width = 96;
+  const height = 48;
+  const ocean = new Uint8Array(width * height);
+  const componentByCell = new Int32Array(width * height);
+  componentByCell.fill(-1);
+
+  for (let y = 0; y < height; y++) {
+    const v = (y + 0.5) / height;
+    const phi = v * Math.PI;
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+    for (let x = 0; x < width; x++) {
+      const u = (x + 0.5) / width;
+      const theta = u * Math.PI * 2;
+      const nx = sinPhi * Math.cos(theta);
+      const ny = cosPhi;
+      const nz = sinPhi * Math.sin(theta);
+      if (!sampleTerrain(seed, terrainType, nx, ny, nz).isLand) {
+        ocean[indexForOceanGrid(x, y, width)] = 1;
+      }
+    }
+  }
+
+  let nextComponentId = 0;
+  let mainOceanId = -1;
+  let mainOceanSize = -1;
+  const queue: number[] = [];
+
+  for (let start = 0; start < ocean.length; start++) {
+    if (!ocean[start] || componentByCell[start] !== -1) continue;
+
+    componentByCell[start] = nextComponentId;
+    queue.push(start);
+    let size = 0;
+
+    while (queue.length) {
+      const current = queue.pop()!;
+      size++;
+      const cx = current % width;
+      const cy = Math.floor(current / width);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = (cx + dx + width) % width;
+        const ny = cy + dy;
+        if (ny < 0 || ny >= height) continue;
+        const next = indexForOceanGrid(nx, ny, width);
+        if (!ocean[next] || componentByCell[next] !== -1) continue;
+        componentByCell[next] = nextComponentId;
+        queue.push(next);
+      }
+    }
+
+    if (size > mainOceanSize) {
+      mainOceanSize = size;
+      mainOceanId = nextComponentId;
+    }
+    nextComponentId++;
+  }
+
+  const built = { width, height, mainOceanId, componentByCell };
+  oceanRegionCache.set(key, built);
+  return built;
+}
+
+export function isMainOcean(
+  seed: number,
+  terrainType: string,
+  nx: number,
+  ny: number,
+  nz: number,
+): boolean {
+  if (isLand(seed, terrainType, nx, ny, nz)) return false;
+
+  const region = oceanRegionFor(seed, terrainType);
+  if (region.mainOceanId < 0) return false;
+
+  const theta = (Math.atan2(nz, nx) + Math.PI * 2) % (Math.PI * 2);
+  const x = Math.min(
+    region.width - 1,
+    Math.floor((theta / (Math.PI * 2)) * region.width),
+  );
+  const y = Math.min(
+    region.height - 1,
+    Math.floor((Math.acos(Math.max(-1, Math.min(1, ny))) / Math.PI) * region.height),
+  );
+  const idx = indexForOceanGrid(x, y, region.width);
+  if (region.componentByCell[idx] === region.mainOceanId) {
+    return true;
+  }
+
+  for (let oy = -1; oy <= 1; oy++) {
+    const sy = y + oy;
+    if (sy < 0 || sy >= region.height) continue;
+    for (let ox = -1; ox <= 1; ox++) {
+      const sx = (x + ox + region.width) % region.width;
+      const sIdx = indexForOceanGrid(sx, sy, region.width);
+      if (region.componentByCell[sIdx] === region.mainOceanId) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
