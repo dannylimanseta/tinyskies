@@ -12,7 +12,7 @@ const LEGACY_CAMPSITE_KEY = "globefly_campsite";
 export const UNLOCK_CARPET_MIN_MAX_LEVEL = 2;
 /** Boat unlocks when plane or carpet reaches this level (boat’s own level does not count). */
 export const UNLOCK_BOAT_PLANE_OR_CARPET_LEVEL = 4;
-/** Braziers appear in the world only when any vehicle has reached at least this level. */
+/** A vehicle must reach at least this level before braziers appear during that vehicle's runs. */
 export const UNLOCK_BRAZIERS_MIN_MAX_LEVEL = 3;
 
 const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 6600, 8200];

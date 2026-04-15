@@ -76,7 +76,7 @@ import { MoonThreat } from "./MoonThreat";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
 import { LevelUpCards } from "../ui/LevelUpCards";
-import { ProgressionManager } from "./ProgressionManager";
+import { ProgressionManager, UNLOCK_BRAZIERS_MIN_MAX_LEVEL } from "./ProgressionManager";
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 
@@ -2431,10 +2431,10 @@ export class Game {
     this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
   }
 
-  /** Places braziers in the world once any vehicle has reached level 3 (see `ProgressionManager`). */
+  /** Places braziers in the world once the current vehicle reaches the brazier unlock level. */
   private ensureBraziersSpawned() {
     if (this.braziers) return;
-    if (!ProgressionManager.areBraziersUnlocked()) return;
+    if (this.progression.getLevel() < UNLOCK_BRAZIERS_MIN_MAX_LEVEL) return;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     const seed = this.gameSeed;
     const terrainType = this.gameTerrainType;
