@@ -1,35 +1,8 @@
 import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
-let cachedTotal: number | null = null;
-let cacheTime = 0;
-const CACHE_TTL_MS = 5_000;
-
-async function getTotal(prisma: PrismaClient): Promise<number> {
-  const now = Date.now();
-  if (cachedTotal !== null && now - cacheTime < CACHE_TTL_MS) {
-    return cachedTotal;
-  }
-  const result = await prisma.lanternLedger.aggregate({
-    _sum: { count: true },
-  });
-  cachedTotal = result._sum.count ?? 0;
-  cacheTime = now;
-  return cachedTotal;
-}
-
 export function createLanternsRouter(prisma: PrismaClient) {
   const router = Router();
-
-  router.get("/total", async (_req, res) => {
-    try {
-      const total = await getTotal(prisma);
-      res.json({ total });
-    } catch (err) {
-      console.error("Failed to get lantern total:", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
 
   router.post("/add", async (req, res) => {
     try {
@@ -47,9 +20,7 @@ export function createLanternsRouter(prisma: PrismaClient) {
         data: { count, worldSlug },
       });
 
-      cachedTotal = null;
-      const total = await getTotal(prisma);
-      res.json({ total });
+      res.json({ ok: true });
     } catch (err) {
       console.error("Failed to add lanterns:", err);
       res.status(500).json({ error: "Internal server error" });

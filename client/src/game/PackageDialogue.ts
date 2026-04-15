@@ -459,7 +459,7 @@ export function pickObservatoryGreeting(
 const STONEHENGE_CALM = [
   "The stone circle hums. You hear a whisper... \"The stones remember when the sky was whole.\"",
   "Standing inside the stone circle, a vision stirs... lanterns floating upward, each one a prayer unanswered.",
-  "Something is carved into the stone circle: \"When the moon swells, light every lantern.\"",
+  "Something is carved into the stone circle: \"When the moon swells, keep your eyes on the horizon.\"",
   "The stone circle resonates. You hear a whisper... \"They built this circle to watch the sky. They stopped watching.\"",
   "The shadows cast by the stone circle always point toward the moon, no matter the hour.",
 ];
@@ -469,15 +469,15 @@ const STONEHENGE_UNEASY = [
   "You hear a whisper from the stone circle... \"Count the stars between the pillars. There are fewer than before.\"",
   "The ground around the stone circle vibrates faintly. An inscription reads: \"The circle holds as long as the sky does.\"",
   "A vision ripples through the stone circle... a constellation rearranging itself. One star missing.",
-  "You hear a whisper from the stones... \"Light the lanterns. All of them. Before it is too late.\"",
+  "You hear a whisper from the stones... \"Do not mistake warning for rescue.\"",
 ];
 
 const STONEHENGE_DREAD = [
-  "You hear a whisper from the stone circle... \"The last keeper lit every lantern. It wasn't enough.\"",
+  "You hear a whisper from the stone circle... \"The last keeper saw it coming. Seeing changed nothing.\"",
   "A vision tears through the stone circle... the moon filling the entire sky. Someone screaming. Then silence.",
   "The air inside the stone circle is wrong. An inscription reads: \"Do not look up. Do not look up.\"",
   "You hear a whisper from the stones... \"Run. There is nowhere to run. Fly then. Fly as far as you can.\"",
-  "A vision stirs inside the stone circle... hundreds of lanterns rising at once. The moon does not slow.",
+  "A vision stirs inside the stone circle... prayers rising into the dark. The moon keeps coming.",
 ];
 
 const STONEHENGE_PANIC = [

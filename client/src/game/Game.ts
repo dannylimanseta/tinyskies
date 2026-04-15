@@ -173,8 +173,6 @@ const GONG_SFX_VOLUME = 0.55;
 /** Max gain for rewind SFX loop; multiplied by scene alpha during moon rewind. */
 const REWIND_LOOP_VOLUME = 0.38;
 
-const GLOBAL_LANTERN_GOAL = 1_000_000;
-
 export class Game {
   private container: HTMLElement;
   private renderer!: WebGLRenderer;
@@ -283,7 +281,6 @@ export class Game {
   private vehicleFlashTimer = 0;
   private lastDiamondCollectAt = 0;
   private diamondComboStep = 0;
-  private globalLanternsLit = 0;
   private introStartPos = new Vector3();
   private introEndPos = new Vector3();
   private introEndLookAt = new Vector3();
@@ -999,12 +996,6 @@ export class Game {
     window.addEventListener("resize", this.onResize);
 
     this.initNetworking(this.worldSlug);
-
-    const serverUrl = this.getServerUrl();
-    fetch(`${serverUrl}/api/lanterns/total`)
-      .then((r) => r.json())
-      .then((d) => { this.globalLanternsLit = d.total ?? 0; })
-      .catch(() => {});
 
     this.clock.getDelta();
     this.running = true;
@@ -1759,8 +1750,6 @@ export class Game {
             this.audioManager.playSFX(lanternSfx, LANTERN_COLLECT_SFX_VOLUME);
           }
           this.hud.showLanternCelebrate(litCount);
-          this.globalLanternsLit += litCount;
-          this.hud.showGlobalLanternCounter(this.globalLanternsLit, GLOBAL_LANTERN_GOAL);
 
           const srvUrl = this.getServerUrl();
           fetch(`${srvUrl}/api/lanterns/add`, {
@@ -1768,8 +1757,6 @@ export class Game {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ count: litCount, worldSlug: this.worldSlug }),
           })
-            .then((r) => r.json())
-            .then((d) => { if (d.total) this.globalLanternsLit = d.total; })
             .catch(() => {});
 
           this.hud.showXPGain(LANTERN_XP);
