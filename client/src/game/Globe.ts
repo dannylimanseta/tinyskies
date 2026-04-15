@@ -136,6 +136,33 @@ export class Globe {
   readonly hotspringCenters: { normal: Vector3 }[] = [];
   readonly mushroomCenters: { normal: Vector3 }[] = [];
 
+  setLandmarkParticleOpacity(kind: "hotspring" | "shrine" | "mushroom", index: number, opacity: number) {
+    let instanced: InstancedMesh | null = null;
+    let countPerSite = 0;
+    
+    if (kind === "hotspring") {
+      instanced = this.hotspringSteamInstanced;
+      countPerSite = 6; // STEAM_PER_SPRING
+    } else if (kind === "shrine") {
+      instanced = this.shrineSparkleInstanced;
+      countPerSite = 40; // SPARKLES_PER_SHRINE
+    } else if (kind === "mushroom") {
+      instanced = this.mushroomSporeInstanced;
+      countPerSite = 45; // SPORES_PER_GROVE
+    }
+    
+    if (!instanced) return;
+    
+    const opAttr = instanced.geometry.getAttribute("aOpacity") as InstancedBufferAttribute;
+    if (!opAttr) return;
+    
+    const start = index * countPerSite;
+    for (let i = 0; i < countPerSite; i++) {
+      opAttr.setX(start + i, opacity);
+    }
+    opAttr.needsUpdate = true;
+  }
+
   /** Shared teardrop geometry for shrine-tree InstancedMeshes (one buffer, many draws). */
   private shrineTeardropGeo: LatheGeometry | null = null;
 
@@ -2148,6 +2175,7 @@ transformed.z += sway2;`,
           attribute float aOffset;
           attribute vec3 aCenter;
           attribute vec3 aUp;
+          attribute float aOpacity;
           varying vec2 vUv;
           varying float vAlpha;
           void main() {
@@ -2170,7 +2198,7 @@ transformed.z += sway2;`,
             
             gl_Position = projectionMatrix * mvPos;
             
-            vAlpha = sin(t * 3.14159);
+            vAlpha = sin(t * 3.14159) * aOpacity;
           }
         `,
         fragmentShader: `
@@ -2238,9 +2266,12 @@ transformed.z += sway2;`,
     }
     
     if (sparkleInstanced && sparkleOffsets && sparkleCenters && sparkleUps) {
+      const opacities = new Float32Array(totalSparkles).fill(1);
       sparkleInstanced.geometry.setAttribute('aOffset', new InstancedBufferAttribute(sparkleOffsets, 1));
       sparkleInstanced.geometry.setAttribute('aCenter', new InstancedBufferAttribute(sparkleCenters, 3));
       sparkleInstanced.geometry.setAttribute('aUp', new InstancedBufferAttribute(sparkleUps, 3));
+      sparkleInstanced.geometry.setAttribute('aOpacity', new InstancedBufferAttribute(opacities, 1));
+      this.shrineSparkleInstanced = sparkleInstanced;
     }
   }
 
@@ -2361,9 +2392,11 @@ transformed.z += sway2;`,
         }
       }
       
+      const opacities = new Float32Array(totalSteam).fill(1);
       steamGeo.setAttribute('aOffset', new InstancedBufferAttribute(offsets, 1));
       steamGeo.setAttribute('aCenter', new InstancedBufferAttribute(centers, 3));
       steamGeo.setAttribute('aUp', new InstancedBufferAttribute(upVectors, 3));
+      steamGeo.setAttribute('aOpacity', new InstancedBufferAttribute(opacities, 1));
 
       const steamMat = new ShaderMaterial({
         vertexShader: `
@@ -2371,6 +2404,7 @@ transformed.z += sway2;`,
           attribute float aOffset;
           attribute vec3 aCenter;
           attribute vec3 aUp;
+          attribute float aOpacity;
           varying vec2 vUv;
           varying float vAlpha;
           void main() {
@@ -2393,7 +2427,7 @@ transformed.z += sway2;`,
             
             gl_Position = projectionMatrix * mvPos;
             
-            vAlpha = sin(t * 3.14159) * (1.0 - t);
+            vAlpha = sin(t * 3.14159) * (1.0 - t) * aOpacity;
           }
         `,
         fragmentShader: `
@@ -2416,6 +2450,7 @@ transformed.z += sway2;`,
       const dummy = new Matrix4();
       for (let i = 0; i < totalSteam; i++) steamInstanced.setMatrixAt(i, dummy);
       this.group.add(steamInstanced);
+      this.hotspringSteamInstanced = steamInstanced;
     }
 
     const loader = new GLTFLoader();
@@ -2775,10 +2810,13 @@ transformed.z += sway2;`,
     }
     
     if (sporeInstanced && sporeOffsets && sporeCenters && sporeUps && sporeColors) {
+      const opacities = new Float32Array(totalSpores).fill(1);
       sporeInstanced.geometry.setAttribute('aOffset', new InstancedBufferAttribute(sporeOffsets, 1));
       sporeInstanced.geometry.setAttribute('aCenter', new InstancedBufferAttribute(sporeCenters, 3));
       sporeInstanced.geometry.setAttribute('aUp', new InstancedBufferAttribute(sporeUps, 3));
       sporeInstanced.geometry.setAttribute('aColor', new InstancedBufferAttribute(sporeColors, 3));
+      sporeInstanced.geometry.setAttribute('aOpacity', new InstancedBufferAttribute(opacities, 1));
+      this.mushroomSporeInstanced = sporeInstanced;
     }
   }
 
