@@ -79,11 +79,11 @@ export const PAINTBALL_HIT_RADIUS = 0.14;
 /** Splatter opacity fades to zero over this many seconds. */
 export const SPLATTER_LIFETIME_SEC = 14;
 /**
- * Pastel-ish tints (0xRRGGBB) for paintballs and splatters — no pure white.
+ * Vibrant, saturated tints (0xRRGGBB) for paintballs and splatters.
  * Server picks one per hit.
  */
 export const PAINTBALL_COLOR_PALETTE: readonly number[] = [
-  0xe898a8, 0xe5b098, 0xe8d898, 0x98d8b8, 0x98c8e8, 0xc8b8e8, 0xe898c8, 0xa8c8d8,
+  0xd83858, 0xd56038, 0xd8b828, 0x38b878, 0x3888d8, 0x8858d8, 0xd838a8, 0x4888a8,
 ];
 
 export interface PaintballFiredEvent {

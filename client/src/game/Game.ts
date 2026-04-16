@@ -16,6 +16,7 @@ import {
   CanvasTexture,
   SRGBColorSpace,
   Quaternion,
+  MathUtils,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import {
@@ -716,9 +717,9 @@ export class Game {
       () => this.socketClient?.id,
       () => this.socketClient,
       this.remotePlanes,
-      () => {
+      (colorHex?: number) => {
         this.cameraRig.shake(0.038, 0.26);
-        this.hud.showPaintballSplatter();
+        this.hud.showPaintballSplatter(colorHex);
       },
       (victimId) => {
         const myId = this.socketClient?.id ?? "local";
@@ -1540,7 +1541,7 @@ export class Game {
 
   /* ── Main game loop ──────────────────────────────────────────────── */
 
-  private static readonly INTRO_DURATION = 4.5;
+  private static readonly INTRO_DURATION = 5.2;
   /** Tangent-plane heading (rad) for the Home intro camera approach toward the campsite. */
   private static readonly CAMP_INTRO_APPROACH = 0.85;
 
@@ -1580,6 +1581,22 @@ export class Game {
     this.introEndLookAt.copy(playerWorldPos).addScaledVector(fwd, 0.5);
   }
 
+  private introDirScratch = new Vector3();
+  private introPosScratch = new Vector3();
+
+  /** Smooth great-circle interpolation between unit directions (stable turn rate vs lerp+normalize). */
+  private slerpUnitVectors(a: Vector3, b: Vector3, t: number, out: Vector3): Vector3 {
+    const dot = MathUtils.clamp(a.dot(b), -1, 1);
+    const theta = Math.acos(dot);
+    if (theta < 1e-4) {
+      return out.copy(a).lerp(b, t).normalize();
+    }
+    const sinT = Math.sin(theta);
+    const w0 = Math.sin((1 - t) * theta) / sinT;
+    const w1 = Math.sin(t * theta) / sinT;
+    return out.copy(a).multiplyScalar(w0).addScaledVector(b, w1).normalize();
+  }
+
   private tick = () => {
     if (!this.running) return;
     requestAnimationFrame(this.tick);
@@ -1598,7 +1615,8 @@ export class Game {
       this.localPlayer.visibility = 1;
       this.introTimer += dt;
       const raw = Math.min(this.introTimer / Game.INTRO_DURATION, 1);
-      const t = 1 - Math.pow(1 - raw, 3);
+      // Ease-in-out: avoids the old ease-out spike at t≈0 that made the first part of the zoom feel jerky.
+      const t = raw * raw * (3 - 2 * raw);
 
       this.localPlayer.update(dt, 0, false, false, false, false);
 
@@ -1609,15 +1627,15 @@ export class Game {
       const startDist = this.introStartPos.length();
       const endDist = this.introEndPos.length();
 
-      const dir = startDir.clone().lerp(endDir, t).normalize();
+      const dir = this.slerpUnitVectors(startDir, endDir, t, this.introDirScratch);
       const dist = startDist + (endDist - startDist) * t;
-      const pos = dir.multiplyScalar(dist);
+      const pos = this.introPosScratch.copy(dir).multiplyScalar(dist);
 
       const lookAt = new Vector3().lerpVectors(new Vector3(0, 0, 0), this.introEndLookAt, t);
       const worldUp = new Vector3(0, 1, 0);
       const localUp = pos.clone().normalize();
       const up = worldUp.clone().lerp(localUp, t).normalize();
-      const rollZ = Math.sin(t * Math.PI) * 0.3;
+      const rollZ = Math.sin(t * Math.PI) * 0.12;
       this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ, up);
 
       this.globe.update(dt);

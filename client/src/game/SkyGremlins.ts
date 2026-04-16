@@ -868,7 +868,7 @@ export class SkyGremlins {
         gremlin.downTimer = GREMLIN_FALL_SEC;
         this.onShotDown(gremlin.worldPosition.clone());
       } else {
-        gremlin.hitWobbleAmp = 0.45;
+        gremlin.hitWobbleAmp = 0.85;
         gremlin.hitWobblePhase = 0;
         this.onHit(gremlin.worldPosition.clone());
       }

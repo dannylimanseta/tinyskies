@@ -80,13 +80,15 @@ export class LensFlare {
     this.geo = new PlaneGeometry(1, 1);
 
     const defs: { frag: string; color: number[]; size: number; offset: number; uniforms?: Record<string, any> }[] = [
-      { frag: circleFrag, color: [1.0, 0.95, 0.8], size: 0.3, offset: 0, uniforms: { softness: { value: 0.5 } } },
-      { frag: circleFrag, color: [1.0, 0.9, 0.6], size: 0.12, offset: 0.25, uniforms: { softness: { value: 0.6 } } },
-      { frag: hexFrag, color: [0.8, 0.85, 1.0], size: 0.08, offset: 0.4 },
-      { frag: ringFrag, color: [0.9, 0.8, 1.0], size: 0.15, offset: 0.55, uniforms: { innerRadius: { value: 0.6 } } },
-      { frag: circleFrag, color: [1.0, 0.85, 0.5], size: 0.05, offset: 0.7, uniforms: { softness: { value: 0.4 } } },
-      { frag: hexFrag, color: [0.7, 0.9, 1.0], size: 0.1, offset: 0.85 },
-      { frag: circleFrag, color: [1.0, 0.95, 0.9], size: 0.06, offset: 1.0, uniforms: { softness: { value: 0.7 } } },
+      { frag: circleFrag, color: [1.0, 0.95, 0.8], size: 0.45, offset: 0, uniforms: { softness: { value: 0.8 } } }, // Main sun glare, bigger and softer
+      { frag: circleFrag, color: [1.0, 0.9, 0.6], size: 0.18, offset: 0.25, uniforms: { softness: { value: 0.7 } } }, // Secondary glare
+      { frag: hexFrag, color: [0.8, 0.85, 1.0], size: 0.12, offset: 0.4 }, // Hex artifact 1
+      { frag: ringFrag, color: [0.9, 0.8, 1.0], size: 0.25, offset: 0.55, uniforms: { innerRadius: { value: 0.7 } } }, // Ring artifact
+      { frag: circleFrag, color: [1.0, 0.85, 0.5], size: 0.08, offset: 0.7, uniforms: { softness: { value: 0.5 } } }, // Small glare
+      { frag: hexFrag, color: [0.7, 0.9, 1.0], size: 0.15, offset: 0.85 }, // Hex artifact 2
+      { frag: circleFrag, color: [1.0, 0.95, 0.9], size: 0.09, offset: 1.0, uniforms: { softness: { value: 0.8 } } }, // Edge glare
+      { frag: hexFrag, color: [0.9, 0.7, 0.8], size: 0.06, offset: 1.2 }, // Extra hex artifact
+      { frag: circleFrag, color: [0.6, 0.8, 1.0], size: 0.1, offset: 1.4, uniforms: { softness: { value: 0.6 } } }, // Extra blue glare
     ];
 
     for (const d of defs) {

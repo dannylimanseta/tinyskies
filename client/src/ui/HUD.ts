@@ -197,7 +197,7 @@ export class HUD {
     );
   }
 
-  showPaintballSplatter() {
+  showPaintballSplatter(colorHex?: number) {
     const el = document.createElement("div");
     el.className = "hud-paintball-splatter";
     
@@ -209,9 +209,26 @@ export class HUD {
     const xOffset = 10 + Math.random() * 20; // 10% to 30% from edge
     const yOffset = 10 + Math.random() * 20;
     
-    el.style.setProperty('--rot', `${angle}deg`);
     el.style[isTop ? 'top' : 'bottom'] = `${yOffset}%`;
     el.style[isLeft ? 'left' : 'right'] = `${xOffset}%`;
+
+    if (colorHex !== undefined) {
+      // Use a mask approach so we can colorize it directly without layout hacks
+      el.style.backgroundColor = `#${colorHex.toString(16).padStart(6, '0')}`;
+      el.style.maskImage = `url("/2D/splatter_1.png")`;
+      el.style.maskSize = `contain`;
+      el.style.maskRepeat = `no-repeat`;
+      el.style.maskPosition = `center`;
+      el.style.webkitMaskImage = `url("/2D/splatter_1.png")`;
+      el.style.webkitMaskSize = `contain`;
+      el.style.webkitMaskRepeat = `no-repeat`;
+      el.style.webkitMaskPosition = `center`;
+      el.style.backgroundImage = 'none'; // Clear the original image
+    } else {
+      el.style.backgroundImage = `url("/2D/splatter_1.png")`;
+    }
+    
+    el.style.setProperty('--rot', `${angle}deg`);
     
     this.el.appendChild(el);
 
@@ -730,7 +747,6 @@ export class HUD {
         position: absolute;
         width: 375px;
         height: 375px;
-        background-image: url("/2D/splatter_1.png");
         background-size: contain;
         background-repeat: no-repeat;
         background-position: center;
@@ -738,17 +754,16 @@ export class HUD {
         opacity: 0;
         transform-origin: center;
         z-index: 50;
-        transform: rotate(var(--rot, 0deg));
       }
       .hud-paintball-splatter-animate {
         animation: splatter-fade 2.5s forwards;
       }
       @keyframes splatter-fade {
-        0% { opacity: 0; transform: rotate(var(--rot, 0deg)) scale(0.5); }
-        10% { opacity: 0.85; transform: rotate(var(--rot, 0deg)) scale(1.1); }
-        20% { opacity: 0.8; transform: rotate(var(--rot, 0deg)) scale(1); }
-        70% { opacity: 0.8; transform: rotate(var(--rot, 0deg)) scale(1); }
-        100% { opacity: 0; transform: rotate(var(--rot, 0deg)) scale(1); }
+        0% { opacity: 0; transform: rotate(var(--rot)) scale(0.5); }
+        10% { opacity: 0.85; transform: rotate(var(--rot)) scale(1.1); }
+        20% { opacity: 0.8; transform: rotate(var(--rot)) scale(1); }
+        70% { opacity: 0.8; transform: rotate(var(--rot)) scale(1); }
+        100% { opacity: 0; transform: rotate(var(--rot)) scale(1); }
       }
 
       @media (max-width: 768px) {

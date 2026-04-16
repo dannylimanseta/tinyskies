@@ -223,7 +223,7 @@ export class PaintballSystem {
     /** Null when offline / menu — projectiles still work solo. */
     private getSocket: () => import("../network/SocketClient").SocketClient | null,
     private remotePlanes: RemotePlaneManager,
-    private onLocalPlayerPaintballHit?: () => void,
+    private onLocalPlayerPaintballHit?: (colorHex?: number) => void,
     private onPaintballVictimWobble?: (victimId: string) => void,
     /** One-shot when a projectile actually spawns (local + remote). */
     private onPaintballShoot?: () => void,
@@ -410,7 +410,7 @@ export class PaintballSystem {
     if (!victimRoot) return;
 
     if (ev.victimId === myId) {
-      this.onLocalPlayerPaintballHit?.();
+      this.onLocalPlayerPaintballHit?.(ev.color);
     }
     this.onPaintballVictimWobble?.(ev.victimId);
     this.applyImpactAtGroup(victimRoot, ev.color, ev.splatSeed);
@@ -427,7 +427,7 @@ export class PaintballSystem {
     splatSeed = (Math.random() * 0xffffffff) >>> 0,
   ) {
     if (!localPlaneGroup) return;
-    this.onLocalPlayerPaintballHit?.();
+    this.onLocalPlayerPaintballHit?.(colorHex);
     this.onPaintballVictimWobble?.(this.getSocketId() ?? "local");
     this.applyImpactAtGroup(localPlaneGroup, colorHex, splatSeed);
     this.onPaintballImpact?.(splatSeed, false);
