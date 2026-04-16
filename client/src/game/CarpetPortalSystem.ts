@@ -191,10 +191,10 @@ class PortalVisual {
     const c3 = c1 + 1;
     const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
     
-    // Morph from circle (1.0) to oval (x: 0.65, y: 1.25)
+    // Morph from small circle (0.3) to oval (x: 0.65, y: 1.25)
     const morphEase = t * t * (3 - 2 * t); // Smoothstep for morphing
-    const currentX = (0.95 + (0.65 - 0.95) * morphEase) * ease;
-    const currentY = (0.95 + (1.25 - 0.95) * morphEase) * ease;
+    const currentX = (0.3 + (0.65 - 0.3) * morphEase) * ease;
+    const currentY = (0.3 + (1.25 - 0.3) * morphEase) * ease;
     
     // Apply scale and a cool spin as it opens
     this.scaledGroup.scale.set(currentX, currentY, 1.0 * ease);
