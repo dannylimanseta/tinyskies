@@ -21,8 +21,8 @@ import {
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
 const PORTAL_COLORS = [0x00aaff, 0xff7700] as const;
-const PORTAL_PLACE_AHEAD = 0.18;
-const PORTAL_RADIUS = 0.19;
+const PORTAL_PLACE_AHEAD = 0.45;
+const PORTAL_RADIUS = 0.15;
 const PORTAL_TUBE_RADIUS = 0.022;
 const PORTAL_TRIGGER_RADIUS = 0.14;
 const PORTAL_ARM_DISTANCE = 0.38;
@@ -31,6 +31,7 @@ const PORTAL_COOLDOWN_SEC = 0.3;
 
 type PortalEndpoint = {
   id: number;
+  createdAt: number;
   qPosition: Quaternion;
   heading: number;
   altitude: number;
@@ -180,7 +181,20 @@ class PortalVisual {
     this.group.matrixWorldNeedsUpdate = true;
   }
 
-  update(time: number) {
+  update(time: number, age: number) {
+    // Spawn animation
+    const spawnDuration = 0.5;
+    const t = Math.min(1.0, age / spawnDuration);
+    
+    // easeOutBack
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    
+    // Apply scale and a cool spin as it opens
+    this.scaledGroup.scale.set(0.65 * ease, 1.25 * ease, 1.0 * ease);
+    this.scaledGroup.rotation.z = (1 - t) * Math.PI;
+
     const pulse = 1 + Math.sin(time * 8.0 + this.phase) * 0.02;
     this.ring.scale.setScalar(pulse);
     this.glow.scale.setScalar(0.95 + Math.sin(time * 4.0 + this.phase) * 0.05);
@@ -257,6 +271,7 @@ export class CarpetPortalSystem {
     this.group.add(visual.group);
     this.portals.push({
       id: this.nextPortalId++,
+      createdAt: this.time,
       qPosition,
       heading: carpet.heading,
       altitude,
@@ -287,7 +302,7 @@ export class CarpetPortalSystem {
     this.time += dt;
     this.cooldown = Math.max(0, this.cooldown - dt);
     for (const portal of this.portals) {
-      portal.visual.update(this.time);
+      portal.visual.update(this.time, this.time - portal.createdAt);
     }
 
     const currentWorldPos = cartesianFromSpherical(
