@@ -26,6 +26,7 @@ import {
   tangentFrame,
 } from "./SphericalMath";
 import { surfaceAltitudeAt } from "./TerrainSurface";
+import { addRimLight } from "./RimLight";
 
 const GREMLIN_COUNT = 5;
 export const SKY_GREMLIN_XP = 20;
@@ -172,6 +173,12 @@ export class SkyGremlins {
   ) {
     this.group.visible = false;
     this.scene.add(this.group);
+
+    addRimLight(this.bodyMaterial, 0xa2ef7b, 0.45, 2.8);
+    addRimLight(this.bellyMaterial, 0xa2ef7b, 0.5, 2.8);
+    addRimLight(this.wingMaterial, 0xe2a0ff, 0.35, 3.2);
+    addRimLight(this.gearMaterial, 0x888888, 0.4, 3.0);
+    addRimLight(this.toothMaterial, 0xffffff, 0.5, 2.5);
 
     const ilVerts = new Float32Array([
       0, 0, 0.02,
@@ -511,6 +518,7 @@ export class SkyGremlins {
     this.tangentScratch.copy(this.toPlayerScratch);
     this.tangentScratch.addScaledVector(up, -this.tangentScratch.dot(up));
     let moveSpeed = GREMLIN_CRUISE_SPEED;
+    let moveHeading = gremlin.heading;
 
     if (
       distanceToPlayer < GREMLIN_DETECT_RANGE &&
@@ -551,10 +559,15 @@ export class SkyGremlins {
       }
       this.directionScratch.normalize();
 
+      moveHeading = Math.atan2(
+        this.directionScratch.dot(frame.east),
+        this.directionScratch.dot(frame.north),
+      );
+
       const targetHeading =
         Math.atan2(
-          this.directionScratch.dot(frame.east),
-          this.directionScratch.dot(frame.north),
+          this.tangentScratch.dot(frame.east),
+          this.tangentScratch.dot(frame.north),
         ) +
         Math.sin(this.time * 0.9 + gremlin.turnPhase) * 0.2;
       gremlin.heading = lerpAngle(
@@ -577,6 +590,7 @@ export class SkyGremlins {
         GREMLIN_ALTITUDE_MIN,
         Math.min(GREMLIN_ALTITUDE_MAX, gremlin.baseAltitude),
       );
+      moveHeading = gremlin.heading;
     }
 
     const targetAltitude =
@@ -586,7 +600,7 @@ export class SkyGremlins {
     gremlin.qPosition.copy(
       moveOnSphere(
         gremlin.qPosition,
-        gremlin.heading,
+        moveHeading,
         (moveSpeed * dt) /
           this.globeRadius,
       ),
