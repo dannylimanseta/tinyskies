@@ -1,4 +1,5 @@
 import {
+  BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   ConeGeometry,
@@ -69,6 +70,8 @@ type GremlinState = {
   readonly rig: Group;
   readonly leftWingPivot: Group;
   readonly rightWingPivot: Group;
+  readonly leftWingMidPivot: Group;
+  readonly rightWingMidPivot: Group;
   readonly random: () => number;
   orbitSign: number;
   paintColor: number;
@@ -80,6 +83,7 @@ type GremlinState = {
   bobPhase: number;
   turnPhase: number;
   fireCooldown: number;
+  aimTimer: number;
   respawnSalt: number;
   respawnTimer: number;
   downTimer: number;
@@ -116,6 +120,11 @@ export class SkyGremlins {
     emissive: 0x111111,
     flatShading: true,
   });
+  private readonly toothMaterial = new MeshPhongMaterial({
+    color: 0xffffff,
+    emissive: 0x444444,
+    flatShading: true,
+  });
 
   private readonly bodyGeo = new SphereGeometry(0.06, 8, 8);
   private readonly headGeo = new SphereGeometry(0.045, 8, 8);
@@ -124,9 +133,16 @@ export class SkyGremlins {
   private readonly limbGeo = new CylinderGeometry(0.008, 0.006, 0.05, 5);
   private readonly eyeGeo = new SphereGeometry(0.008, 4, 4);
   private readonly gunGeo = new CylinderGeometry(0.012, 0.015, 0.06, 6);
+  private readonly browGeo = new CylinderGeometry(0.006, 0.006, 0.04, 4);
+  private readonly toothGeo = new ConeGeometry(0.004, 0.01, 3);
+  private readonly tailGeo = new ConeGeometry(0.012, 0.08, 4);
+  private readonly backpackGeo = new BoxGeometry(0.06, 0.06, 0.04);
+  private readonly goggleGeo = new CylinderGeometry(0.012, 0.012, 0.006, 8);
 
-  private readonly leftWingGeo: BufferGeometry;
-  private readonly rightWingGeo: BufferGeometry;
+  private readonly innerLeftWingGeo: BufferGeometry;
+  private readonly outerLeftWingGeo: BufferGeometry;
+  private readonly innerRightWingGeo: BufferGeometry;
+  private readonly outerRightWingGeo: BufferGeometry;
 
   private readonly gremlins: GremlinState[] = [];
   private readonly worldPosScratch = new Vector3();
@@ -157,45 +173,54 @@ export class SkyGremlins {
     this.group.visible = false;
     this.scene.add(this.group);
 
-    const lWingVerts = new Float32Array([
-      0, 0, 0,               // 0: Root
-      -0.12, 0, 0.06,        // 1: Wrist
-      -0.28, 0, 0.08,        // 2: Tip 1
-      -0.24, 0, -0.06,       // 3: Tip 2
-      -0.14, 0, -0.14,       // 4: Tip 3
-      -0.04, 0, -0.12,       // 5: Tip 4
-      -0.20, 0, 0.0,         // 6: Web 1-2
-      -0.15, 0, -0.05,       // 7: Web 2-3
-      -0.07, 0, -0.08,       // 8: Web 3-4
+    const ilVerts = new Float32Array([
+      0, 0, 0.02,
+      -0.08, 0, 0.04,
+      -0.07, 0, -0.04,
+      0, 0, -0.06,
     ]);
-    const lWingIndices = [
-      1, 2, 6,
-      1, 6, 3,
-      1, 3, 7,
-      1, 7, 4,
-      1, 4, 8,
-      1, 8, 5,
-      1, 5, 0
-    ];
-    this.leftWingGeo = new BufferGeometry();
-    this.leftWingGeo.setAttribute("position", new BufferAttribute(lWingVerts, 3));
-    this.leftWingGeo.setIndex(lWingIndices);
-    this.leftWingGeo.computeVertexNormals();
+    const ilIndices = [0, 1, 2, 0, 2, 3];
+    this.innerLeftWingGeo = new BufferGeometry();
+    this.innerLeftWingGeo.setAttribute("position", new BufferAttribute(ilVerts, 3));
+    this.innerLeftWingGeo.setIndex(ilIndices);
+    this.innerLeftWingGeo.computeVertexNormals();
 
-    const rWingVerts = new Float32Array(lWingVerts.length);
-    for (let i = 0; i < lWingVerts.length; i += 3) {
-      rWingVerts[i] = -lWingVerts[i];
-      rWingVerts[i + 1] = lWingVerts[i + 1];
-      rWingVerts[i + 2] = lWingVerts[i + 2];
+    const irVerts = new Float32Array(ilVerts.length);
+    for (let i = 0; i < ilVerts.length; i += 3) {
+      irVerts[i] = -ilVerts[i];
+      irVerts[i + 1] = ilVerts[i + 1];
+      irVerts[i + 2] = ilVerts[i + 2];
     }
-    const rWingIndices = [];
-    for (let i = 0; i < lWingIndices.length; i += 3) {
-      rWingIndices.push(lWingIndices[i], lWingIndices[i + 2], lWingIndices[i + 1]);
+    const irIndices = [0, 2, 1, 0, 3, 2];
+    this.innerRightWingGeo = new BufferGeometry();
+    this.innerRightWingGeo.setAttribute("position", new BufferAttribute(irVerts, 3));
+    this.innerRightWingGeo.setIndex(irIndices);
+    this.innerRightWingGeo.computeVertexNormals();
+
+    const olVerts = new Float32Array([
+      0, 0, 0,
+      -0.12, 0, 0.02,
+      -0.10, 0, -0.06,
+      -0.04, 0, -0.10,
+      0.01, 0, -0.08,
+    ]);
+    const olIndices = [0, 1, 2, 0, 2, 3, 0, 3, 4];
+    this.outerLeftWingGeo = new BufferGeometry();
+    this.outerLeftWingGeo.setAttribute("position", new BufferAttribute(olVerts, 3));
+    this.outerLeftWingGeo.setIndex(olIndices);
+    this.outerLeftWingGeo.computeVertexNormals();
+
+    const orVerts = new Float32Array(olVerts.length);
+    for (let i = 0; i < olVerts.length; i += 3) {
+      orVerts[i] = -olVerts[i];
+      orVerts[i + 1] = olVerts[i + 1];
+      orVerts[i + 2] = olVerts[i + 2];
     }
-    this.rightWingGeo = new BufferGeometry();
-    this.rightWingGeo.setAttribute("position", new BufferAttribute(rWingVerts, 3));
-    this.rightWingGeo.setIndex(rWingIndices);
-    this.rightWingGeo.computeVertexNormals();
+    const orIndices = [0, 2, 1, 0, 3, 2, 0, 4, 3];
+    this.outerRightWingGeo = new BufferGeometry();
+    this.outerRightWingGeo.setAttribute("position", new BufferAttribute(orVerts, 3));
+    this.outerRightWingGeo.setIndex(orIndices);
+    this.outerRightWingGeo.computeVertexNormals();
 
     for (let i = 0; i < GREMLIN_COUNT; i++) {
       const gremlin = this.createGremlin(i);
@@ -253,13 +278,21 @@ export class SkyGremlins {
     this.limbGeo.dispose();
     this.eyeGeo.dispose();
     this.gunGeo.dispose();
-    this.leftWingGeo.dispose();
-    this.rightWingGeo.dispose();
+    this.browGeo.dispose();
+    this.toothGeo.dispose();
+    this.tailGeo.dispose();
+    this.backpackGeo.dispose();
+    this.goggleGeo.dispose();
+    this.innerLeftWingGeo.dispose();
+    this.outerLeftWingGeo.dispose();
+    this.innerRightWingGeo.dispose();
+    this.outerRightWingGeo.dispose();
     this.bodyMaterial.dispose();
     this.bellyMaterial.dispose();
     this.wingMaterial.dispose();
     this.eyeMaterial.dispose();
     this.gearMaterial.dispose();
+    this.toothMaterial.dispose();
   }
 
   private createGremlin(index: number): GremlinState {
@@ -283,11 +316,30 @@ export class SkyGremlins {
     head.castShadow = true;
     rig.add(head);
 
+    const brow = new Mesh(this.browGeo, this.bodyMaterial);
+    brow.position.set(0, 0.08, 0.085);
+    brow.rotation.z = Math.PI / 2;
+    brow.rotation.x = 0.2;
+    brow.castShadow = true;
+    rig.add(brow);
+
     const snout = new Mesh(this.snoutGeo, this.bodyMaterial);
     snout.position.set(0, 0.05, 0.1);
     snout.rotation.x = Math.PI / 2;
     snout.castShadow = true;
     rig.add(snout);
+
+    const leftTooth = new Mesh(this.toothGeo, this.toothMaterial);
+    leftTooth.position.set(-0.006, 0.04, 0.105);
+    leftTooth.rotation.x = Math.PI;
+    leftTooth.castShadow = true;
+    rig.add(leftTooth);
+
+    const rightTooth = new Mesh(this.toothGeo, this.toothMaterial);
+    rightTooth.position.set(0.006, 0.04, 0.105);
+    rightTooth.rotation.x = Math.PI;
+    rightTooth.castShadow = true;
+    rig.add(rightTooth);
 
     const leftEar = new Mesh(this.earGeo, this.bellyMaterial);
     leftEar.position.set(-0.045, 0.07, 0.03);
@@ -347,17 +399,33 @@ export class SkyGremlins {
     leftWingPivot.position.set(-0.03, 0.04, -0.04);
     rig.add(leftWingPivot);
 
-    const leftWing = new Mesh(this.leftWingGeo, this.wingMaterial);
-    leftWing.castShadow = true;
-    leftWingPivot.add(leftWing);
+    const innerLeftWing = new Mesh(this.innerLeftWingGeo, this.wingMaterial);
+    innerLeftWing.castShadow = true;
+    leftWingPivot.add(innerLeftWing);
+
+    const leftWingMidPivot = new Group();
+    leftWingMidPivot.position.set(-0.08, 0, 0.04);
+    leftWingPivot.add(leftWingMidPivot);
+
+    const outerLeftWing = new Mesh(this.outerLeftWingGeo, this.wingMaterial);
+    outerLeftWing.castShadow = true;
+    leftWingMidPivot.add(outerLeftWing);
 
     const rightWingPivot = new Group();
     rightWingPivot.position.set(0.03, 0.04, -0.04);
     rig.add(rightWingPivot);
 
-    const rightWing = new Mesh(this.rightWingGeo, this.wingMaterial);
-    rightWing.castShadow = true;
-    rightWingPivot.add(rightWing);
+    const innerRightWing = new Mesh(this.innerRightWingGeo, this.wingMaterial);
+    innerRightWing.castShadow = true;
+    rightWingPivot.add(innerRightWing);
+
+    const rightWingMidPivot = new Group();
+    rightWingMidPivot.position.set(0.08, 0, 0.04);
+    rightWingPivot.add(rightWingMidPivot);
+
+    const outerRightWing = new Mesh(this.outerRightWingGeo, this.wingMaterial);
+    outerRightWing.castShadow = true;
+    rightWingMidPivot.add(outerRightWing);
 
     const random = seededRandom(this.seed + index * 104729 + 17);
     return {
@@ -367,6 +435,8 @@ export class SkyGremlins {
       rig,
       leftWingPivot,
       rightWingPivot,
+      leftWingMidPivot,
+      rightWingMidPivot,
       random,
       orbitSign: random() < 0.5 ? -1 : 1,
       paintColor:
@@ -381,6 +451,7 @@ export class SkyGremlins {
       bobPhase: random() * Math.PI * 2,
       turnPhase: random() * Math.PI * 2,
       fireCooldown: GREMLIN_FIRE_COOLDOWN_MIN,
+      aimTimer: 0,
       respawnSalt: 0,
       respawnTimer: 0,
       downTimer: 0,
@@ -416,11 +487,13 @@ export class SkyGremlins {
     gremlin.fireCooldown =
       (initial ? 0.5 : GREMLIN_FIRE_COOLDOWN_MIN) +
       gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
+    gremlin.aimTimer = 0;
     gremlin.mode = "alive";
     gremlin.downTimer = 0;
     gremlin.root.visible = true;
     gremlin.rig.position.set(0, 0, 0);
     gremlin.rig.rotation.set(0, 0, 0);
+    gremlin.rig.scale.setScalar(0.7);
     this.updateGremlinTransform(gremlin, 0);
   }
 
@@ -546,38 +619,51 @@ export class SkyGremlins {
       this.directionScratch.divideScalar(fireDistance);
       this.forwardFromHeading(gremlin.qPosition, gremlin.heading, this.forwardScratch);
       if (this.forwardScratch.dot(this.directionScratch) >= GREMLIN_FIRE_DOT) {
-        this.rightScratch.crossVectors(this.directionScratch, movedFrame.up);
-        if (this.rightScratch.lengthSq() < 1e-5) {
-          this.rightScratch.copy(movedFrame.east);
-        } else {
-          this.rightScratch.normalize();
+        gremlin.aimTimer += dt;
+        if (gremlin.aimTimer >= 0.2) {
+          gremlin.aimTimer = 0;
+          this.rightScratch.crossVectors(this.directionScratch, movedFrame.up);
+          if (this.rightScratch.lengthSq() < 1e-5) {
+            this.rightScratch.copy(movedFrame.east);
+          } else {
+            this.rightScratch.normalize();
+          }
+          this.directionScratch
+            .addScaledVector(
+              this.rightScratch,
+              (gremlin.random() - 0.5) * GREMLIN_AIM_SIDE_SPREAD,
+            )
+            .normalize();
+          this.muzzleScratch
+            .copy(gremlin.worldPosition)
+            .addScaledVector(this.forwardScratch, GREMLIN_MUZZLE_FORWARD)
+            .addScaledVector(movedFrame.up, GREMLIN_MUZZLE_UP);
+          this.paintballSystem.spawnLocalProjectile({
+            shooterId: gremlin.id,
+            origin: this.muzzleScratch,
+            direction: this.directionScratch,
+            color: gremlin.paintColor,
+            speed: GREMLIN_SHOT_SPEED,
+          });
+          gremlin.fireCooldown =
+            GREMLIN_FIRE_COOLDOWN_MIN +
+            gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
         }
-        this.directionScratch
-          .addScaledVector(
-            this.rightScratch,
-            (gremlin.random() - 0.5) * GREMLIN_AIM_SIDE_SPREAD,
-          )
-          .normalize();
-        this.muzzleScratch
-          .copy(gremlin.worldPosition)
-          .addScaledVector(this.forwardScratch, GREMLIN_MUZZLE_FORWARD)
-          .addScaledVector(movedFrame.up, GREMLIN_MUZZLE_UP);
-        this.paintballSystem.spawnLocalProjectile({
-          shooterId: gremlin.id,
-          origin: this.muzzleScratch,
-          direction: this.directionScratch,
-          color: gremlin.paintColor,
-          speed: GREMLIN_SHOT_SPEED,
-        });
-        gremlin.fireCooldown =
-          GREMLIN_FIRE_COOLDOWN_MIN +
-          gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
+      } else {
+        gremlin.aimTimer = 0;
       }
+    } else {
+      gremlin.aimTimer = 0;
     }
   }
 
   private updateFallingGremlin(gremlin: GremlinState, dt: number) {
     gremlin.downTimer = Math.max(0, gremlin.downTimer - dt);
+    
+    if (gremlin.downTimer < 0.2) {
+      gremlin.rig.scale.setScalar(0.7 * (gremlin.downTimer / 0.2));
+    }
+
     const frame = tangentFrame(gremlin.qPosition);
     const surfaceAlt = surfaceAltitudeAt(
       this.seed,
@@ -596,6 +682,8 @@ export class SkyGremlins {
     gremlin.rig.rotation.z += dt * 9.5;
     gremlin.leftWingPivot.rotation.z *= 0.86;
     gremlin.rightWingPivot.rotation.z *= 0.86;
+    gremlin.leftWingMidPivot.rotation.z *= 0.86;
+    gremlin.rightWingMidPivot.rotation.z *= 0.86;
 
     if (gremlin.downTimer <= 0) {
       gremlin.mode = "respawning";
@@ -630,8 +718,11 @@ export class SkyGremlins {
 
     if (gremlin.mode === "alive") {
       const flap = Math.sin(this.time * GREMLIN_FLAP_SPEED + gremlin.flapPhase) * GREMLIN_FLAP_AMP;
+      const midFlap = Math.sin(this.time * GREMLIN_FLAP_SPEED + gremlin.flapPhase - 1.2) * GREMLIN_FLAP_AMP * 0.8;
       gremlin.leftWingPivot.rotation.z = flap;
       gremlin.rightWingPivot.rotation.z = -flap;
+      gremlin.leftWingMidPivot.rotation.z = midFlap;
+      gremlin.rightWingMidPivot.rotation.z = -midFlap;
       gremlin.rig.position.y =
         Math.sin(this.time * GREMLIN_BOB_SPEED + gremlin.bobPhase) * 0.022;
       const lean = Math.sin(this.time * 1.4 + gremlin.turnPhase) * 0.08;

@@ -728,8 +728,8 @@ export class HUD {
 
       .hud-paintball-splatter {
         position: absolute;
-        width: 150px;
-        height: 150px;
+        width: 375px;
+        height: 375px;
         background-image: url("/2D/splatter_1.png");
         background-size: contain;
         background-repeat: no-repeat;
