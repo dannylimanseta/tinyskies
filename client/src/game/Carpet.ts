@@ -32,8 +32,8 @@ const TURN_INPUT_SMOOTH = 8;
 const ELEVATE_INPUT_SMOOTH = 6;
 
 /** Default hover clearance above terrain surface. */
-const HOVER_HEIGHT = 0.08;
-/** Height above terrain when Space (elevate) is held. */
+export const CARPET_HOVER_HEIGHT = 0.08;
+/** Height above terrain when elevate is held. */
 const BOOST_HEIGHT = 0.6;
 /** How fast altitude lerps toward the target (lower = slower climb = longer tilt). */
 const ALTITUDE_LERP = 0.6;
@@ -69,7 +69,7 @@ export class Carpet {
   private tasselCurl = 0;
   private timeUniform: IUniform<number> | null = null;
   private turnInputSmoothed = 0;
-  /** 0 = low hover, 1 = boosted height — smoothed from Space. */
+  /** 0 = low hover, 1 = boosted height — smoothed from the elevate input. */
   private elevateBlend = 0;
   /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
   private boostTimer = 0;
@@ -99,7 +99,7 @@ export class Carpet {
 
     const up = tangentFrame(this.qPosition).up;
     this.altitude =
-      surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z) + HOVER_HEIGHT;
+      surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z) + CARPET_HOVER_HEIGHT;
     this.prevAltitude = this.altitude;
     this.speed = MIN_SPEED;
     this.applyMatrix();
@@ -142,11 +142,11 @@ export class Carpet {
     );
     const elevateTarget = elevate ? 1 : 0;
     this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
-    const clearance = HOVER_HEIGHT + (BOOST_HEIGHT - HOVER_HEIGHT) * this.elevateBlend;
+    const clearance = CARPET_HOVER_HEIGHT + (BOOST_HEIGHT - CARPET_HOVER_HEIGHT) * this.elevateBlend;
     const targetAlt = surfaceAlt + clearance;
     this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_LERP * dt);
 
-    const hardFloor = surfaceAlt + HOVER_HEIGHT;
+    const hardFloor = surfaceAlt + CARPET_HOVER_HEIGHT;
     if (this.altitude < hardFloor) this.altitude = hardFloor;
 
     const altDelta = (this.altitude - this.prevAltitude) / Math.max(dt, 1e-4);
@@ -180,6 +180,15 @@ export class Carpet {
   speedBoost() {
     this.boostTimer = DIAMOND_BOOST_DURATION_SEC;
     this.speed = Math.min(DIAMOND_BOOST_SPEED, ABSOLUTE_MAX_SPEED);
+  }
+
+  teleportTo(qPosition: Quaternion, heading: number, altitude: number, speed = this.speed) {
+    this.qPosition.copy(qPosition);
+    this.heading = ((heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    this.altitude = altitude;
+    this.prevAltitude = altitude;
+    this.speed = Math.min(speed, ABSOLUTE_MAX_SPEED);
+    this.applyMatrix();
   }
 
   applyMatrix() {

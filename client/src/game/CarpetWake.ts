@@ -164,6 +164,26 @@ class SplashParticles {
     this.sizeAttr.needsUpdate = true;
   }
 
+  reset() {
+    for (const p of this.pool) {
+      p.alive = false;
+      p.age = 0;
+      p.lifetime = 1;
+      p.px = 0;
+      p.py = 0;
+      p.pz = 0;
+      p.vx = 0;
+      p.vy = 0;
+      p.vz = 0;
+    }
+    (this.posAttr.array as Float32Array).fill(0);
+    (this.alphaAttr.array as Float32Array).fill(0);
+    (this.sizeAttr.array as Float32Array).fill(0);
+    this.posAttr.needsUpdate = true;
+    this.alphaAttr.needsUpdate = true;
+    this.sizeAttr.needsUpdate = true;
+  }
+
   dispose() {
     this.geometry.dispose();
     this.material.dispose();
@@ -223,6 +243,12 @@ export class CarpetWake {
 
     this.splash.emit(leftPos, up, right.clone().multiplyScalar(-1), speed);
     this.splash.emit(rightPos, up, right, speed);
+  }
+
+  reset() {
+    this.waterAlpha = 0;
+    this.splash.material.uniforms.uGlobalAlpha.value = 0;
+    this.splash.reset();
   }
 
   dispose() {

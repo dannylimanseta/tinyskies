@@ -42,6 +42,10 @@ export class StateSync {
     }
   }
 
+  flush() {
+    this.send();
+  }
+
   private send() {
     if (!this.client.connected) return;
 

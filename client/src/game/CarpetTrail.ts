@@ -143,6 +143,17 @@ class GoldenRibbon {
     this.alphaAttr.needsUpdate = true;
   }
 
+  reset() {
+    this.points.length = 0;
+    this.lastCross.set(0, 1, 0);
+    const positions = this.posAttr.array as Float32Array;
+    const alphas = this.alphaAttr.array as Float32Array;
+    positions.fill(0);
+    alphas.fill(0);
+    this.posAttr.needsUpdate = true;
+    this.alphaAttr.needsUpdate = true;
+  }
+
   dispose() {
     this.geometry.dispose();
     this.material.dispose();
@@ -176,6 +187,11 @@ export class CarpetTrail {
 
     this.leftTrail.update(leftWorld, camPos);
     this.rightTrail.update(rightWorld, camPos);
+  }
+
+  reset() {
+    this.leftTrail.reset();
+    this.rightTrail.reset();
   }
 
   dispose() {

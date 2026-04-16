@@ -8,6 +8,8 @@ export interface ControlState {
   descend: boolean;
   /** One-shot: fire paintball (plane); consumed each frame read. */
   paintball: boolean;
+  /** One-shot: vehicle special action (e.g. carpet portal); consumed each frame read. */
+  specialAction: boolean;
   interact: boolean;
 }
 
@@ -15,6 +17,7 @@ export class FlightControls {
   private keys = new Set<string>();
   private _enabled = true;
   private paintballQueued = false;
+  private specialActionQueued = false;
   private interactQueued = false;
 
   constructor(element: HTMLElement) {
@@ -34,7 +37,16 @@ export class FlightControls {
 
   getState(): ControlState {
     if (!this._enabled) {
-      return { turnRate: 0, forward: false, brake: false, elevate: false, descend: false, paintball: false, interact: false };
+      return {
+        turnRate: 0,
+        forward: false,
+        brake: false,
+        elevate: false,
+        descend: false,
+        paintball: false,
+        specialAction: false,
+        interact: false,
+      };
     }
 
     let turnRate = 0;
@@ -47,10 +59,12 @@ export class FlightControls {
     const descend = false;
     const paintball = this.paintballQueued;
     this.paintballQueued = false;
+    const specialAction = this.specialActionQueued;
+    this.specialActionQueued = false;
     const interact = this.interactQueued;
     this.interactQueued = false;
 
-    return { turnRate, forward, brake, elevate, descend, paintball, interact };
+    return { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact };
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -58,6 +72,7 @@ export class FlightControls {
     const key = e.key.toLowerCase();
     if (key === " " && !e.repeat) {
       this.paintballQueued = true;
+      this.specialActionQueued = true;
     }
     if (key === "f" && !e.repeat) {
       this.interactQueued = true;

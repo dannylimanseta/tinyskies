@@ -54,6 +54,7 @@ import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { pickRandomVehicleColor } from "./vehicleColors";
+import { CarpetPortalSystem } from "./CarpetPortalSystem";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -129,6 +130,7 @@ const DIAMOND_COMBO_WINDOW_MS = 900;
 const DIAMOND_COMBO_MAX_STEPS = 5;
 const DIAMOND_COMBO_RATE_PER_STEP = 0.028;
 const DIAMOND_SFX_VOLUME = 0.3;
+const PORTAL_INTERACTION_SUPPRESS_SEC = 0.18;
 
 const DIAMOND_SFX_IDS = [
   "diamond_collect_1",
@@ -193,6 +195,7 @@ export class Game {
   private carpetTrail!: CarpetTrail;
   private carpetWake!: CarpetWake;
   private carpetLeaves!: CarpetLeaves;
+  private carpetPortalSystem: CarpetPortalSystem | null = null;
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
@@ -279,6 +282,7 @@ export class Game {
   private pendingCampsiteAfterIntro = false;
   private introTimer = 0;
   private vehicleFlashTimer = 0;
+  private portalInteractionSuppressTimer = 0;
   private lastDiamondCollectAt = 0;
   private diamondComboStep = 0;
   private introStartPos = new Vector3();
@@ -665,6 +669,7 @@ export class Game {
     this.prevExtraRainbows = 0;
     this.prevExtraFireflies = 0;
     this.prevExtraLanterns = 0;
+    this.portalInteractionSuppressTimer = 0;
 
     if (vehicle === "boat") {
       this.localPlayer = new Boat(globeRadius, seed, terrainType, hullColor, spawnSessionSalt);
@@ -753,6 +758,14 @@ export class Game {
     this.carpetLeaves = new CarpetLeaves();
     this.carpetLeaves.group.visible = this.vehicleFeatures.carpetTrail;
     this.scene.add(this.carpetLeaves.group);
+
+    if (vehicle === "carpet") {
+      this.carpetPortalSystem = new CarpetPortalSystem(globeRadius, seed, terrainType);
+      this.scene.add(this.carpetPortalSystem.group);
+      this.carpetPortalSystem.syncToCarpet(this.localPlayer as Carpet);
+    } else {
+      this.carpetPortalSystem = null;
+    }
 
     this.lensFlare = new LensFlare();
     this.lensFlare.setColorScale(preset.flareColorScale);
@@ -1019,6 +1032,11 @@ export class Game {
     this.carpetTrail?.dispose();
     this.carpetWake?.dispose();
     this.carpetLeaves?.dispose();
+    if (this.carpetPortalSystem) {
+      this.scene.remove(this.carpetPortalSystem.group);
+      this.carpetPortalSystem.dispose();
+      this.carpetPortalSystem = null;
+    }
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
     this.ringManager?.dispose();
@@ -1045,6 +1063,7 @@ export class Game {
     this.braziers?.dispose();
     this.braziers = null;
     this.pendingBrazierSync = null;
+    this.portalInteractionSuppressTimer = 0;
     this.hud.disposeBrazierTracker();
     this.campsiteScene?.dispose();
     this.campsiteScene = null;
@@ -1636,14 +1655,31 @@ export class Game {
       return;
     }
 
-    const { turnRate, forward, brake, elevate, descend, paintball, interact } =
+    if (this.portalInteractionSuppressTimer > 0) {
+      this.portalInteractionSuppressTimer = Math.max(0, this.portalInteractionSuppressTimer - dt);
+    }
+
+    const { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
     this.localPlayer.visibility = 1;
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, paintball, descend);
 
+    if (specialAction && this.localPlayer instanceof Carpet && this.carpetPortalSystem) {
+      this.carpetPortalSystem.placePortal(this.localPlayer);
+    }
+
+    if (this.localPlayer instanceof Carpet && this.carpetPortalSystem) {
+      const portalUpdate = this.carpetPortalSystem.update(dt, this.localPlayer);
+      if (portalUpdate.didTeleport) {
+        this.handleCarpetPortalTeleport();
+      }
+    }
+
     if (paintball && this.localPlayer instanceof Plane && this.paintballSystem) {
       this.paintballSystem.tryLocalFire(this.localPlayer);
     }
+
+    const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0;
 
     if (this.moonThreat && !this.moonThreat.hasImpacted) {
       this.localPlayer.group.updateMatrixWorld(true);
@@ -1686,11 +1722,13 @@ export class Game {
     this.localPlayer.group.updateMatrixWorld(true);
 
     if (this.vehicleFeatures.collectibleDiamonds) {
-      this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
       this.collectVFX.update(dt);
+      if (!portalInteractionSuppressed) {
+        this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
+      }
     }
 
-    if (this.birdFlocks.length > 0 && this.flockFormationHUD) {
+    if (!portalInteractionSuppressed && this.birdFlocks.length > 0 && this.flockFormationHUD) {
       let bestProgress = 0;
       let anyCompleted = false;
       for (const flock of this.birdFlocks) {
@@ -1713,7 +1751,7 @@ export class Game {
       }
     }
 
-    if (this.rainbowArches.length > 0) {
+    if (!portalInteractionSuppressed && this.rainbowArches.length > 0) {
       const dayW = this.dayNightCycle.getDayWeight();
       for (const arch of this.rainbowArches) {
         const { justCollected } = arch.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude, dayW);
@@ -1727,7 +1765,7 @@ export class Game {
       }
     }
 
-    if (this.lanternClusters.length > 0) {
+    if (!portalInteractionSuppressed && this.lanternClusters.length > 0) {
       const nightW = this.dayNightCycle.getNightWeight();
       for (let li = 0; li < this.lanternClusters.length; li++) {
         const cluster = this.lanternClusters[li]!;
@@ -1767,7 +1805,7 @@ export class Game {
       }
     }
 
-    if (this.fireflyClusters.length > 0) {
+    if (!portalInteractionSuppressed && this.fireflyClusters.length > 0) {
       const nightW = this.dayNightCycle.getNightWeight();
       for (let fi = 0; fi < this.fireflyClusters.length; fi++) {
         const cluster = this.fireflyClusters[fi]!;
@@ -1787,7 +1825,7 @@ export class Game {
       }
     }
 
-    if (this.volcanoes.length > 0) {
+    if (!portalInteractionSuppressed && this.volcanoes.length > 0) {
       for (const volcano of this.volcanoes) {
         const { justCollected } = volcano.update(
           dt,
@@ -1804,7 +1842,7 @@ export class Game {
       }
     }
 
-    if (this.braziers) {
+    if (!portalInteractionSuppressed && this.braziers) {
       const playerWorldPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
       const { newlyLitIndices, burnProgress } = this.braziers.update(dt, playerWorldPos);
       if (newlyLitIndices.length > 0) {
@@ -1829,12 +1867,16 @@ export class Game {
     /* ── Campsite landing detection ─────────────────────── */
     this.campsiteMarker?.update(dt);
     if (this.campsiteMarker) {
-      const nearCamp = this.campsiteMarker.isPlayerNear(
-        this.localPlayer.qPosition, this.localPlayer.altitude, globeRadius,
-      );
-      this.hud.showCampsitePrompt(nearCamp);
-      if (nearCamp && interact) {
-        this.doLanding();
+      if (portalInteractionSuppressed) {
+        this.hud.showCampsitePrompt(false);
+      } else {
+        const nearCamp = this.campsiteMarker.isPlayerNear(
+          this.localPlayer.qPosition, this.localPlayer.altitude, globeRadius,
+        );
+        this.hud.showCampsitePrompt(nearCamp);
+        if (nearCamp && interact) {
+          this.doLanding();
+        }
       }
     }
 
@@ -1893,7 +1935,11 @@ export class Game {
       );
     }
 
-    this.landmarkDetector.update(this.localPlayer.qPosition);
+    if (portalInteractionSuppressed) {
+      this.landmarkHUD.hide();
+    } else {
+      this.landmarkDetector.update(this.localPlayer.qPosition);
+    }
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
@@ -1910,23 +1956,27 @@ export class Game {
       return;
     }
 
-    if (this.packageQuest && this.moonThreat) {
+    if (!portalInteractionSuppressed && this.packageQuest && this.moonThreat) {
       this.packageQuest.moonProgress = this.moonThreat.progress;
     }
-    this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
-    _carpetSelfiePlayerNormal.copy(_carpetSelfieRefUp).applyQuaternion(this.localPlayer.qPosition).normalize();
-    this.carpetLandmarkSelfieQuest?.update(dt, _carpetSelfiePlayerNormal, this.playerVehicle === "carpet");
+    if (!portalInteractionSuppressed) {
+      this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
+      _carpetSelfiePlayerNormal.copy(_carpetSelfieRefUp).applyQuaternion(this.localPlayer.qPosition).normalize();
+      this.carpetLandmarkSelfieQuest?.update(dt, _carpetSelfiePlayerNormal, this.playerVehicle === "carpet");
+    }
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
     if (this.packageQuest?.isCarrying) {
       const dm = this.packageQuest.getDeliverySurfaceDistanceMetres(questPlayerPos);
       if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
     }
-    this.updateBalloonGreetings(dt, questPlayerPos);
+    if (!portalInteractionSuppressed) {
+      this.updateBalloonGreetings(dt, questPlayerPos);
       this.updateObservatoryGreetings(dt, questPlayerPos);
       this.updateStonehengeWhispers(dt, questPlayerPos);
       this.updateBrazierWhispers(dt, questPlayerPos);
-      this.updateStonehengeFloat();
-      this.globe.updateFloatingTrees(this.moonThreat?.progress ?? 0, this.gameTime);
+    }
+    this.updateStonehengeFloat();
+    this.globe.updateFloatingTrees(this.moonThreat?.progress ?? 0, this.gameTime);
 
     if (this.playerVehicle === "plane") {
       const engineVol =
@@ -2295,12 +2345,43 @@ export class Game {
       this.vehicleFeatures.cameraFollowHeight,
     );
 
+    if (this.localPlayer instanceof Carpet && this.carpetPortalSystem) {
+      this.carpetPortalSystem.syncToCarpet(this.localPlayer);
+      this.carpetTrail.reset();
+      this.carpetWake.reset();
+      this.carpetLeaves.reset();
+    }
+
     this.controls.enabled = true;
     if (this.touchControls) this.touchControls.enabled = true;
 
     await this.transitionOverlay.fadeIn();
     this.gamePhase = "flying";
     if (CAMPSITE_HOME_ENABLED) this.hud.setCampsiteButtonVisible(true);
+  }
+
+  private handleCarpetPortalTeleport() {
+    if (!(this.localPlayer instanceof Carpet)) return;
+
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
+    this.landmarkHUD.hide();
+    this.hud.showCampsitePrompt(false);
+
+    this.carpetTrail.reset();
+    this.carpetWake.reset();
+    this.carpetLeaves.reset();
+    this.localPlayer.group.updateMatrixWorld(true);
+
+    this.cameraRig.snapTo(
+      this.localPlayer.qPosition,
+      this.localPlayer.heading,
+      this.localPlayer.altitude,
+      globeRadius,
+      this.vehicleFeatures.cameraFollowDistance,
+      this.vehicleFeatures.cameraFollowHeight,
+    );
+    this.stateSync?.flush();
   }
 
   /* ── Resize ──────────────────────────────────────────────────────── */
@@ -2678,6 +2759,14 @@ export class Game {
     this.speedLines?.dispose();
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
+    this.carpetTrail?.dispose();
+    this.carpetWake?.dispose();
+    this.carpetLeaves?.dispose();
+    if (this.carpetPortalSystem) {
+      this.scene?.remove(this.carpetPortalSystem.group);
+      this.carpetPortalSystem.dispose();
+      this.carpetPortalSystem = null;
+    }
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
     this.starfield?.dispose();

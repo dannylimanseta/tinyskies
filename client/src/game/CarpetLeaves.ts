@@ -230,6 +230,34 @@ class LeafParticles {
     this.phaseAttr.needsUpdate = true;
   }
 
+  reset() {
+    for (const p of this.pool) {
+      p.alive = false;
+      p.age = 0;
+      p.lifetime = 1;
+      p.px = 0;
+      p.py = 0;
+      p.pz = 0;
+      p.vx = 0;
+      p.vy = 0;
+      p.vz = 0;
+      p.phase = 0;
+      p.phaseSpeed = 0;
+      p.flutterOffset = 0;
+      p.upX = 0;
+      p.upY = 1;
+      p.upZ = 0;
+    }
+    (this.posAttr.array as Float32Array).fill(0);
+    (this.alphaAttr.array as Float32Array).fill(0);
+    (this.sizeAttr.array as Float32Array).fill(0);
+    (this.phaseAttr.array as Float32Array).fill(0);
+    this.posAttr.needsUpdate = true;
+    this.alphaAttr.needsUpdate = true;
+    this.sizeAttr.needsUpdate = true;
+    this.phaseAttr.needsUpdate = true;
+  }
+
   dispose() {
     this.geometry.dispose();
     this.material.dispose();
@@ -279,6 +307,11 @@ export class CarpetLeaves {
     const right = new Vector3().crossVectors(forward, up).normalize();
 
     this.leaves.emit(surfacePos, up, right, forward, speed);
+  }
+
+  reset() {
+    this.landAlpha = 0;
+    this.leaves.reset();
   }
 
   dispose() {
