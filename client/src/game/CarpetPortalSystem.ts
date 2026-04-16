@@ -87,6 +87,7 @@ class PortalVisual {
     const portalShaderMat = new ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
+        uAge: { value: 0 },
         uColor: { value: new Color(colorHex) },
       },
       vertexShader: `
@@ -98,15 +99,22 @@ class PortalVisual {
       `,
       fragmentShader: `
         uniform float uTime;
+        uniform float uAge;
         uniform vec3 uColor;
         varying vec2 vUv;
 
         void main() {
           vec2 uv = vUv - 0.5;
           float r = length(uv) * 2.0; // 0 to 1
-          if (r > 1.0) discard;
-
+          
           float a = atan(uv.y, uv.x);
+
+          // Organic wobble effect during spawn
+          float spawnProgress = clamp(uAge / 0.5, 0.0, 1.0);
+          float wobbleAmount = (1.0 - spawnProgress) * 0.15;
+          r += sin(uTime * 25.0 + a * 5.0) * wobbleAmount;
+
+          if (r > 1.0) discard;
 
           // Swirling vortex effect
           float angleOffset = r * 4.0 - uTime * 5.0;
@@ -192,9 +200,17 @@ class PortalVisual {
     const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
     
     // Morph from small circle (0.3) to oval (x: 0.65, y: 1.25)
-    const morphEase = t * t * (3 - 2 * t); // Smoothstep for morphing
-    const currentX = (0.3 + (0.65 - 0.3) * morphEase) * ease;
-    const currentY = (0.3 + (1.25 - 0.3) * morphEase) * ease;
+    // Stay as a circle longer: wait until t=0.5 to start morphing
+    const morphT = Math.max(0, (t - 0.5) * 2.0);
+    const morphEase = morphT * morphT * (3 - 2 * morphT); // Smoothstep for morphing
+    
+    // Organic wobble scale during spawn
+    const wobble = (1 - t) * 0.15;
+    const wobbleX = Math.sin(age * 40) * wobble;
+    const wobbleY = Math.cos(age * 45) * wobble;
+
+    const currentX = (0.3 + (0.65 - 0.3) * morphEase) * ease + wobbleX;
+    const currentY = (0.3 + (1.25 - 0.3) * morphEase) * ease + wobbleY;
     
     // Apply scale and a cool spin as it opens
     this.scaledGroup.scale.set(currentX, currentY, 1.0 * ease);
@@ -204,10 +220,11 @@ class PortalVisual {
     this.ring.scale.setScalar(pulse);
     this.glow.scale.setScalar(0.95 + Math.sin(time * 4.0 + this.phase) * 0.05);
     
-    // Update shader time
+    // Update shader time and age
     const shaderMat = this.materials[2] as ShaderMaterial;
     if (shaderMat.uniforms) {
       shaderMat.uniforms.uTime.value = time + this.phase;
+      shaderMat.uniforms.uAge.value = age;
     }
     
     // Portal 2 swirling energy
