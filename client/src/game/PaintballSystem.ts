@@ -35,6 +35,7 @@ import type { Plane } from "./Plane";
 import type { RemotePlaneManager } from "./RemotePlane";
 import { PaintballSplashPool } from "./PaintballSplash";
 import { seededRandom } from "./SphericalMath";
+import { Trail } from "./Trail";
 
 /** Wing decals: a touch softer than raw palette, but richer than the old heavy pastel wash. */
 function decalTintColor(paletteHex: number): Color {
@@ -103,6 +104,7 @@ type Projectile = {
   maxRange: number;
   speed: number;
   color: number;
+  trail: Trail;
 };
 
 type SplatterFade = {
@@ -370,8 +372,10 @@ export class PaintballSystem {
     const geo = new SphereGeometry(0.038, 10, 10);
     const mat = createPaintballMaterial(ev.color);
     const mesh = new Mesh(geo, mat);
+    const trail = new Trail(12, 0.012, ev.color);
     mesh.position.copy(o);
     this.scene.add(mesh);
+    this.scene.add(trail.mesh);
     this.projectiles.push({
       shooterId: ev.shooterId,
       r0,
@@ -383,6 +387,7 @@ export class PaintballSystem {
       maxRange,
       speed: ev.speed,
       color: ev.color,
+      trail,
     });
     return true;
   }
@@ -577,12 +582,14 @@ export class PaintballSystem {
 
   private disposeProjectile(p: Projectile, index: number) {
     this.scene.remove(p.mesh);
+    this.scene.remove(p.trail.mesh);
+    p.trail.dispose();
     p.mesh.geometry.dispose();
     p.mat.dispose();
     this.projectiles.splice(index, 1);
   }
 
-  update(dt: number) {
+  update(dt: number, cameraPos: Vector3) {
     const now = performance.now();
     const fadeMs = SPLATTER_LIFETIME_SEC * 1000;
 
@@ -606,6 +613,8 @@ export class PaintballSystem {
       const tr = p.traveled / p.maxRange;
       const fade = Math.max(0, 1 - Math.pow(Math.min(1, tr), 1.15));
       p.mat.uniforms.uOpacity!.value = fade;
+
+      p.trail.update(curPos, cameraPos);
 
       let hitBalloon = false;
       if (this.globe) {
@@ -698,6 +707,8 @@ export class PaintballSystem {
     this.splashPool.dispose();
     for (const p of this.projectiles) {
       this.scene.remove(p.mesh);
+      this.scene.remove(p.trail.mesh);
+      p.trail.dispose();
       p.mesh.geometry.dispose();
       p.mat.dispose();
     }

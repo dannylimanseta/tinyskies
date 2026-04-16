@@ -27,6 +27,7 @@ import {
 } from "./SphericalMath";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 import { addRimLight } from "./RimLight";
+import { Trail } from "./Trail";
 
 const GREMLIN_BASE_COUNT = 6;
 const GREMLIN_MAX_COUNT = 9;
@@ -39,7 +40,7 @@ const GREMLIN_ALTITUDE_MAX = 0.65;
 const GREMLIN_CRUISE_SPEED = 0.34;
 const GREMLIN_CHASE_SPEED = 0.5;
 const GREMLIN_BOB_SPEED = 2.8;
-const GREMLIN_BOB_AMP = 0.045;
+const GREMLIN_BOB_AMP = 0.08;
 const GREMLIN_FLAP_SPEED = 11.5;
 const GREMLIN_FLAP_AMP = 0.72;
 const GREMLIN_DETECT_RANGE = 2.25;
@@ -94,6 +95,7 @@ type GremlinState = {
   downTimer: number;
   worldPosition: Vector3;
   mode: GremlinMode;
+  trail: Trail;
 };
 
 export class SkyGremlins {
@@ -238,6 +240,7 @@ export class SkyGremlins {
       const gremlin = this.createGremlin(i);
       this.gremlins.push(gremlin);
       this.group.add(gremlin.root);
+      this.scene.add(gremlin.trail.mesh);
       if (i < GREMLIN_BASE_COUNT) {
         this.respawnGremlin(gremlin, true);
       } else {
@@ -260,7 +263,7 @@ export class SkyGremlins {
     }
   }
 
-  update(dt: number, player: Plane, moonPhase: number) {
+  update(dt: number, player: Plane, moonPhase: number, cameraPos: Vector3) {
     this.currentPlayer = player;
     this.currentPlayerWorldPos.copy(
       cartesianFromSpherical(player.qPosition, player.altitude, this.globeRadius),
@@ -276,6 +279,7 @@ export class SkyGremlins {
         if (gremlin.mode !== "dormant") {
           gremlin.mode = "dormant";
           gremlin.root.visible = false;
+          gremlin.trail.mesh.visible = false;
         }
         continue;
       } else if (gremlin.mode === "dormant") {
@@ -290,6 +294,9 @@ export class SkyGremlins {
         }
         continue;
       }
+      
+      gremlin.trail.update(gremlin.worldPosition, cameraPos);
+
       if (gremlin.mode === "falling") {
         this.updateFallingGremlin(gremlin, dt);
         continue;
@@ -302,6 +309,10 @@ export class SkyGremlins {
     this.removeProjectileStepListener();
     this.paintballSystem.clearProjectilesByShooterPrefix(GREMLIN_SHOOTER_PREFIX);
     this.scene.remove(this.group);
+    for (const gremlin of this.gremlins) {
+      this.scene.remove(gremlin.trail.mesh);
+      gremlin.trail.dispose();
+    }
     this.bodyGeo.dispose();
     this.headGeo.dispose();
     this.snoutGeo.dispose();
@@ -491,6 +502,7 @@ export class SkyGremlins {
       downTimer: 0,
       worldPosition: new Vector3(),
       mode: "respawning",
+      trail: new Trail(16, 0.015, 0x88aa88),
     };
   }
 
@@ -547,6 +559,7 @@ export class SkyGremlins {
     gremlin.mode = "alive";
     gremlin.downTimer = 0;
     gremlin.root.visible = true;
+    gremlin.trail.mesh.visible = true;
     gremlin.rig.position.set(0, 0, 0);
     gremlin.rig.rotation.set(0, 0, 0);
     gremlin.rig.scale.setScalar(0.7);
@@ -754,6 +767,7 @@ export class SkyGremlins {
         GREMLIN_RESPAWN_MIN_SEC +
         gremlin.random() * (GREMLIN_RESPAWN_MAX_SEC - GREMLIN_RESPAWN_MIN_SEC);
       gremlin.root.visible = false;
+      gremlin.trail.mesh.visible = false;
     }
   }
 
@@ -796,7 +810,7 @@ export class SkyGremlins {
       gremlin.leftWingMidPivot.rotation.z = midFlap;
       gremlin.rightWingMidPivot.rotation.z = -midFlap;
       gremlin.rig.position.y =
-        Math.sin(this.time * GREMLIN_BOB_SPEED + gremlin.bobPhase) * 0.022;
+        Math.sin(this.time * GREMLIN_BOB_SPEED + gremlin.bobPhase) * 0.055;
       const lean = Math.sin(this.time * 1.4 + gremlin.turnPhase) * 0.08;
       gremlin.rig.rotation.set(0.06 + bankScale * 0.18, 0, lean + hitBank);
       return;

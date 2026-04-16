@@ -862,12 +862,12 @@ export class Game {
         this.paintballSystem,
         () => this.socketClient?.id,
         () => {
-          this.cameraRig.shake(0.016, 0.14);
+          this.cameraRig.shake(0.045, 0.25);
         },
         () => {
           this.hud.showXPGain(SKY_GREMLIN_XP);
           this.progression.addXP(SKY_GREMLIN_XP);
-          this.cameraRig.shake(0.016, 0.14);
+          this.cameraRig.shake(0.045, 0.25);
           this.vehicleFlashTimer = 0.14;
         },
       );
@@ -1762,11 +1762,11 @@ export class Game {
     this.remotePlanes.update(dt, this.cameraRig.camera);
     if (this.localPlayer instanceof Plane && this.skyGremlins) {
       this.skyGremlins.setSuspended(false);
-      this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0);
+      this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0, this.cameraRig.camera.position);
     } else {
       this.skyGremlins?.setSuspended(true);
     }
-    this.paintballSystem?.update(dt);
+    this.paintballSystem?.update(dt, this.cameraRig.camera.position);
 
     this.localPlayer.group.updateMatrixWorld(true);
 

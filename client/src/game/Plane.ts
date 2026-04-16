@@ -18,8 +18,8 @@ const BOOST_SPEED = 1.3;
 const BOOST_DURATION_SEC = 1.7;
 /** Hard ceiling: arc-step = 2.0*0.05/5 = 0.02 rad/frame — well within safe limits. */
 const ABSOLUTE_MAX_SPEED = 2.0;
-const GREMLIN_SLOW_DURATION_SEC = 1.15;
-const GREMLIN_SLOW_MULT = 0.62;
+const GREMLIN_SLOW_DURATION_SEC = 1.6;
+const GREMLIN_SLOW_MULT = 0.45;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 /** Minimum clearance above terrain when descending. */
@@ -207,7 +207,7 @@ export class Plane {
 
   applyGremlinSlow() {
     this.gremlinSlowTimer = GREMLIN_SLOW_DURATION_SEC;
-    this.speed = Math.max(MIN_SPEED, this.speed * 0.72);
+    this.speed = Math.max(MIN_SPEED, this.speed * 0.45);
   }
 
   speedBoost() {
