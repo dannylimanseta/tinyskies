@@ -28,8 +28,9 @@ import {
 import { surfaceAltitudeAt } from "./TerrainSurface";
 import { addRimLight } from "./RimLight";
 
-const GREMLIN_COUNT = 5;
-export const SKY_GREMLIN_XP = 20;
+const GREMLIN_BASE_COUNT = 6;
+const GREMLIN_MAX_COUNT = 9;
+export const SKY_GREMLIN_XP = 30;
 
 const GREMLIN_SHOOTER_PREFIX = "gremlin:";
 const GREMLIN_SURFACE_CLEARANCE = 0.2;
@@ -62,7 +63,7 @@ const GREMLIN_MUZZLE_FORWARD = 0.12;
 const GREMLIN_MUZZLE_UP = -0.01;
 const GREMLIN_AIM_SIDE_SPREAD = 0.24;
 
-type GremlinMode = "alive" | "falling" | "respawning";
+type GremlinMode = "alive" | "falling" | "respawning" | "dormant";
 
 type GremlinState = {
   readonly index: number;
@@ -233,11 +234,16 @@ export class SkyGremlins {
     this.outerRightWingGeo.setIndex(orIndices);
     this.outerRightWingGeo.computeVertexNormals();
 
-    for (let i = 0; i < GREMLIN_COUNT; i++) {
+    for (let i = 0; i < GREMLIN_MAX_COUNT; i++) {
       const gremlin = this.createGremlin(i);
       this.gremlins.push(gremlin);
       this.group.add(gremlin.root);
-      this.respawnGremlin(gremlin, true);
+      if (i < GREMLIN_BASE_COUNT) {
+        this.respawnGremlin(gremlin, true);
+      } else {
+        gremlin.mode = "dormant";
+        gremlin.root.visible = false;
+      }
     }
 
     this.removeProjectileStepListener = this.paintballSystem.addProjectileStepListener((info) => {
@@ -254,15 +260,29 @@ export class SkyGremlins {
     }
   }
 
-  update(dt: number, player: Plane) {
+  update(dt: number, player: Plane, moonPhase: number) {
     this.currentPlayer = player;
     this.currentPlayerWorldPos.copy(
       cartesianFromSpherical(player.qPosition, player.altitude, this.globeRadius),
     );
     if (this.suspended) return;
 
+    const activeCount = moonPhase >= 0.75 ? GREMLIN_MAX_COUNT : GREMLIN_BASE_COUNT;
+
     this.time += dt;
-    for (const gremlin of this.gremlins) {
+    for (let i = 0; i < this.gremlins.length; i++) {
+      const gremlin = this.gremlins[i]!;
+      if (i >= activeCount) {
+        if (gremlin.mode !== "dormant") {
+          gremlin.mode = "dormant";
+          gremlin.root.visible = false;
+        }
+        continue;
+      } else if (gremlin.mode === "dormant") {
+        gremlin.mode = "respawning";
+        gremlin.respawnTimer = gremlin.random() * 2.0;
+      }
+
       if (gremlin.mode === "respawning") {
         gremlin.respawnTimer = Math.max(0, gremlin.respawnTimer - dt);
         if (gremlin.respawnTimer <= 0) {
@@ -475,12 +495,31 @@ export class SkyGremlins {
   }
 
   private respawnGremlin(gremlin: GremlinState, initial: boolean) {
-    const spawn = randomSpawnQuaternionAndHeading(
-      this.seed + gremlin.index * 982451653 + gremlin.respawnSalt * 7919,
-    );
-    gremlin.respawnSalt += 1;
-    gremlin.qPosition.copy(spawn.qPosition);
-    gremlin.heading = spawn.heading;
+    let spawned = false;
+    let attempts = 0;
+    
+    while (!spawned && attempts < 10) {
+      const spawn = randomSpawnQuaternionAndHeading(
+        this.seed + gremlin.index * 982451653 + gremlin.respawnSalt * 7919,
+      );
+      gremlin.respawnSalt += 1;
+      
+      if (this.currentPlayer) {
+        const spawnPos = cartesianFromSpherical(spawn.qPosition, GREMLIN_ALTITUDE_MIN, this.globeRadius);
+        const distSq = spawnPos.distanceToSquared(this.currentPlayerWorldPos);
+        // Require at least ~2.5 units away (6.25 squared) to avoid popping in front of player
+        if (distSq > 6.25) {
+          gremlin.qPosition.copy(spawn.qPosition);
+          gremlin.heading = spawn.heading;
+          spawned = true;
+        }
+      } else {
+        gremlin.qPosition.copy(spawn.qPosition);
+        gremlin.heading = spawn.heading;
+        spawned = true;
+      }
+      attempts++;
+    }
 
     const frame = tangentFrame(gremlin.qPosition);
     const surfaceAlt = surfaceAltitudeAt(

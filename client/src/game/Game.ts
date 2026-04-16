@@ -1762,7 +1762,7 @@ export class Game {
     this.remotePlanes.update(dt, this.cameraRig.camera);
     if (this.localPlayer instanceof Plane && this.skyGremlins) {
       this.skyGremlins.setSuspended(false);
-      this.skyGremlins.update(dt, this.localPlayer);
+      this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0);
     } else {
       this.skyGremlins?.setSuspended(true);
     }
