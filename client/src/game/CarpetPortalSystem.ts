@@ -191,8 +191,13 @@ class PortalVisual {
     const c3 = c1 + 1;
     const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
     
+    // Morph from circle (1.0) to oval (x: 0.65, y: 1.25)
+    const morphEase = t * t * (3 - 2 * t); // Smoothstep for morphing
+    const currentX = (0.95 + (0.65 - 0.95) * morphEase) * ease;
+    const currentY = (0.95 + (1.25 - 0.95) * morphEase) * ease;
+    
     // Apply scale and a cool spin as it opens
-    this.scaledGroup.scale.set(0.65 * ease, 1.25 * ease, 1.0 * ease);
+    this.scaledGroup.scale.set(currentX, currentY, 1.0 * ease);
     this.scaledGroup.rotation.z = (1 - t) * Math.PI;
 
     const pulse = 1 + Math.sin(time * 8.0 + this.phase) * 0.02;
