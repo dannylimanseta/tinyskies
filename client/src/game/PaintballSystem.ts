@@ -367,7 +367,7 @@ export class PaintballSystem {
     wHat.normalize();
 
     const maxRange = this.globeRadius * PAINTBALL_RANGE_FACTOR;
-    const geo = new SphereGeometry(0.055, 10, 10);
+    const geo = new SphereGeometry(0.038, 10, 10);
     const mat = createPaintballMaterial(ev.color);
     const mesh = new Mesh(geo, mat);
     mesh.position.copy(o);
