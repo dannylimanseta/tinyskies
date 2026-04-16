@@ -145,8 +145,13 @@ export class RingManager {
   upgrades = {
     diamondXpMult: 1,
     frequentFlyerEnabled: false,
-    /** Set by Game.ts each tick when Night Owl is active (1.0 = no bonus). */
-    nightXpMult: 1,
+    /** Diamond pickup radius multiplier (real magnet). */
+    magnetMult: 1,
+    /**
+     * Multiplier applied to diamond XP gated on vehicle speed (Wake Rider).
+     * Game.ts sets this each tick based on local boat speedRatio.
+     */
+    highSpeedMult: 1,
   };
 
   /** Running count of diamonds collected this session (used for Frequent Flyer). */
@@ -387,8 +392,9 @@ export class RingManager {
 
       if (spawnProgress >= 1.0) {
         const dist = planePos.distanceTo(worldPos);
+        const effRadius = COLLECTION_RADIUS * this.upgrades.magnetMult;
 
-        if (dist < COLLECTION_RADIUS) {
+        if (dist < effRadius) {
           this.collectDiamond(d, worldPos);
         }
       }
@@ -412,7 +418,12 @@ export class RingManager {
       this.upgrades.frequentFlyerEnabled && this.diamondStreakCount % 5 === 0;
     const freqMult = isFrequentFlyerBonus ? 2 : 1;
 
-    const xp = Math.round(DIAMOND_XP * this.upgrades.diamondXpMult * freqMult * this.upgrades.nightXpMult);
+    const xp = Math.round(
+      DIAMOND_XP *
+        this.upgrades.diamondXpMult *
+        freqMult *
+        this.upgrades.highSpeedMult,
+    );
 
     this.onCollect?.(xp, worldPos, isFrequentFlyerBonus ? 1 : 0);
 

@@ -102,20 +102,32 @@ const CSS = `
 `;
 
 const UPGRADE_ICONS: Record<string, string> = {
+  // Shared
+  prospector: "✨",
+  magnet_field: "🧲",
+  night_owl: "🦉",
+  combo_hunter: "🎯",
+  rainbow_finder: "🌈",
+  // Plane
   tailwind: "💨",
   afterburner: "🔥",
   nitro_tank: "⚡",
-  quick_climb: "🪂",
   tight_turn: "🌀",
-  quick_brake: "🛑",
-  diamond_magnet: "💎",
-  golden_touch: "✨",
+  sharpshooter: "🎯",
+  double_tap: "💥",
   generous_tip: "📦",
-  rainbow_finder: "🌈",
-  firefly_season: "🪲",
-  lantern_festival: "🏮",
   frequent_flyer: "✈️",
-  night_owl: "🦉",
+  // Carpet
+  silk_wind: "🪁",
+  thermal_surge: "🌋",
+  tight_tassels: "🌀",
+  wide_portal: "🌀",
+  leaf_flourish: "🍃",
+  // Boat
+  keel_cut: "⛵",
+  steady_rudder: "🧭",
+  foam_surge: "🌊",
+  wake_rider: "💨",
 };
 
 let styleInjected = false;

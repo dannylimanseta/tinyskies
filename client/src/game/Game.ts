@@ -137,6 +137,22 @@ const SELFIE_CAMERA_SFX_VOLUME = 0.55;
 const PORTAL_TELEPORT_SFX_VOLUME = 0.5;
 const PORTAL_OPEN_SFX_VOLUME = 0.52;
 
+/** Base XP granted per carpet portal teleport (before Wide Portal + Night Owl scaling). */
+const PORTAL_TELEPORT_XP = 5;
+
+/** XP source categories used by awardXP() for per-source scaling. */
+type XpSource =
+  | "diamond"
+  | "gremlin"
+  | "delivery"
+  | "selfie"
+  | "portal"
+  | "flock"
+  | "rainbow"
+  | "lantern"
+  | "firefly"
+  | "volcano";
+
 const DIAMOND_SFX_IDS = [
   "diamond_collect_1",
   "diamond_collect_2",
@@ -798,17 +814,21 @@ export class Game {
     this.collectVFX = new RingCollectVFX();
     this.scene.add(this.collectVFX.group);
 
-    this.ringManager.onCollect = (xp, worldPos, tier) => {
+      this.ringManager.onCollect = (xp, worldPos, tier) => {
       this.collectVFX.play(worldPos, tier);
       if (this.vehicleFeatures.collectibleDiamonds) {
         const now = performance.now();
-        if (now - this.lastDiamondCollectAt > DIAMOND_COMBO_WINDOW_MS) {
+        const state = this.progression.upgrades.state;
+        const windowMs = DIAMOND_COMBO_WINDOW_MS * state.comboWindowMs;
+        const maxSteps = Math.round(DIAMOND_COMBO_MAX_STEPS * state.comboMaxSteps);
+        const ratePerStep = DIAMOND_COMBO_RATE_PER_STEP * state.comboRatePerStep;
+        if (now - this.lastDiamondCollectAt > windowMs) {
           this.diamondComboStep = 0;
         } else {
-          this.diamondComboStep = Math.min(this.diamondComboStep + 1, DIAMOND_COMBO_MAX_STEPS);
+          this.diamondComboStep = Math.min(this.diamondComboStep + 1, maxSteps);
         }
         this.lastDiamondCollectAt = now;
-        const rate = 1 + this.diamondComboStep * DIAMOND_COMBO_RATE_PER_STEP;
+        const rate = 1 + this.diamondComboStep * ratePerStep;
         const pick =
           DIAMOND_SFX_IDS[Math.floor(Math.random() * DIAMOND_SFX_IDS.length)]!;
         this.audioManager.playSFX(pick, DIAMOND_SFX_VOLUME, rate);
@@ -821,8 +841,7 @@ export class Game {
           SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
         this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
       }
-      this.hud.showXPGain(xp);
-      this.progression.addXP(xp);
+      this.awardXP("diamond", xp);
     };
 
     this.progression.onXPChanged = (xp, xpForNext, xpForCurrent, level) => {
@@ -866,8 +885,7 @@ export class Game {
           this.cameraRig.shake(0.045, 0.25);
         },
         () => {
-          this.hud.showXPGain(SKY_GREMLIN_XP);
-          this.progression.addXP(SKY_GREMLIN_XP);
+          this.awardXP("gremlin", SKY_GREMLIN_XP);
           this.cameraRig.shake(0.045, 0.25);
           this.vehicleFlashTimer = 0.14;
         },
@@ -977,10 +995,7 @@ export class Game {
         this.packageQuestHUD.showBubble(npcName, dialogue);
         this.packageQuestHUD.hideDeliveryTarget();
 
-        const s = this.progression.upgrades.state;
-        const scaledXp = Math.round(xp * s.deliveryXpMult * (s.nightOwlEnabled ? 1 + 0.2 * this.dayNightCycle.getNightWeight() : 1));
-        this.hud.showXPGain(scaledXp);
-        this.progression.addXP(scaledXp);
+        this.awardXP("delivery", xp);
       };
 
       this.packageQuest.onProgressChange = (progress) => {
@@ -1026,14 +1041,7 @@ export class Game {
         } else if (payload.kind === "butterfly") {
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_butterfly_garden.jpg", "Butterfly garden selfie");
         }
-        const s = this.progression.upgrades.state;
-        const scaledXp = Math.round(
-          LANDMARK_SELFIE_XP *
-            s.deliveryXpMult *
-            (s.nightOwlEnabled ? 1 + 0.2 * this.dayNightCycle.getNightWeight() : 1),
-        );
-        this.hud.showXPGain(scaledXp);
-        this.progression.addXP(scaledXp);
+        this.awardXP("selfie", LANDMARK_SELFIE_XP);
         this.progression.save();
       };
     } else {
@@ -1606,8 +1614,14 @@ export class Game {
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
-    if (this.progression?.upgrades.state.nightOwlEnabled) {
-      this.ringManager.upgrades.nightXpMult = 1 + 0.2 * this.dayNightCycle.getNightWeight();
+    if (this.localPlayer instanceof Boat && this.progression) {
+      const state = this.progression.upgrades.state;
+      const atHighSpeed = this.localPlayer.speedRatio >= 0.8;
+      this.ringManager.upgrades.highSpeedMult = atHighSpeed
+        ? state.boatHighSpeedDiamondMult
+        : 1;
+    } else {
+      this.ringManager.upgrades.highSpeedMult = 1;
     }
 
     if (this.introActive) {
@@ -1811,8 +1825,7 @@ export class Game {
       this.flockFormationHUD.setProgress(bestProgress);
       if (anyCompleted) {
         this.hud.showFlockFormationCelebrate();
-        this.hud.showXPGain(FLOCK_FORMATION_XP);
-        this.progression.addXP(FLOCK_FORMATION_XP);
+        this.awardXP("flock", FLOCK_FORMATION_XP);
         this.vehicleFlashTimer = 0.35;
         this.cameraRig.shake();
       }
@@ -1824,8 +1837,7 @@ export class Game {
         const { justCollected } = arch.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude, dayW);
         if (justCollected) {
           this.hud.showRainbowCelebrate();
-          this.hud.showXPGain(RAINBOW_XP);
-          this.progression.addXP(RAINBOW_XP);
+          this.awardXP("rainbow", RAINBOW_XP);
           this.vehicleFlashTimer = 0.35;
           this.cameraRig.shake();
         }
@@ -1864,8 +1876,7 @@ export class Game {
           })
             .catch(() => {});
 
-          this.hud.showXPGain(LANTERN_XP);
-          this.progression.addXP(LANTERN_XP);
+          this.awardXP("lantern", LANTERN_XP);
           this.vehicleFlashTimer = 0.35;
           this.cameraRig.shake();
         }
@@ -1885,8 +1896,7 @@ export class Game {
         );
         if (justCollected) {
           this.hud.showFireflyCelebrate();
-          this.hud.showXPGain(FIREFLY_XP);
-          this.progression.addXP(FIREFLY_XP);
+          this.awardXP("firefly", FIREFLY_XP);
           this.vehicleFlashTimer = 0.35;
         }
       }
@@ -1901,8 +1911,7 @@ export class Game {
         );
         if (justCollected) {
           this.hud.showVolcanoCelebrate();
-          this.hud.showXPGain(VOLCANO_XP);
-          this.progression.addXP(VOLCANO_XP);
+          this.awardXP("volcano", VOLCANO_XP);
           this.vehicleFlashTimer = 0.35;
           this.cameraRig.shake();
         }
@@ -2432,6 +2441,7 @@ export class Game {
 
     this.audioManager.resumeContextIfNeeded();
     this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
+    this.awardXP("portal", PORTAL_TELEPORT_XP);
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
@@ -2624,6 +2634,40 @@ export class Game {
     }, 450);
   }
 
+  /**
+   * Single XP chokepoint so global modifiers (Night Owl) and per-source
+   * modifiers (Wide Portal XP, Selfie XP, Delivery XP) stay consistent.
+   *
+   * Diamonds already have their per-source multipliers applied inside
+   * RingManager (diamondXpMult, frequentFlyer, wake_rider highSpeedMult) so
+   * we only add Night Owl on top for "diamond".
+   */
+  private awardXP(source: XpSource, base: number) {
+    if (base <= 0) return;
+    const s = this.progression.upgrades.state;
+    let amt = base;
+    switch (source) {
+      case "delivery":
+        amt *= s.deliveryXpMult;
+        break;
+      case "selfie":
+        amt *= s.carpetSelfieXpMult;
+        break;
+      case "portal":
+        amt *= s.carpetPortalXpMult;
+        break;
+      default:
+        break;
+    }
+    if (s.nightOwlEnabled) {
+      amt *= 1 + 0.2 * this.dayNightCycle.getNightWeight();
+    }
+    const rounded = Math.max(0, Math.round(amt));
+    if (rounded <= 0) return;
+    this.hud.showXPGain(rounded);
+    this.progression.addXP(rounded);
+  }
+
   private propagateUpgrades() {
     const s = this.progression.upgrades.state;
 
@@ -2636,11 +2680,41 @@ export class Game {
         bankMult: s.bankMult,
         brakeDecelMult: s.brakeDecelMult,
       });
+    } else if (this.localPlayer instanceof Carpet) {
+      Object.assign(this.localPlayer.upgrades, {
+        maxSpeedMult: s.carpetSpeedMult,
+        boostSpeedMult: s.carpetBoostSpeedMult,
+        boostDurationMult: s.carpetBoostDurationMult,
+        bankMult: s.carpetBankMult,
+      });
+    } else if (this.localPlayer instanceof Boat) {
+      Object.assign(this.localPlayer.upgrades, {
+        maxSpeedMult: s.boatSpeedMult,
+        turnMult: s.boatTurnMult,
+        accelMult: s.boatAccelMult,
+      });
     }
 
     this.ringManager.upgrades.diamondXpMult = s.diamondXpMult;
     this.ringManager.upgrades.frequentFlyerEnabled = s.frequentFlyerEnabled;
-    if (!s.nightOwlEnabled) this.ringManager.upgrades.nightXpMult = 1;
+    this.ringManager.upgrades.magnetMult = s.magnetMult;
+
+    if (this.carpetPortalSystem) {
+      this.carpetPortalSystem.upgrades.triggerRadiusMult = s.carpetPortalRadiusMult;
+    }
+
+    if (this.paintballSystem) {
+      this.paintballSystem.setLocalPaintballMultipliers(
+        s.paintballSpeedMult,
+        s.paintballRangeMult,
+      );
+      this.paintballSystem.setLocalDoubleTap(s.paintballDoubleTapEnabled);
+      this.socketClient?.emitPaintballSetUpgrades({
+        doubleTap: s.paintballDoubleTapEnabled,
+        speedMult: s.paintballSpeedMult,
+        rangeMult: s.paintballRangeMult,
+      });
+    }
 
     this.spawnExtraCollectibles(s);
   }

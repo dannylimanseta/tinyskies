@@ -5,6 +5,7 @@ import type {
   BrazierSyncPayload,
   PaintballFiredEvent,
   PaintballHitEvent,
+  PaintballUpgradeFlags,
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
@@ -54,6 +55,10 @@ export class SocketClient {
 
   emitPaintballFire() {
     this.socket.emit("paintball:fire");
+  }
+
+  emitPaintballSetUpgrades(flags: PaintballUpgradeFlags) {
+    this.socket.emit("paintball:setUpgrades", flags);
   }
 
   onPaintballFired(cb: (ev: PaintballFiredEvent) => void) {

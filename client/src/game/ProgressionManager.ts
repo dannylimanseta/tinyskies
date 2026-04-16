@@ -38,6 +38,7 @@ export class ProgressionManager {
 
   constructor(vehicle: Vehicle) {
     this.vehicle = vehicle;
+    this.upgrades.setVehicle(vehicle);
   }
 
   /** Load saved progression from localStorage and replay upgrades. */

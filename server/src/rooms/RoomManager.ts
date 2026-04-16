@@ -96,6 +96,10 @@ export class RoomManager {
       room.firePaintball(socket.id);
     });
 
+    socket.on("paintball:setUpgrades", (flags) => {
+      room.setPaintballUpgrades(socket.id, flags);
+    });
+
     socket.on("disconnect", () => {
       room.removePlayer(socket.id);
       if (room.isEmpty) {

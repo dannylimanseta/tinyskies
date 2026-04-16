@@ -74,6 +74,14 @@ export class Carpet {
   /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
   private boostTimer = 0;
 
+  /** Active upgrade multipliers; updated by Game.propagateUpgrades() after each pick. */
+  upgrades = {
+    maxSpeedMult: 1,
+    boostSpeedMult: 1,
+    boostDurationMult: 1,
+    bankMult: 1,
+  };
+
   /** @param spawnSalt Per-session random start position/heading on the globe. */
   constructor(globeRadius: number, seed: number, terrainType: string, spawnSalt = 0, hullColor?: number) {
     this.globeRadius = globeRadius;
@@ -119,10 +127,16 @@ export class Carpet {
       this.boostTimer = Math.max(0, this.boostTimer - dt);
     }
 
+    const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult;
+    const effBoostSpeed = Math.min(
+      DIAMOND_BOOST_SPEED * this.upgrades.boostSpeedMult,
+      ABSOLUTE_MAX_SPEED,
+    );
+
     if (this.boostTimer > 0) {
-      this.speed = DIAMOND_BOOST_SPEED;
+      this.speed = effBoostSpeed;
     } else if (forward) {
-      this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
+      this.speed = Math.min(effMaxSpeed, this.speed + ACCEL * dt);
     } else if (brake) {
       this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
     } else {
@@ -158,7 +172,7 @@ export class Carpet {
     this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
 
     const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
-    this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * dt);
+    this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * this.upgrades.bankMult * dt);
 
     const targetCurl = this.speedRatio * Carpet.TASSEL_CURL_MAX;
     this.tasselCurl += (targetCurl - this.tasselCurl) * Math.min(1, 3.0 * dt);
@@ -178,8 +192,12 @@ export class Carpet {
 
   /** Temporary surge from collecting a diamond (same idea as biplane `Plane.speedBoost`). */
   speedBoost() {
-    this.boostTimer = DIAMOND_BOOST_DURATION_SEC;
-    this.speed = Math.min(DIAMOND_BOOST_SPEED, ABSOLUTE_MAX_SPEED);
+    this.boostTimer = DIAMOND_BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
+    const effBoostSpeed = Math.min(
+      DIAMOND_BOOST_SPEED * this.upgrades.boostSpeedMult,
+      ABSOLUTE_MAX_SPEED,
+    );
+    this.speed = effBoostSpeed;
   }
 
   teleportTo(qPosition: Quaternion, heading: number, altitude: number, speed = this.speed) {
@@ -206,12 +224,17 @@ export class Carpet {
 
   get speedRatio(): number {
     if (this.speed <= MIN_SPEED) return 0;
-    const cruiseSpan = MAX_SPEED - MIN_SPEED;
-    if (this.speed <= MAX_SPEED) {
+    const ms = MAX_SPEED * this.upgrades.maxSpeedMult;
+    const bs = Math.min(
+      DIAMOND_BOOST_SPEED * this.upgrades.boostSpeedMult,
+      ABSOLUTE_MAX_SPEED,
+    );
+    const cruiseSpan = Math.max(1e-4, ms - MIN_SPEED);
+    if (this.speed <= ms) {
       return (this.speed - MIN_SPEED) / cruiseSpan;
     }
-    const boostSpan = DIAMOND_BOOST_SPEED - MAX_SPEED;
-    return 1 + Math.min(1, (this.speed - MAX_SPEED) / boostSpan);
+    const boostSpan = Math.max(1e-4, bs - ms);
+    return 1 + Math.min(1, (this.speed - ms) / boostSpan);
   }
 
   addTo(scene: Scene) {

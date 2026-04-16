@@ -123,6 +123,13 @@ export class Boat {
   private bobRoll = 0;
   private turnInputSmoothed = 0;
 
+  /** Active upgrade multipliers; updated by Game.propagateUpgrades() after each pick. */
+  upgrades = {
+    maxSpeedMult: 1,
+    turnMult: 1,
+    accelMult: 1,
+  };
+
   /**
    * @param spawnSalt Random per session so boats (and heading) differ each run while staying on ocean.
    */
@@ -158,8 +165,10 @@ export class Boat {
     _elevate: boolean = false,
     _paintball: boolean = false,
   ) {
+    const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult;
+    const effAccel = ACCEL * this.upgrades.accelMult;
     if (forward) {
-      this.speed = Math.min(MAX_SPEED, this.speed + ACCEL * dt);
+      this.speed = Math.min(effMaxSpeed, this.speed + effAccel * dt);
     } else if (brake) {
       this.speed = Math.max(0, this.speed - BRAKE_DECEL * dt);
     } else {
@@ -167,7 +176,7 @@ export class Boat {
     }
 
     this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
-    this.heading += this.turnInputSmoothed * dt * TURN_SCALE;
+    this.heading += this.turnInputSmoothed * dt * TURN_SCALE * this.upgrades.turnMult;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     const arcAngle = (this.speed * dt) / this.globeRadius;
@@ -211,8 +220,9 @@ export class Boat {
   }
 
   get speedRatio(): number {
-    if (MAX_SPEED <= 0) return 0;
-    return Math.max(0, Math.min(1, this.speed / MAX_SPEED));
+    const ms = MAX_SPEED * this.upgrades.maxSpeedMult;
+    if (ms <= 0) return 0;
+    return Math.max(0, Math.min(1, this.speed / ms));
   }
 
   addTo(scene: Scene) {

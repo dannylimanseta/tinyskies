@@ -267,6 +267,12 @@ export class CarpetPortalSystem {
   private time = 0;
   private nextPortalId = 0;
 
+  /** Upgrade multipliers pushed by Game.propagateUpgrades(). */
+  upgrades = {
+    /** Wide Portal — multiplies PORTAL_TRIGGER_RADIUS. */
+    triggerRadiusMult: 1,
+  };
+
   constructor(globeRadius: number, seed: number, terrainType: string, options?: CarpetPortalSystemOptions) {
     this.globeRadius = globeRadius;
     this.seed = seed;
@@ -450,7 +456,7 @@ export class CarpetPortalSystem {
     const rightDist = relative.dot(portal.right);
     const upDist = relative.dot(portal.up);
     const radial = Math.sqrt(rightDist * rightDist + upDist * upDist);
-    if (radial > PORTAL_TRIGGER_RADIUS) return null;
+    if (radial > PORTAL_TRIGGER_RADIUS * this.upgrades.triggerRadiusMult) return null;
 
     return t;
   }

@@ -67,10 +67,15 @@ export interface BrazierMoonPausePayload {
 
 /** ms between paintball shots (client UX + server authority). */
 export const PAINTBALL_COOLDOWN_MS = 500;
+/** Double-tap burst: min window between the start of successive bursts (post-burst recovery). */
+export const PAINTBALL_BURST_WINDOW_MS = 700;
 /** Projectile travel speed in world units per second. */
 export const PAINTBALL_SPEED = 7;
 /** Max travel distance = globeRadius * this factor. */
 export const PAINTBALL_RANGE_FACTOR = 1.0;
+/** Upper bounds on client-supplied paintball upgrade multipliers (anti-cheat clamp). */
+export const PAINTBALL_SPEED_MULT_MAX = 1.5;
+export const PAINTBALL_RANGE_MULT_MAX = 1.5;
 /**
  * Hit test: max distance from shot ray to the **victim’s globe position point** (not full mesh).
  * Wider than a true hull but much smaller than 0.22 — tune feel vs. “free” hits.
@@ -97,6 +102,15 @@ export interface PaintballFiredEvent {
   dy: number;
   dz: number;
   speed: number;
+  /** Range multiplier applied to globeRadius * PAINTBALL_RANGE_FACTOR (clamped). Optional for backward compat. */
+  rangeMult?: number;
+}
+
+/** Client pushes its paintball upgrade flags so the server mirrors them on hit test + cooldown. */
+export interface PaintballUpgradeFlags {
+  doubleTap: boolean;
+  speedMult: number;
+  rangeMult: number;
 }
 
 export interface PaintballHitEvent {
@@ -132,4 +146,5 @@ export interface ClientToServerEvents {
   ) => void;
   "brazier:ignite": (index: number) => void;
   "paintball:fire": () => void;
+  "paintball:setUpgrades": (flags: PaintballUpgradeFlags) => void;
 }

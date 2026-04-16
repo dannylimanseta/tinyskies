@@ -22,6 +22,7 @@ import {
 } from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
 import {
+  PAINTBALL_BURST_WINDOW_MS,
   PAINTBALL_COLOR_PALETTE,
   PAINTBALL_COOLDOWN_MS,
   PAINTBALL_RANGE_FACTOR,
@@ -30,6 +31,9 @@ import {
   type PaintballFiredEvent,
   type PaintballHitEvent,
 } from "@globefly/shared";
+
+/** Delay between the two shots of a Double Tap burst (ms). */
+const DOUBLE_TAP_INTERVAL_MS = 90;
 import { paintballRayFromPlaneState } from "./SphericalMath";
 import type { Plane } from "./Plane";
 import type { RemotePlaneManager } from "./RemotePlane";
@@ -210,11 +214,21 @@ export class PaintballSystem {
   private projectiles: Projectile[] = [];
   private splatters: SplatterFade[] = [];
   private lastLocalFire = 0;
+  /** Start time of the current burst (Double Tap): the 2nd shot doesn't gate on cooldown. */
+  private lastBurstStart = 0;
   private texture: Texture | null = null;
   private textureLoaded = false;
   private readonly splashPool = new PaintballSplashPool();
   private nextProjectileStepListenerId = 0;
   private readonly projectileStepListeners = new Map<number, ProjectileStepListener>();
+
+  /** Sharpshooter multipliers for the client-spawned local projectile. */
+  private localSpeedMult = 1;
+  private localRangeMult = 1;
+  /** Double Tap — fires a second shot ~90ms after the first, with a longer post-burst cooldown. */
+  private localDoubleTapEnabled = false;
+  /** Pending Double Tap second-shot timer; null when idle. */
+  private pendingBurstTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -297,12 +311,43 @@ export class PaintballSystem {
     }
   }
 
+  setLocalPaintballMultipliers(speedMult: number, rangeMult: number) {
+    this.localSpeedMult = Math.max(1, speedMult);
+    this.localRangeMult = Math.max(1, rangeMult);
+  }
+
+  setLocalDoubleTap(enabled: boolean) {
+    this.localDoubleTapEnabled = enabled;
+  }
+
   /** One frame: local player pressed fire (plane only). */
   tryLocalFire(plane: Plane) {
     const now = performance.now();
+
+    if (this.localDoubleTapEnabled) {
+      // Burst mode: one emission per PAINTBALL_BURST_WINDOW_MS (gates on the first shot of the burst).
+      if (now - this.lastBurstStart < PAINTBALL_BURST_WINDOW_MS) return;
+      this.lastBurstStart = now;
+      this.lastLocalFire = now;
+      this.fireOnce(plane);
+      // Schedule the second shot; if another burst triggers before this resolves, the earlier timeout
+      // will have already fired since the interval is much shorter than the burst window.
+      if (this.pendingBurstTimer !== null) {
+        clearTimeout(this.pendingBurstTimer);
+      }
+      this.pendingBurstTimer = setTimeout(() => {
+        this.pendingBurstTimer = null;
+        this.fireOnce(plane);
+      }, DOUBLE_TAP_INTERVAL_MS);
+      return;
+    }
+
     if (now - this.lastLocalFire < PAINTBALL_COOLDOWN_MS) return;
     this.lastLocalFire = now;
+    this.fireOnce(plane);
+  }
 
+  private fireOnce(plane: Plane) {
     const ray = paintballRayFromPlaneState(
       plane.qPosition,
       plane.heading,
@@ -326,7 +371,8 @@ export class PaintballSystem {
       dx: ray.direction.x,
       dy: ray.direction.y,
       dz: ray.direction.z,
-      speed: PAINTBALL_SPEED,
+      speed: PAINTBALL_SPEED * this.localSpeedMult,
+      rangeMult: this.localRangeMult,
     };
 
     const sock = this.getSocket();
@@ -359,6 +405,8 @@ export class PaintballSystem {
     dy: number;
     dz: number;
     speed: number;
+    /** Optional Sharpshooter range multiplier. Remote echoes carry this via `PaintballFiredEvent`. */
+    rangeMult?: number;
   }): boolean {
     const o = new Vector3(ev.ox, ev.oy, ev.oz);
     const r0 = Math.max(1e-4, o.length());
@@ -368,7 +416,8 @@ export class PaintballSystem {
     if (wHat.lengthSq() < 1e-8) return false;
     wHat.normalize();
 
-    const maxRange = this.globeRadius * PAINTBALL_RANGE_FACTOR;
+    const rangeMult = ev.rangeMult && ev.rangeMult > 0 ? ev.rangeMult : 1;
+    const maxRange = this.globeRadius * PAINTBALL_RANGE_FACTOR * rangeMult;
     const geo = new SphereGeometry(0.038, 10, 10);
     const mat = createPaintballMaterial(ev.color);
     const mesh = new Mesh(geo, mat);
@@ -704,6 +753,10 @@ export class PaintballSystem {
   }
 
   dispose() {
+    if (this.pendingBurstTimer !== null) {
+      clearTimeout(this.pendingBurstTimer);
+      this.pendingBurstTimer = null;
+    }
     this.splashPool.dispose();
     for (const p of this.projectiles) {
       this.scene.remove(p.mesh);

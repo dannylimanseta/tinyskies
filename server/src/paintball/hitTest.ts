@@ -63,9 +63,17 @@ export interface PaintballShotResult {
     dy: number;
     dz: number;
     speed: number;
+    rangeMult: number;
     color: number;
   };
   hit: { victimId: string; color: number; splatSeed: number } | null;
+}
+
+export interface PaintballShotParams {
+  /** Sharpshooter speed multiplier (already clamped by caller). */
+  speedMult: number;
+  /** Sharpshooter range multiplier (already clamped by caller). */
+  rangeMult: number;
 }
 
 /**
@@ -76,11 +84,13 @@ export function computePaintballShot(
   shooterId: string,
   others: { id: string; state: PlayerState }[],
   globeRadius: number,
+  params: PaintballShotParams = { speedMult: 1, rangeMult: 1 },
 ): PaintballShotResult {
   const q = new Quaternion(shooter.qx, shooter.qy, shooter.qz, shooter.qw);
   const origin = cartesianFromSpherical(q, shooter.altitude, globeRadius);
   const dir = planeForward(shooter, q);
-  const maxRange = globeRadius * PAINTBALL_RANGE_FACTOR;
+  const maxRange = globeRadius * PAINTBALL_RANGE_FACTOR * params.rangeMult;
+  const shotSpeed = PAINTBALL_SPEED * params.speedMult;
 
   const shotColor =
     PAINTBALL_COLOR_PALETTE[Math.floor(Math.random() * PAINTBALL_COLOR_PALETTE.length)]!;
@@ -110,7 +120,8 @@ export function computePaintballShot(
       dx: dir.x,
       dy: dir.y,
       dz: dir.z,
-      speed: PAINTBALL_SPEED,
+      speed: shotSpeed,
+      rangeMult: params.rangeMult,
       color: shotColor,
     },
     hit: best

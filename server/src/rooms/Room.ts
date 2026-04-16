@@ -5,13 +5,30 @@ import type {
   BrazierSyncPayload,
   PaintballFiredEvent,
   PaintballHitEvent,
+  PaintballUpgradeFlags,
   PlayerState,
   ServerToClientEvents,
   ClientToServerEvents,
   Vehicle,
 } from "@globefly/shared";
-import { PAINTBALL_COOLDOWN_MS } from "../paintball/constants.js";
+import {
+  PAINTBALL_BURST_WINDOW_MS,
+  PAINTBALL_COOLDOWN_MS,
+  PAINTBALL_RANGE_MULT_MAX,
+  PAINTBALL_SPEED_MULT_MAX,
+} from "../paintball/constants.js";
 import { computePaintballShot } from "../paintball/hitTest.js";
+
+interface PaintballUpgradeRecord {
+  doubleTap: boolean;
+  speedMult: number;
+  rangeMult: number;
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  if (!Number.isFinite(n)) return lo;
+  return Math.min(hi, Math.max(lo, n));
+}
 
 /** Must match `BRAZIER_COUNT` / `BRAZIER_BURN_MS` / `BRAZIER_MOON_PAUSE_MS` in `@globefly/shared`. */
 const BRAZIER_COUNT = 5;
@@ -30,8 +47,10 @@ export class Room {
   /** World globe radius — used for paintball raycast (matches Prisma world row). */
   readonly globeRadius: number;
   private players = new Map<string, ConnectedPlayer>();
-  /** Last paintball fire time per socket (ms). */
-  private lastPaintballAt = new Map<string, number>();
+  /** Rolling pair of the two most recent paintball shot timestamps per socket (ms). */
+  private paintballShotHistory = new Map<string, number[]>();
+  /** Client-reported paintball upgrade flags per socket (server validates / clamps). */
+  private paintballUpgrades = new Map<string, PaintballUpgradeRecord>();
   /** Per-index wall-clock burn end (ms), or null — shared by everyone in this world room. */
   private brazierBurnEndsAt: (number | null)[] = Array.from(
     { length: BRAZIER_COUNT },
@@ -100,11 +119,24 @@ export class Room {
 
   removePlayer(socketId: string) {
     this.players.delete(socketId);
-    this.lastPaintballAt.delete(socketId);
+    this.paintballShotHistory.delete(socketId);
+    this.paintballUpgrades.delete(socketId);
 
     for (const [, player] of this.players) {
       player.socket.emit("player:left", socketId);
     }
+  }
+
+  /** Client pushes its paintball upgrade flags so the hit test / cooldown mirror them. */
+  setPaintballUpgrades(socketId: string, flags: PaintballUpgradeFlags) {
+    if (!this.players.has(socketId)) return;
+    if (!flags || typeof flags !== "object") return;
+    const record: PaintballUpgradeRecord = {
+      doubleTap: flags.doubleTap === true,
+      speedMult: clamp(Number(flags.speedMult) || 1, 1, PAINTBALL_SPEED_MULT_MAX),
+      rangeMult: clamp(Number(flags.rangeMult) || 1, 1, PAINTBALL_RANGE_MULT_MAX),
+    };
+    this.paintballUpgrades.set(socketId, record);
   }
 
   /** Server-authoritative paintball: validates cooldown and vehicle; broadcasts to room. */
@@ -116,15 +148,35 @@ export class Room {
     if (veh !== "plane") return;
 
     const now = Date.now();
-    const last = this.lastPaintballAt.get(socketId) ?? 0;
-    if (now - last < PAINTBALL_COOLDOWN_MS) return;
-    this.lastPaintballAt.set(socketId, now);
+    const upgrades = this.paintballUpgrades.get(socketId);
+    const doubleTap = upgrades?.doubleTap === true;
+    const speedMult = upgrades ? upgrades.speedMult : 1;
+    const rangeMult = upgrades ? upgrades.rangeMult : 1;
+
+    const history = this.paintballShotHistory.get(socketId) ?? [];
+    const last1 = history[history.length - 1] ?? 0;
+    const last2 = history[history.length - 2] ?? 0;
+
+    if (doubleTap) {
+      // Burst allowed: up to 2 shots per PAINTBALL_BURST_WINDOW_MS; no sub-cooldown between shot 1 and shot 2.
+      if (last2 > 0 && now - last2 < PAINTBALL_BURST_WINDOW_MS) return;
+    } else {
+      // Classic single-shot cooldown.
+      if (now - last1 < PAINTBALL_COOLDOWN_MS) return;
+    }
+
+    history.push(now);
+    if (history.length > 2) history.splice(0, history.length - 2);
+    this.paintballShotHistory.set(socketId, history);
 
     const others = Array.from(this.players.entries())
       .filter(([id]) => id !== socketId)
       .map(([id, p]) => ({ id, state: p.state }));
 
-    const result = computePaintballShot(me.state, socketId, others, this.globeRadius);
+    const result = computePaintballShot(me.state, socketId, others, this.globeRadius, {
+      speedMult,
+      rangeMult,
+    });
 
     const firedPayload: PaintballFiredEvent = {
       shooterId: socketId,
