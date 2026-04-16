@@ -85,6 +85,9 @@ type GremlinState = {
   turnPhase: number;
   fireCooldown: number;
   aimTimer: number;
+  health: number;
+  hitWobbleAmp: number;
+  hitWobblePhase: number;
   respawnSalt: number;
   respawnTimer: number;
   downTimer: number;
@@ -169,6 +172,7 @@ export class SkyGremlins {
     private readonly terrainType: string,
     private readonly paintballSystem: PaintballSystem,
     private readonly getLocalShooterId: () => string | undefined,
+    private readonly onHit: (worldPosition: Vector3) => void,
     private readonly onShotDown: (worldPosition: Vector3) => void,
   ) {
     this.group.visible = false;
@@ -459,6 +463,9 @@ export class SkyGremlins {
       turnPhase: random() * Math.PI * 2,
       fireCooldown: GREMLIN_FIRE_COOLDOWN_MIN,
       aimTimer: 0,
+      health: 3,
+      hitWobbleAmp: 0,
+      hitWobblePhase: 0,
       respawnSalt: 0,
       respawnTimer: 0,
       downTimer: 0,
@@ -495,6 +502,9 @@ export class SkyGremlins {
       (initial ? 0.5 : GREMLIN_FIRE_COOLDOWN_MIN) +
       gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
     gremlin.aimTimer = 0;
+    gremlin.health = 3;
+    gremlin.hitWobbleAmp = 0;
+    gremlin.hitWobblePhase = 0;
     gremlin.mode = "alive";
     gremlin.downTimer = 0;
     gremlin.root.visible = true;
@@ -619,7 +629,7 @@ export class SkyGremlins {
       gremlin.altitude = minAltitude;
     }
 
-    this.updateGremlinTransform(gremlin, 0);
+    this.updateGremlinTransform(gremlin, dt);
 
     this.directionScratch
       .copy(this.currentPlayerWorldPos)
@@ -730,6 +740,15 @@ export class SkyGremlins {
     gremlin.root.matrix.copy(this.tmpMatrix);
     gremlin.root.matrixWorldNeedsUpdate = true;
 
+    let hitBank = 0;
+    if (gremlin.hitWobbleAmp > 0.002) {
+      gremlin.hitWobblePhase += bankScale * 25; // using bankScale as dt here
+      hitBank = Math.sin(gremlin.hitWobblePhase) * gremlin.hitWobbleAmp;
+      gremlin.hitWobbleAmp *= Math.exp(-5 * bankScale);
+    } else {
+      gremlin.hitWobbleAmp = 0;
+    }
+
     if (gremlin.mode === "alive") {
       const flap = Math.sin(this.time * GREMLIN_FLAP_SPEED + gremlin.flapPhase) * GREMLIN_FLAP_AMP;
       const midFlap = Math.sin(this.time * GREMLIN_FLAP_SPEED + gremlin.flapPhase - 1.2) * GREMLIN_FLAP_AMP * 0.8;
@@ -740,11 +759,12 @@ export class SkyGremlins {
       gremlin.rig.position.y =
         Math.sin(this.time * GREMLIN_BOB_SPEED + gremlin.bobPhase) * 0.022;
       const lean = Math.sin(this.time * 1.4 + gremlin.turnPhase) * 0.08;
-      gremlin.rig.rotation.set(0.06 + bankScale * 0.18, 0, lean);
+      gremlin.rig.rotation.set(0.06 + bankScale * 0.18, 0, lean + hitBank);
       return;
     }
 
     gremlin.rig.position.y = 0;
+    gremlin.rig.rotation.z = hitBank;
   }
 
   private handleProjectileStep(info: ProjectileStepInfo) {
@@ -786,10 +806,19 @@ export class SkyGremlins {
       ) {
         continue;
       }
+      info.consume();
       this.paintballSystem.playImpactAtGroup(gremlin.root, info.color, false);
-      gremlin.mode = "falling";
-      gremlin.downTimer = GREMLIN_FALL_SEC;
-      this.onShotDown(gremlin.worldPosition.clone());
+      
+      gremlin.health--;
+      if (gremlin.health <= 0) {
+        gremlin.mode = "falling";
+        gremlin.downTimer = GREMLIN_FALL_SEC;
+        this.onShotDown(gremlin.worldPosition.clone());
+      } else {
+        gremlin.hitWobbleAmp = 0.45;
+        gremlin.hitWobblePhase = 0;
+        this.onHit(gremlin.worldPosition.clone());
+      }
     }
   }
 

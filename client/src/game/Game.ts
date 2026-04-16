@@ -862,6 +862,9 @@ export class Game {
         this.paintballSystem,
         () => this.socketClient?.id,
         () => {
+          this.cameraRig.shake(0.016, 0.14);
+        },
+        () => {
           this.hud.showXPGain(SKY_GREMLIN_XP);
           this.progression.addXP(SKY_GREMLIN_XP);
           this.cameraRig.shake(0.016, 0.14);
