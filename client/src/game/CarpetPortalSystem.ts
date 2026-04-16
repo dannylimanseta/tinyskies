@@ -1,12 +1,14 @@
 import {
   AdditiveBlending,
   CircleGeometry,
+  Color,
   DoubleSide,
   Group,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
   Quaternion,
+  ShaderMaterial,
   TorusGeometry,
   Vector3,
 } from "three";
@@ -18,7 +20,7 @@ import {
 } from "./SphericalMath";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
-const PORTAL_COLORS = [0x72e7ff, 0xff72f2] as const;
+const PORTAL_COLORS = [0x00aaff, 0xff7700] as const;
 const PORTAL_PLACE_AHEAD = 0.18;
 const PORTAL_RADIUS = 0.19;
 const PORTAL_TUBE_RADIUS = 0.022;
@@ -47,16 +49,22 @@ export interface PortalUpdateResult {
 
 class PortalVisual {
   readonly group = new Group();
+  private readonly scaledGroup = new Group();
   private readonly ring: Mesh;
   private readonly glow: Mesh;
   private readonly inner: Mesh;
   private readonly swirl: Mesh;
-  private readonly materials: MeshBasicMaterial[];
+  private readonly swirl2: Mesh;
+  private readonly materials: (MeshBasicMaterial | ShaderMaterial)[];
   private readonly phase: number;
 
   constructor(colorHex: number, phase: number) {
     this.phase = phase;
     this.group.matrixAutoUpdate = false;
+
+    // Portal 2 portals are tall and narrow
+    this.scaledGroup.scale.set(0.65, 1.25, 1.0);
+    this.group.add(this.scaledGroup);
 
     const ringMat = new MeshBasicMaterial({
       color: colorHex,
@@ -69,42 +77,100 @@ class PortalVisual {
     const glowMat = new MeshBasicMaterial({
       color: colorHex,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.35,
       blending: AdditiveBlending,
       side: DoubleSide,
       depthWrite: false,
     });
-    const innerMat = new MeshBasicMaterial({
+    
+    const portalShaderMat = new ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new Color(colorHex) },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+
+        void main() {
+          vec2 uv = vUv - 0.5;
+          float r = length(uv) * 2.0; // 0 to 1
+          if (r > 1.0) discard;
+
+          float a = atan(uv.y, uv.x);
+
+          // Swirling vortex effect
+          float angleOffset = r * 4.0 - uTime * 5.0;
+          float swirl1 = sin(a * 3.0 + angleOffset) * 0.5 + 0.5;
+          float swirl2 = sin(a * 5.0 - angleOffset * 1.5) * 0.5 + 0.5;
+          
+          float energy = swirl1 * swirl2;
+          
+          // Dark center, bright fiery edge
+          float edgeGlow = pow(r, 3.0) * 2.0;
+          float centerDarkness = smoothstep(0.2, 0.6, r);
+          
+          vec3 finalColor = mix(vec3(0.0), uColor, centerDarkness);
+          finalColor += uColor * energy * edgeGlow;
+          finalColor += vec3(1.0) * pow(r, 8.0); // White hot very edge
+
+          // Fade out at the very edge to blend with the ring
+          float alpha = smoothstep(1.0, 0.95, r) * centerDarkness;
+
+          gl_FragColor = vec4(finalColor, alpha);
+        }
+      `,
+      transparent: true,
+      side: DoubleSide,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+
+    const swirlMat = new MeshBasicMaterial({
+      color: 0xffffff, // White hot core
+      transparent: true,
+      opacity: 0.7,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      depthWrite: false,
+    });
+    const swirl2Mat = new MeshBasicMaterial({
       color: colorHex,
       transparent: true,
-      opacity: 0.14,
-      blending: AdditiveBlending,
-      side: DoubleSide,
-      depthWrite: false,
-    });
-    const swirlMat = new MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.22,
+      opacity: 0.6,
       blending: AdditiveBlending,
       side: DoubleSide,
       depthWrite: false,
     });
 
-    this.materials = [ringMat, glowMat, innerMat, swirlMat];
-    this.ring = new Mesh(new TorusGeometry(PORTAL_RADIUS, PORTAL_TUBE_RADIUS, 18, 56), ringMat);
-    this.glow = new Mesh(new CircleGeometry(PORTAL_RADIUS * 1.1, 40), glowMat);
-    this.inner = new Mesh(new CircleGeometry(PORTAL_RADIUS * 0.78, 40), innerMat);
-    this.swirl = new Mesh(new TorusGeometry(PORTAL_RADIUS * 0.62, PORTAL_TUBE_RADIUS * 0.42, 12, 36), swirlMat);
+    this.materials = [ringMat, glowMat, portalShaderMat, swirlMat, swirl2Mat];
+    
+    // Thinner border
+    this.ring = new Mesh(new TorusGeometry(PORTAL_RADIUS, PORTAL_TUBE_RADIUS * 0.6, 18, 56), ringMat);
+    this.glow = new Mesh(new CircleGeometry(PORTAL_RADIUS * 1.3, 40), glowMat);
+    // The inner void is now our cool shader
+    this.inner = new Mesh(new CircleGeometry(PORTAL_RADIUS * 0.95, 40), portalShaderMat);
+    this.swirl = new Mesh(new TorusGeometry(PORTAL_RADIUS * 0.95, PORTAL_TUBE_RADIUS * 0.4, 12, 36), swirlMat);
+    this.swirl2 = new Mesh(new TorusGeometry(PORTAL_RADIUS * 0.98, PORTAL_TUBE_RADIUS * 0.6, 12, 36), swirl2Mat);
 
     this.glow.position.z = -0.012;
     this.inner.position.z = -0.004;
-    this.swirl.position.z = 0.012;
+    this.swirl.position.z = 0.008;
+    this.swirl2.position.z = 0.012;
 
-    this.group.add(this.glow);
-    this.group.add(this.inner);
-    this.group.add(this.swirl);
-    this.group.add(this.ring);
+    this.scaledGroup.add(this.glow);
+    this.scaledGroup.add(this.inner);
+    this.scaledGroup.add(this.swirl);
+    this.scaledGroup.add(this.swirl2);
+    this.scaledGroup.add(this.ring);
   }
 
   applyPose(worldPosition: Vector3, right: Vector3, up: Vector3, forward: Vector3) {
@@ -115,12 +181,23 @@ class PortalVisual {
   }
 
   update(time: number) {
-    const pulse = 1 + Math.sin(time * 2.6 + this.phase) * 0.06;
+    const pulse = 1 + Math.sin(time * 8.0 + this.phase) * 0.02;
     this.ring.scale.setScalar(pulse);
-    this.glow.scale.setScalar(0.92 + Math.sin(time * 1.7 + this.phase) * 0.08);
-    this.inner.scale.setScalar(0.94 + Math.sin(time * 2.1 + this.phase + 0.8) * 0.04);
-    this.inner.rotation.z = time * 1.15 + this.phase * 0.7;
-    this.swirl.rotation.z = -time * 1.9 - this.phase * 0.5;
+    this.glow.scale.setScalar(0.95 + Math.sin(time * 4.0 + this.phase) * 0.05);
+    
+    // Update shader time
+    const shaderMat = this.materials[2] as ShaderMaterial;
+    if (shaderMat.uniforms) {
+      shaderMat.uniforms.uTime.value = time + this.phase;
+    }
+    
+    // Portal 2 swirling energy
+    this.swirl.rotation.z = -time * 3.5 - this.phase;
+    this.swirl2.rotation.z = time * 2.8 + this.phase * 0.5;
+    
+    // Wobble the swirl slightly
+    this.swirl.scale.setScalar(1 + Math.sin(time * 12.0) * 0.03);
+    this.swirl2.scale.setScalar(1 + Math.cos(time * 9.0) * 0.04);
   }
 
   dispose() {
@@ -128,6 +205,7 @@ class PortalVisual {
     this.glow.geometry.dispose();
     this.inner.geometry.dispose();
     this.swirl.geometry.dispose();
+    this.swirl2.geometry.dispose();
     for (const material of this.materials) material.dispose();
   }
 }
