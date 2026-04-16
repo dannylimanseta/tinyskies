@@ -131,6 +131,8 @@ const EXPLOSION_SFX_VOLUME = 0.48;
 const DIAMOND_COMBO_WINDOW_MS = 900;
 const DIAMOND_COMBO_MAX_STEPS = 5;
 const DIAMOND_COMBO_RATE_PER_STEP = 0.028;
+/** Each combo step adds this fraction of diamond XP (e.g. step 5 = +25%). */
+const DIAMOND_COMBO_XP_PER_STEP = 0.05;
 const DIAMOND_SFX_VOLUME = 0.3;
 const PORTAL_INTERACTION_SUPPRESS_SEC = 0.18;
 const SELFIE_CAMERA_SFX_VOLUME = 0.55;
@@ -816,6 +818,7 @@ export class Game {
 
       this.ringManager.onCollect = (xp, worldPos, tier) => {
       this.collectVFX.play(worldPos, tier);
+      let comboXpMult = 1;
       if (this.vehicleFeatures.collectibleDiamonds) {
         const now = performance.now();
         const state = this.progression.upgrades.state;
@@ -832,6 +835,7 @@ export class Game {
         const pick =
           DIAMOND_SFX_IDS[Math.floor(Math.random() * DIAMOND_SFX_IDS.length)]!;
         this.audioManager.playSFX(pick, DIAMOND_SFX_VOLUME, rate);
+        comboXpMult = 1 + this.diamondComboStep * DIAMOND_COMBO_XP_PER_STEP;
       }
       this.vehicleFlashTimer = 0.35;
       this.cameraRig.shake();
@@ -841,7 +845,7 @@ export class Game {
           SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
         this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
       }
-      this.awardXP("diamond", xp);
+      this.awardXP("diamond", xp * comboXpMult);
     };
 
     this.progression.onXPChanged = (xp, xpForNext, xpForCurrent, level) => {
