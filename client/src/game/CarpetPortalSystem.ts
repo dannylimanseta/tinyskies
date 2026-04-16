@@ -270,9 +270,16 @@ export class CarpetPortalSystem {
       PORTAL_PLACE_AHEAD / this.globeRadius,
     );
     const frame = tangentFrame(qPosition);
+    
+    // Ensure the portal's bottom edge clears the ground.
+    // The portal is scaled by 1.25 in Y, so its half-height is PORTAL_RADIUS * 1.25 + PORTAL_TUBE_RADIUS.
+    const portalHalfHeight = PORTAL_RADIUS * 1.25 + PORTAL_TUBE_RADIUS;
+    const safeClearance = portalHalfHeight + 0.02; // Add a tiny bit of extra padding
+    
     const minAltitude =
       surfaceAltitudeAt(this.seed, this.terrainType, frame.up.x, frame.up.y, frame.up.z) +
-      CARPET_HOVER_HEIGHT;
+      Math.max(CARPET_HOVER_HEIGHT, safeClearance);
+      
     const altitude = Math.max(carpet.altitude, minAltitude);
     const worldPosition = cartesianFromSpherical(qPosition, altitude, this.globeRadius);
     const forward = this.headingVector(qPosition, carpet.heading);
