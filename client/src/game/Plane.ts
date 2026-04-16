@@ -18,6 +18,8 @@ const BOOST_SPEED = 1.3;
 const BOOST_DURATION_SEC = 1.7;
 /** Hard ceiling: arc-step = 2.0*0.05/5 = 0.02 rad/frame — well within safe limits. */
 const ABSOLUTE_MAX_SPEED = 2.0;
+const GREMLIN_SLOW_DURATION_SEC = 1.15;
+const GREMLIN_SLOW_MULT = 0.62;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 /** Minimum clearance above terrain when descending. */
@@ -48,6 +50,8 @@ export class Plane {
   rollAngle = 0;
   /** Remaining time at `BOOST_SPEED` after `speedBoost()`; 0 when not boosting. */
   private boostTimer = 0;
+  /** Brief movement penalty after getting splatted by a sky gremlin. */
+  private gremlinSlowTimer = 0;
   /** Network fade 0–1 (moon cutscene); read by StateSync. */
   visibility?: number;
 
@@ -100,11 +104,19 @@ export class Plane {
     descend: boolean = false,
   ) {
     // Compute effective values once so all references below stay consistent.
-    const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult;
-    const effBoostSpeed = Math.min(BOOST_SPEED * this.upgrades.boostSpeedMult, ABSOLUTE_MAX_SPEED);
+    if (this.gremlinSlowTimer > 0) {
+      this.gremlinSlowTimer = Math.max(0, this.gremlinSlowTimer - dt);
+    }
+    const gremlinSlowMult = this.gremlinSlowTimer > 0 ? GREMLIN_SLOW_MULT : 1;
+    const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult * gremlinSlowMult;
+    const effBoostSpeed = Math.min(
+      BOOST_SPEED * this.upgrades.boostSpeedMult * gremlinSlowMult,
+      ABSOLUTE_MAX_SPEED,
+    );
     const effBrakeDecel = BRAKE_DECEL * this.upgrades.brakeDecelMult;
     const effAltSpeed = ALTITUDE_SPEED * this.upgrades.altSpeedMult;
     const effBankResp = BANK_RESPONSIVENESS * this.upgrades.bankMult;
+    const effAccel = ACCEL * gremlinSlowMult;
 
     if (this.boostTimer > 0) {
       this.boostTimer = Math.max(0, this.boostTimer - dt);
@@ -114,7 +126,7 @@ export class Plane {
       this.speed = effBoostSpeed;
     } else if (forward) {
       if (this.speed < effMaxSpeed) {
-        this.speed = Math.min(effMaxSpeed, this.speed + ACCEL * dt);
+        this.speed = Math.min(effMaxSpeed, this.speed + effAccel * dt);
       } else {
         this.speed = Math.max(effMaxSpeed, this.speed - 0.13 * dt);
       }
@@ -191,6 +203,11 @@ export class Plane {
   triggerPaintballHitWobble() {
     this.paintballWobbleAmp = 0.42;
     this.paintballWobblePhase = 0;
+  }
+
+  applyGremlinSlow() {
+    this.gremlinSlowTimer = GREMLIN_SLOW_DURATION_SEC;
+    this.speed = Math.max(MIN_SPEED, this.speed * 0.72);
   }
 
   speedBoost() {

@@ -111,6 +111,16 @@ type SplatterFade = {
   start: number;
 };
 
+export type ProjectileStepInfo = {
+  shooterId: string;
+  color: number;
+  previousPosition: Vector3;
+  currentPosition: Vector3;
+  consume: () => void;
+};
+
+type ProjectileStepListener = (info: ProjectileStepInfo) => void;
+
 /** Strip triangles whose average vertex normal faces away from `upDir` (the hit surface normal). */
 function stripBackFaces(geo: BufferGeometry, upDir: Vector3): BufferGeometry {
   const pos = geo.attributes.position as BufferAttribute;
@@ -201,6 +211,8 @@ export class PaintballSystem {
   private texture: Texture | null = null;
   private textureLoaded = false;
   private readonly splashPool = new PaintballSplashPool();
+  private nextProjectileStepListenerId = 0;
+  private readonly projectileStepListeners = new Map<number, ProjectileStepListener>();
 
   constructor(
     private readonly scene: Scene,
@@ -235,6 +247,52 @@ export class PaintballSystem {
 
   setGlobeRadius(r: number) {
     this.globeRadius = r;
+  }
+
+  addProjectileStepListener(listener: ProjectileStepListener): () => void {
+    const id = ++this.nextProjectileStepListenerId;
+    this.projectileStepListeners.set(id, listener);
+    return () => {
+      this.projectileStepListeners.delete(id);
+    };
+  }
+
+  spawnLocalProjectile(options: {
+    shooterId: string;
+    origin: Vector3;
+    direction: Vector3;
+    color?: number;
+    speed?: number;
+    playShootSfx?: boolean;
+  }): boolean {
+    const color =
+      options.color ??
+      PAINTBALL_COLOR_PALETTE[
+        Math.floor(Math.random() * PAINTBALL_COLOR_PALETTE.length)
+      ]!;
+    const didSpawn = this.spawnProjectile({
+      shooterId: options.shooterId,
+      color,
+      ox: options.origin.x,
+      oy: options.origin.y,
+      oz: options.origin.z,
+      dx: options.direction.x,
+      dy: options.direction.y,
+      dz: options.direction.z,
+      speed: options.speed ?? PAINTBALL_SPEED,
+    });
+    if (didSpawn && options.playShootSfx) {
+      this.onPaintballShoot?.();
+    }
+    return didSpawn;
+  }
+
+  clearProjectilesByShooterPrefix(prefix: string) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const projectile = this.projectiles[i]!;
+      if (!projectile.shooterId.startsWith(prefix)) continue;
+      this.disposeProjectile(projectile, i);
+    }
   }
 
   /** One frame: local player pressed fire (plane only). */
@@ -350,23 +408,34 @@ export class PaintballSystem {
       this.onLocalPlayerPaintballHit?.();
     }
     this.onPaintballVictimWobble?.(ev.victimId);
-
-    let splatWorld = this.addSplatterDecal(victimRoot, ev.color, ev.splatSeed);
-    if (!splatWorld) {
-      victimRoot.updateMatrixWorld(true);
-      splatWorld = victimRoot.getWorldPosition(new Vector3());
-    }
-    this.splashPool.play(
-      this.scene,
-      splatWorld,
-      decalTintColor(ev.color).getHex(),
-      ev.splatSeed,
-    );
+    this.applyImpactAtGroup(victimRoot, ev.color, ev.splatSeed);
     if (ev.victimId === myId) {
       this.onPaintballImpact?.(ev.splatSeed, false);
     } else if (ev.shooterId === myId) {
       this.onPaintballImpact?.(ev.splatSeed, true);
     }
+  }
+
+  triggerLocalPlayerHit(
+    localPlaneGroup: Group | null,
+    colorHex: number,
+    splatSeed = (Math.random() * 0xffffffff) >>> 0,
+  ) {
+    if (!localPlaneGroup) return;
+    this.onLocalPlayerPaintballHit?.();
+    this.onPaintballVictimWobble?.(this.getSocketId() ?? "local");
+    this.applyImpactAtGroup(localPlaneGroup, colorHex, splatSeed);
+    this.onPaintballImpact?.(splatSeed, false);
+  }
+
+  playImpactAtGroup(
+    victimRoot: Group,
+    colorHex: number,
+    distant = false,
+    splatSeed = (Math.random() * 0xffffffff) >>> 0,
+  ) {
+    this.applyImpactAtGroup(victimRoot, colorHex, splatSeed);
+    this.onPaintballImpact?.(splatSeed, distant);
   }
 
   /**
@@ -488,6 +557,24 @@ export class PaintballSystem {
     return null;
   }
 
+  private applyImpactAtGroup(
+    victimRoot: Group,
+    colorHex: number,
+    splatSeed: number,
+  ) {
+    let splatWorld = this.addSplatterDecal(victimRoot, colorHex, splatSeed);
+    if (!splatWorld) {
+      victimRoot.updateMatrixWorld(true);
+      splatWorld = victimRoot.getWorldPosition(new Vector3());
+    }
+    this.splashPool.play(
+      this.scene,
+      splatWorld,
+      decalTintColor(colorHex).getHex(),
+      splatSeed,
+    );
+  }
+
   private disposeProjectile(p: Projectile, index: number) {
     this.scene.remove(p.mesh);
     p.mesh.geometry.dispose();
@@ -505,10 +592,16 @@ export class PaintballSystem {
       p.traveled += step;
       const theta = p.traveled / p.r0;
       const r = p.r0;
+      const prevTheta = (p.traveled - step) / p.r0;
+      const prevPos = new Vector3()
+        .copy(p.rHat)
+        .multiplyScalar(r * Math.cos(prevTheta))
+        .addScaledVector(p.wHat, r * Math.sin(prevTheta));
       p.mesh.position
         .copy(p.rHat)
         .multiplyScalar(r * Math.cos(theta))
         .addScaledVector(p.wHat, r * Math.sin(theta));
+      const curPos = p.mesh.position;
 
       const tr = p.traveled / p.maxRange;
       const fade = Math.max(0, 1 - Math.pow(Math.min(1, tr), 1.15));
@@ -519,14 +612,6 @@ export class PaintballSystem {
         const _bPos = new Vector3();
         const BALLOON_HIT_R = 0.18;
         const BALLOON_HIT_R_SQ = BALLOON_HIT_R * BALLOON_HIT_R;
-        // Swept-sphere: check along the great-circle arc the projectile
-        // traveled this frame so fast shots can't skip through.
-        const prevTheta = (p.traveled - step) / p.r0;
-        const prevPos = new Vector3()
-          .copy(p.rHat)
-          .multiplyScalar(r * Math.cos(prevTheta))
-          .addScaledVector(p.wHat, r * Math.sin(prevTheta));
-        const curPos = p.mesh.position;
         const segDir = new Vector3().subVectors(curPos, prevPos);
         const segLen = segDir.length();
         if (segLen > 1e-6) segDir.divideScalar(segLen);
@@ -567,7 +652,24 @@ export class PaintballSystem {
         }
       }
 
-      if (hitBalloon || p.traveled >= p.maxRange || fade <= 0.02) {
+      let consumedByListener = false;
+      if (this.projectileStepListeners.size > 0) {
+        const stepInfo: ProjectileStepInfo = {
+          shooterId: p.shooterId,
+          color: p.color,
+          previousPosition: prevPos,
+          currentPosition: curPos,
+          consume: () => {
+            consumedByListener = true;
+          },
+        };
+        for (const listener of this.projectileStepListeners.values()) {
+          listener(stepInfo);
+          if (consumedByListener) break;
+        }
+      }
+
+      if (consumedByListener || hitBalloon || p.traveled >= p.maxRange || fade <= 0.02) {
         this.disposeProjectile(p, i);
       }
     }

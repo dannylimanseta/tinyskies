@@ -68,6 +68,7 @@ import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingL
 import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { Braziers, BRAZIER_COUNT } from "./Braziers";
+import { SkyGremlins, SKY_GREMLIN_XP } from "./SkyGremlins";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper, pickBrazierWhisper } from "./PackageDialogue";
@@ -225,6 +226,7 @@ export class Game {
   private fireflyClusters: FireflyCluster[] = [];
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
+  private skyGremlins: SkyGremlins | null = null;
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -719,8 +721,8 @@ export class Game {
         this.hud.showPaintballSplatter();
       },
       (victimId) => {
-        const myId = this.socketClient?.id;
-        if (myId && victimId === myId && this.localPlayer instanceof Plane) {
+        const myId = this.socketClient?.id ?? "local";
+        if (victimId === myId && this.localPlayer instanceof Plane) {
           this.localPlayer.triggerPaintballHitWobble();
           return;
         }
@@ -850,6 +852,25 @@ export class Game {
     this.propagateUpgrades();
 
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
+
+    if (vehicle === "plane" && this.paintballSystem) {
+      this.skyGremlins = new SkyGremlins(
+        this.scene,
+        globeRadius,
+        seed,
+        terrainType,
+        this.paintballSystem,
+        () => this.socketClient?.id,
+        () => {
+          this.hud.showXPGain(SKY_GREMLIN_XP);
+          this.progression.addXP(SKY_GREMLIN_XP);
+          this.cameraRig.shake(0.016, 0.14);
+          this.vehicleFlashTimer = 0.14;
+        },
+      );
+    } else {
+      this.skyGremlins = null;
+    }
 
     this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
     for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
@@ -1057,6 +1078,8 @@ export class Game {
     this.localPlayer?.dispose();
     this.paintballSystem?.dispose();
     this.paintballSystem = null;
+    this.skyGremlins?.dispose();
+    this.skyGremlins = null;
     this.remotePlanes?.dispose();
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
@@ -1568,6 +1591,7 @@ export class Game {
     }
 
     if (this.introActive) {
+      this.skyGremlins?.setSuspended(true);
       this.localPlayer.visibility = 1;
       this.introTimer += dt;
       const raw = Math.min(this.introTimer / Game.INTRO_DURATION, 1);
@@ -1640,6 +1664,7 @@ export class Game {
 
     /* ── Campsite phase ────────────────────────────────── */
     if (this.gamePhase === "campsite" && this.campsiteScene) {
+      this.skyGremlins?.setSuspended(true);
       this.localPlayer.visibility = 1;
       this.moonThreat?.update(dt);
       if (this.moonThreat?.isNearImpact || this.moonThreat?.hasImpacted) {
@@ -1657,12 +1682,14 @@ export class Game {
       return;
     }
     if (this.gamePhase === "transitioning") {
+      this.skyGremlins?.setSuspended(true);
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
     }
 
     /* ── Moon impact cinematic phase ────────────────────── */
     if (this.gamePhase === "moonImpact") {
+      this.skyGremlins?.setSuspended(true);
       this.moonThreat?.update(dt);
       this.tickMoonImpactCinematic(dt);
       return;
@@ -1730,6 +1757,12 @@ export class Game {
     this.globe.update(dt);
 
     this.remotePlanes.update(dt, this.cameraRig.camera);
+    if (this.localPlayer instanceof Plane && this.skyGremlins) {
+      this.skyGremlins.setSuspended(false);
+      this.skyGremlins.update(dt, this.localPlayer);
+    } else {
+      this.skyGremlins?.setSuspended(true);
+    }
     this.paintballSystem?.update(dt);
 
     this.localPlayer.group.updateMatrixWorld(true);
@@ -2770,6 +2803,8 @@ export class Game {
     this.previewActive = false;
     this.paintballSystem?.dispose();
     this.paintballSystem = null;
+    this.skyGremlins?.dispose();
+    this.skyGremlins = null;
     this.controls?.dispose();
     this.touchControls?.dispose();
     this.speedLines?.dispose();
