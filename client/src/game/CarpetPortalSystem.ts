@@ -109,9 +109,9 @@ class PortalVisual {
           
           float a = atan(uv.y, uv.x);
 
-          // Organic wobble effect during spawn
+          // Organic wobble effect
           float spawnProgress = clamp(uAge / 0.5, 0.0, 1.0);
-          float wobbleAmount = (1.0 - spawnProgress) * 0.15;
+          float wobbleAmount = 0.03 + (1.0 - spawnProgress) * 0.12;
           r += sin(uTime * 25.0 + a * 5.0) * wobbleAmount;
 
           if (r > 1.0) discard;
@@ -204,13 +204,16 @@ class PortalVisual {
     const morphT = Math.max(0, (t - 0.5) * 2.0);
     const morphEase = morphT * morphT * (3 - 2 * morphT); // Smoothstep for morphing
     
-    // Organic wobble scale during spawn
-    const wobble = (1 - t) * 0.15;
-    const wobbleX = Math.sin(age * 40) * wobble;
-    const wobbleY = Math.cos(age * 45) * wobble;
+    // Organic wobble scale
+    const baseWobbleX = Math.sin(time * 12.0) * 0.02;
+    const baseWobbleY = Math.cos(time * 15.0) * 0.02;
+    
+    const spawnWobble = (1 - t) * 0.13;
+    const spawnWobbleX = Math.sin(age * 40) * spawnWobble;
+    const spawnWobbleY = Math.cos(age * 45) * spawnWobble;
 
-    const currentX = (0.3 + (0.65 - 0.3) * morphEase) * ease + wobbleX;
-    const currentY = (0.3 + (1.25 - 0.3) * morphEase) * ease + wobbleY;
+    const currentX = (0.3 + (0.65 - 0.3) * morphEase) * ease + baseWobbleX + spawnWobbleX;
+    const currentY = (0.3 + (1.25 - 0.3) * morphEase) * ease + baseWobbleY + spawnWobbleY;
     
     // Apply scale and a cool spin as it opens
     this.scaledGroup.scale.set(currentX, currentY, 1.0 * ease);
