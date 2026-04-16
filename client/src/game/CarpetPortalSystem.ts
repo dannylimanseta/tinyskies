@@ -24,7 +24,8 @@ const PORTAL_COLORS = [0x00aaff, 0xff7700] as const;
 const PORTAL_PLACE_AHEAD = 0.45;
 const PORTAL_RADIUS = 0.15;
 const PORTAL_TUBE_RADIUS = 0.022;
-const PORTAL_TRIGGER_RADIUS = 0.14;
+/** Hit disc in portal plane (world units); larger than visible ring for forgiving teleports. */
+const PORTAL_TRIGGER_RADIUS = 0.22;
 const PORTAL_ARM_DISTANCE = 0.38;
 const PORTAL_EXIT_PUSH = 0.22;
 const PORTAL_COOLDOWN_SEC = 0.3;
@@ -249,21 +250,28 @@ class PortalVisual {
   }
 }
 
+export type CarpetPortalSystemOptions = {
+  /** Fires once when a new portal is placed, after frame 0 of the spawn animation is applied. */
+  onPortalSpawnStart?: () => void;
+};
+
 export class CarpetPortalSystem {
   readonly group = new Group();
   private readonly globeRadius: number;
   private readonly seed: number;
   private readonly terrainType: string;
+  private readonly onPortalSpawnStart: (() => void) | undefined;
   private readonly portals: PortalEndpoint[] = [];
   private lastPlayerWorldPos: Vector3 | null = null;
   private cooldown = 0;
   private time = 0;
   private nextPortalId = 0;
 
-  constructor(globeRadius: number, seed: number, terrainType: string) {
+  constructor(globeRadius: number, seed: number, terrainType: string, options?: CarpetPortalSystemOptions) {
     this.globeRadius = globeRadius;
     this.seed = seed;
     this.terrainType = terrainType;
+    this.onPortalSpawnStart = options?.onPortalSpawnStart;
   }
 
   placePortal(carpet: Carpet) {
@@ -315,6 +323,9 @@ export class CarpetPortalSystem {
       visual,
       armed: false,
     });
+    // First frame of spawn (age 0) before the main tick advances time, so SFX lines up with animation start.
+    visual.update(this.time, 0);
+    this.onPortalSpawnStart?.();
   }
 
   syncToCarpet(carpet: Carpet) {

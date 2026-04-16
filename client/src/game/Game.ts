@@ -131,6 +131,9 @@ const DIAMOND_COMBO_MAX_STEPS = 5;
 const DIAMOND_COMBO_RATE_PER_STEP = 0.028;
 const DIAMOND_SFX_VOLUME = 0.3;
 const PORTAL_INTERACTION_SUPPRESS_SEC = 0.18;
+const SELFIE_CAMERA_SFX_VOLUME = 0.55;
+const PORTAL_TELEPORT_SFX_VOLUME = 0.5;
+const PORTAL_OPEN_SFX_VOLUME = 0.52;
 
 const DIAMOND_SFX_IDS = [
   "diamond_collect_1",
@@ -365,6 +368,9 @@ export class Game {
       for (const id of ["impact_1", "impact_2", "impact_3"] as const) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      this.audioManager.loadSFX("camera", "/audio/sfx/camera.mp3");
+      this.audioManager.loadSFX("portal_1", "/audio/sfx/portal_1.mp3");
+      this.audioManager.loadSFX("portal_open", "/audio/sfx/portal_open.mp3");
     });
     this.playerName = ProgressionManager.loadPlayerName() ?? generateWhimsicalName();
     ProgressionManager.savePlayerName(this.playerName);
@@ -760,7 +766,12 @@ export class Game {
     this.scene.add(this.carpetLeaves.group);
 
     if (vehicle === "carpet") {
-      this.carpetPortalSystem = new CarpetPortalSystem(globeRadius, seed, terrainType);
+      this.carpetPortalSystem = new CarpetPortalSystem(globeRadius, seed, terrainType, {
+        onPortalSpawnStart: () => {
+          this.audioManager.resumeContextIfNeeded();
+          this.audioManager.playSFX("portal_open", PORTAL_OPEN_SFX_VOLUME);
+        },
+      });
       this.scene.add(this.carpetPortalSystem.group);
       this.carpetPortalSystem.syncToCarpet(this.localPlayer as Carpet);
     } else {
@@ -979,6 +990,8 @@ export class Game {
       };
       this.carpetLandmarkSelfieQuest.onPhotoTaken = (payload) => {
         this.globe.setLandmarkParticleOpacity(payload.kind, payload.kindIndex, 0.0);
+        this.audioManager.resumeContextIfNeeded();
+        this.audioManager.playSFX("camera", SELFIE_CAMERA_SFX_VOLUME);
         if (payload.kind === "hotspring") {
           this.carpetSelfiePhotoUI?.showSelfie("/2D/capybara_hotspring.jpg", "Hot spring selfie");
         } else if (payload.kind === "shrine") {
@@ -2362,6 +2375,9 @@ export class Game {
 
   private handleCarpetPortalTeleport() {
     if (!(this.localPlayer instanceof Carpet)) return;
+
+    this.audioManager.resumeContextIfNeeded();
+    this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
