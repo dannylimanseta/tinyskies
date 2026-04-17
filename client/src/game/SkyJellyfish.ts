@@ -32,7 +32,7 @@ import {
  */
 
 export const JELLY_COUNT = 6;
-export const JELLY_CAPTURE_XP = 180;
+export const JELLY_CAPTURE_XP = 30;
 
 /** Radius where capture starts filling (world units; globe radius ~5). */
 const JELLY_CAPTURE_RADIUS = 0.65;
@@ -451,6 +451,15 @@ export class SkyJellyfish {
     q.premultiply(_tiltQ);
     _tiltQ.setFromAxisAngle(_rightScratch, nod);
     q.premultiply(_tiltQ);
+
+    // Independent per-jelly drift tilt — slow, unique oscillation on two axes
+    // so each jelly looks like it has its own personality / is not rigidly parented.
+    const driftRoll = Math.sin(this.time * 0.42 + j.bobPhase * 2.71) * 0.22;
+    const driftPitch = Math.sin(this.time * 0.31 + j.bobPhase * 1.57) * 0.16;
+    _tiltQ.setFromAxisAngle(_forwardScratch, driftRoll);
+    q.multiply(_tiltQ);
+    _tiltQ.setFromAxisAngle(_rightScratch, driftPitch);
+    q.multiply(_tiltQ);
 
     // Smoothly slerp to the target orientation. A higher rate (5.0) makes it
     // track turns much better while still keeping a tiny bit of organic lag.

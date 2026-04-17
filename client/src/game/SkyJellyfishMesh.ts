@@ -45,6 +45,20 @@ float noise3(vec3 p) {
 }
 `;
 
+// Shared GLSL snippet: asymmetric jellyfish contraction pulse.
+// Fast squeeze (25% of cycle), slow relaxed glide (75% of cycle).
+// Returns contraction in [0,1], relaxed = 1-contraction.
+const pulseGLSL = `
+float jellyPulse(float t, float phase) {
+  float cycle = fract(t * 0.75 + phase * 0.15);
+  float cNorm = clamp(cycle / 0.25, 0.0, 1.0);
+  float rNorm = clamp((cycle - 0.25) / 0.75, 0.0, 1.0);
+  float cSmooth = cNorm * cNorm * (3.0 - 2.0 * cNorm);
+  float rSmooth = rNorm * rNorm * (3.0 - 2.0 * rNorm);
+  return cSmooth * (1.0 - rSmooth);
+}
+`;
+
 const bellVert = `
 uniform float uTime;
 uniform float uPhase;
@@ -52,34 +66,37 @@ varying vec3 vNormal;
 varying vec3 vViewDir;
 varying float vSkirt;
 varying float vWobble;
+varying float vContraction;
 ${noiseGLSL}
+${pulseGLSL}
 void main() {
-  float pulse = sin(uTime * 3.5 + uPhase); // Faster swimming pulse
-  // Bell is centred at origin; +Y is the top of the dome (built from top hemisphere).
-  // Normalize y from -R..+R to 0..1 where 0 = rim, 1 = top.
+  float contraction = jellyPulse(uTime, uPhase);
+  float relaxed = 1.0 - contraction;
+
+  // Bell is centred at origin; yUnit: 0 = rim, 1 = top of dome.
   float yUnit = clamp((position.y + ${BELL_RADIUS.toFixed(3)}) / (2.0 * ${BELL_RADIUS.toFixed(3)}), 0.0, 1.0);
-  float skirt = smoothstep(0.8, 0.0, yUnit); // Stronger at rim
+  float skirt = smoothstep(0.8, 0.0, yUnit);
   vSkirt = skirt;
+  vContraction = contraction;
 
   vec3 displaced = position;
 
-  // 1. Swimming contraction (bell squeezes in and down, then expands)
-  float contract = pulse * skirt;
-  displaced.xz *= 1.0 - contract * 0.2;
-  displaced.y -= contract * 0.1;
+  // 1. Real jellyfish contraction: rim folds inward+upward on power stroke.
+  //    Top of bell depresses slightly inward as the ring muscles pull.
+  displaced.xz *= 1.0 - contraction * 0.45 * skirt;    // rim squeezes in
+  displaced.y  += contraction * 0.18 * skirt;            // rim lifts up
+  displaced.y  -= contraction * 0.06 * (1.0 - skirt);   // top depresses
 
-  // 2. Organic wobble (position * 15.0 so noise varies across the small bell)
+  // 2. Organic wobble — only significant during relaxed phase (bell ripples as it opens).
   float n = noise3(position * 15.0 + vec3(uTime * 1.2, uPhase, uTime * 0.8));
-  float bulge = (n - 0.5) * 0.5 * skirt;
+  float bulge = (n - 0.5) * 0.5 * skirt * relaxed;
   displaced.xz *= 1.0 + bulge;
+  displaced += normal * ((n - 0.5) * 0.05 * relaxed);
 
-  // 3. Surface ripples
-  displaced += normal * ((n - 0.5) * 0.06);
-
-  // 4. Skirt flutter
-  float flutter = sin(uTime * 5.0 + position.x * 25.0 + position.z * 25.0 + uPhase * 2.0);
-  displaced.y += flutter * 0.02 * skirt;
-  displaced.xz *= 1.0 + flutter * 0.015 * skirt;
+  // 3. Gentle skirt flutter during relaxation (open phase only).
+  float flutter = sin(uTime * 4.5 + position.x * 22.0 + position.z * 22.0 + uPhase * 2.0);
+  displaced.y   += flutter * 0.018 * skirt * relaxed;
+  displaced.xz  *= 1.0 + flutter * 0.012 * skirt * relaxed;
 
   vWobble = n;
 
@@ -100,25 +117,20 @@ varying vec3 vNormal;
 varying vec3 vViewDir;
 varying float vSkirt;
 varying float vWobble;
+varying float vContraction;
 void main() {
   float rim = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewDir)), 0.0), 2.0);
-  // Multi-layered breathing pulse — a steady slow breath plus a faster flicker.
-  float slow = 0.85 + 0.6 * sin(uTime * 1.2 + uPhase);
-  float fast = 0.5 + 0.5 * sin(uTime * 2.7 + uPhase * 1.4);
-  float breathe = slow * (0.85 + 0.35 * fast);
-  
-  // Desaturate the base color slightly for a softer, less intense look
-  vec3 softColor = mix(uColor, vec3(1.0), 0.4);
-  
-  // Strong internal emission — the bell looks like a lantern.
-  vec3 core = softColor * (0.8 + 0.6 * breathe);
-  vec3 inner = uColor * (0.4 + 0.3 * vWobble) * breathe;
-  vec3 col = mix(inner, core, rim * 0.6);
-  col += uColor * 0.35 * vSkirt * breathe;
-  col += softColor * 0.35 * rim;
-  
-  // Lower alpha for a more translucent, glassy feel
-  float alpha = clamp(0.2 + rim * 0.35, 0.0, 1.0) * uOpacity;
+
+  // Flash brighter on the power stroke, dim during glide.
+  float glow = 0.7 + 0.6 * vContraction;
+  vec3 softColor = mix(uColor, vec3(1.0), 0.35);
+  vec3 core  = softColor * glow;
+  vec3 inner = uColor   * (0.4 + 0.3 * vWobble) * glow;
+  vec3 col   = mix(inner, core, rim * 0.6);
+  col += uColor     * 0.30 * vSkirt * glow;
+  col += softColor  * 0.30 * rim;
+
+  float alpha = clamp(0.18 + rim * 0.32, 0.0, 1.0) * uOpacity;
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -128,43 +140,50 @@ uniform float uTime;
 uniform float uPhase;
 varying vec2 vUv;
 varying float vTipFade;
+varying float vContraction;
 ${noiseGLSL}
+${pulseGLSL}
 void main() {
   vUv = uv;
-  // PlaneGeometry uvs: (0,0) at the geometry's bottom, (1,1) at the top.
-  // After we translate by -TENDRIL_LENGTH/2 the base ends up at world-y 0
-  // (which is the geometry's TOP, uv.y = 1) and the tip hangs into -Y
-  // (geometry's BOTTOM, uv.y = 0). So tipWeight = 1 - uv.y.
+  // tipWeight: 0 at base (bell rim), 1 at tip.
   float tipWeight = 1.0 - uv.y;
-  // Amplitude shaped so there's almost no motion at the base and max curl near the tip.
-  float ampShape = smoothstep(0.0, 1.0, tipWeight);
+  float ampShape  = smoothstep(0.0, 1.0, tipWeight);
   float ampShape2 = ampShape * ampShape;
+
+  float contraction = jellyPulse(uTime, uPhase);
+  float relaxed = 1.0 - contraction;
+  vContraction = contraction;
 
   vec3 displaced = position;
 
-  // Multiple travelling sine waves at different frequencies/speeds produce
-  // a "curly" ribbon rather than a pure single wave.
-  float w1 = sin(uTime * 2.5 + tipWeight * 8.0  + uPhase)        * 0.25;
-  float w2 = sin(uTime * 3.8 + tipWeight * 5.0  + uPhase * 1.7)  * 0.15;
-  float w3 = sin(uTime * 1.9 + tipWeight * 12.0 + uPhase * 0.6)  * 0.08;
+  // --- Power stroke: tips sweep upward toward bell (fold inward) ---
+  // During contraction the tentacles bunch together and point forward/up.
+  displaced.y += contraction * 0.55 * ampShape2;  // tip lifts toward bell
+  // Also pull tips slightly inward (reduce radius from bell axis)
+  displaced.x *= 1.0 - contraction * 0.6 * ampShape2;
+  displaced.z *= 1.0 - contraction * 0.6 * ampShape2;
+
+  // --- Relaxation: tips trail and flow freely ---
+  // Lateral flapping waves only active during relaxed phase.
+  float flapMult = relaxed * relaxed;  // zero at peak contraction, full at rest
+  float w1 = sin(uTime * 2.5 + tipWeight * 8.0  + uPhase)       * 0.28 * flapMult;
+  float w2 = sin(uTime * 3.8 + tipWeight * 5.0  + uPhase * 1.7) * 0.18 * flapMult;
+  float w3 = sin(uTime * 1.9 + tipWeight * 12.0 + uPhase * 0.6) * 0.09 * flapMult;
   displaced.x += (w1 + w2 + w3) * ampShape2;
 
-  // Z-plane sway (orthogonal) with its own frequencies + noise for organic jitter.
-  float z1 = sin(uTime * 2.2 + tipWeight * 7.0  + uPhase * 2.1)  * 0.20;
-  float z2 = sin(uTime * 3.1 + tipWeight * 10.0 + uPhase * 0.8)  * 0.10;
-  float zNoise = (noise3(vec3(tipWeight * 4.0, uTime * 0.8, uPhase)) - 0.5) * 0.20;
+  float z1 = sin(uTime * 2.2 + tipWeight * 7.0  + uPhase * 2.1) * 0.22 * flapMult;
+  float z2 = sin(uTime * 3.1 + tipWeight * 10.0 + uPhase * 0.8) * 0.12 * flapMult;
+  float zNoise = (noise3(vec3(tipWeight * 4.0, uTime * 0.8, uPhase)) - 0.5) * 0.22 * flapMult;
   displaced.z += (z1 + z2 + zNoise) * ampShape2;
 
-  // Slight curl toward the tip — bends the ribbon in a gentle arc even at rest.
-  float curl = ampShape2 * ampShape * 0.25;
-  displaced.x += sin(uPhase * 2.3) * curl;
-  displaced.z += cos(uPhase * 1.9) * curl;
+  // Resting curl: each tendril has a unique gentle arc even at rest.
+  float curl = ampShape2 * ampShape * 0.22;
+  displaced.x += sin(uPhase * 2.3) * curl * relaxed;
+  displaced.z += cos(uPhase * 1.9) * curl * relaxed;
 
-  // Pull the tip slightly further (elongation) so motion reads as "flowing".
-  displaced.y -= ampShape2 * 0.20;
-
-  // Small time-varying stretch so tendrils appear to breathe in length too.
-  displaced.y -= sin(uTime * 3.5 + uPhase) * 0.08 * ampShape;
+  // Elongation: tips droop during relaxation, retract during contraction.
+  displaced.y -= ampShape2 * 0.18 * relaxed;
+  displaced.y -= sin(uTime * 3.5 + uPhase) * 0.07 * ampShape * relaxed;
 
   vTipFade = tipWeight;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
@@ -178,18 +197,24 @@ uniform vec3 uColor;
 uniform float uOpacity;
 varying vec2 vUv;
 varying float vTipFade;
+varying float vContraction;
 void main() {
-  // Fade toward tip + soft horizontal fade to hide ribbon edges
-  float edge = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
-  float lengthFade = smoothstep(0.0, 0.35, 1.0 - vTipFade);
-  float shimmer = 0.6 + 0.4 * sin(uTime * 3.0 + vTipFade * 6.0 + uPhase);
-  
-  // Desaturate for a softer look
-  vec3 softColor = mix(uColor, vec3(1.0), 0.4);
-  vec3 col = softColor * shimmer;
-  
-  // Lower alpha for more translucency
-  float alpha = edge * lengthFade * (0.2 + 0.25 * shimmer) * uOpacity;
+  float edge       = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+  // Base glow concentrated near the bell where energy originates, fading toward tip.
+  float baseGlow   = smoothstep(1.0, 0.0, vTipFade);          // bright at base
+  float tipFade    = smoothstep(0.0, 0.45, 1.0 - vTipFade);   // fade at tip
+  float shimmer    = 0.7 + 0.3 * sin(uTime * 3.5 + vTipFade * 8.0 + uPhase);
+  float pulseBurst = 1.0 + 1.8 * vContraction; // big brightness pop on power stroke
+
+  // Inner core line down the ribbon centre (Additive so it adds on top)
+  float centreLine = 1.0 - abs(vUv.x - 0.5) * 8.0;  // bright streak along spine
+  centreLine = max(centreLine, 0.0);
+
+  vec3 col = uColor * shimmer * pulseBurst;
+  col += uColor * centreLine * (0.8 + 0.6 * baseGlow) * pulseBurst; // spine highlight
+  col += uColor * baseGlow   * 0.5 * pulseBurst;                     // bell-root glow halo
+
+  float alpha = edge * tipFade * (0.35 + 0.30 * shimmer + 0.25 * centreLine) * uOpacity;
   gl_FragColor = vec4(col, alpha);
 }
 `;
