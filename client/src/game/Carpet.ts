@@ -32,11 +32,17 @@ const TURN_INPUT_SMOOTH = 8;
 const ELEVATE_INPUT_SMOOTH = 6;
 
 /** Default hover clearance above terrain surface. */
-export const CARPET_HOVER_HEIGHT = 0.045;
+export const CARPET_HOVER_HEIGHT = 0.03;
 /** Height above terrain when elevate is held. */
 const BOOST_HEIGHT = 0.52;
-/** How fast altitude lerps toward the target (lower = slower climb = longer tilt). */
-const ALTITUDE_LERP = 0.6;
+/** How quickly the carpet rises to meet terrain or climb input. */
+const ALTITUDE_RISE_LERP = 0.75;
+/** How slowly the carpet settles back down after terrain drops away. */
+const ALTITUDE_FALL_LERP = 0.38;
+/** Extra temporary lift gained when riding off a sharp terrain drop. */
+const CLIFF_GLIDE_GAIN = 0.7;
+const CLIFF_GLIDE_MAX = 0.12;
+const CLIFF_GLIDE_DECAY = 3.2;
 /** Max nose-up tilt when climbing (~35 degrees). */
 const CLIMB_PITCH_MAX = Math.PI / 5;
 /** How aggressively altitude gap maps to pitch. */
@@ -63,6 +69,8 @@ export class Carpet {
   private seed: number;
   private terrainType: string;
   private prevAltitude = 0;
+  private prevSurfaceAltitude = 0;
+  private cliffGlideBonus = 0;
   private tassels: { obj: Object3D; baseY: number; cx: number; cz: number }[] = [];
   private capybara: { obj: Object3D; baseY: number; cx: number; cz: number } | null = null;
   private static readonly TASSEL_CURL_MAX = Math.PI / 2;
@@ -106,9 +114,10 @@ export class Carpet {
     this.heading = spawn.heading;
 
     const up = tangentFrame(this.qPosition).up;
-    this.altitude =
-      surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z) + CARPET_HOVER_HEIGHT;
+    const surfaceAlt = surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z);
+    this.altitude = surfaceAlt + CARPET_HOVER_HEIGHT;
     this.prevAltitude = this.altitude;
+    this.prevSurfaceAltitude = surfaceAlt;
     this.speed = MIN_SPEED;
     this.applyMatrix();
   }
@@ -157,8 +166,21 @@ export class Carpet {
     const elevateTarget = elevate ? 1 : 0;
     this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
     const clearance = CARPET_HOVER_HEIGHT + (BOOST_HEIGHT - CARPET_HOVER_HEIGHT) * this.elevateBlend;
-    const targetAlt = surfaceAlt + clearance;
-    this.altitude += (targetAlt - this.altitude) * Math.min(1, ALTITUDE_LERP * dt);
+    const terrainDrop = Math.max(0, this.prevSurfaceAltitude - surfaceAlt);
+    const glideTarget = Math.min(
+      CLIFF_GLIDE_MAX,
+      terrainDrop * CLIFF_GLIDE_GAIN * (0.35 + 0.65 * Math.min(1, this.speedRatio)),
+    );
+    if (glideTarget > this.cliffGlideBonus) {
+      this.cliffGlideBonus = glideTarget;
+    } else {
+      this.cliffGlideBonus += (0 - this.cliffGlideBonus) * Math.min(1, CLIFF_GLIDE_DECAY * dt);
+    }
+    this.prevSurfaceAltitude = surfaceAlt;
+
+    const targetAlt = surfaceAlt + clearance + this.cliffGlideBonus;
+    const altitudeLerp = targetAlt >= this.altitude ? ALTITUDE_RISE_LERP : ALTITUDE_FALL_LERP;
+    this.altitude += (targetAlt - this.altitude) * Math.min(1, altitudeLerp * dt);
 
     const hardFloor = surfaceAlt + CARPET_HOVER_HEIGHT;
     if (this.altitude < hardFloor) this.altitude = hardFloor;
@@ -205,6 +227,9 @@ export class Carpet {
     this.heading = ((heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     this.altitude = altitude;
     this.prevAltitude = altitude;
+    const up = tangentFrame(this.qPosition).up;
+    this.prevSurfaceAltitude = surfaceAltitudeAt(this.seed, this.terrainType, up.x, up.y, up.z);
+    this.cliffGlideBonus = 0;
     this.speed = Math.min(speed, ABSOLUTE_MAX_SPEED);
     this.applyMatrix();
   }

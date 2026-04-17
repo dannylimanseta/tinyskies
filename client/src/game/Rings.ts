@@ -50,8 +50,8 @@ const BOAT_FLOAT_MIN = 0.062;
 const BOAT_FLOAT_MAX = 0.118;
 
 /** Height above terrain surface for carpet (land) diamonds. */
-const CARPET_FLOAT_MIN = 0.04;
-const CARPET_FLOAT_MAX = 0.1;
+const CARPET_FLOAT_MIN = 0.03;
+const CARPET_FLOAT_MAX = 0.08;
 
 interface DiamondInstance {
   mesh: Mesh;
