@@ -76,6 +76,7 @@ import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting,
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
+import { MeteorShower } from "./MeteorShower";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
 import { LevelUpCards } from "../ui/LevelUpCards";
@@ -283,6 +284,7 @@ export class Game {
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
   private moonThreat: MoonThreat | null = null;
+  private meteorShower: MeteorShower | null = null;
   private vhsOverlay: HTMLDivElement | null = null;
   private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
   private progression!: ProgressionManager;
@@ -816,6 +818,21 @@ export class Game {
     this.collectVFX = new RingCollectVFX();
     this.scene.add(this.collectVFX.group);
 
+    this.meteorShower = new MeteorShower(globeRadius, seed, terrainType);
+    this.scene.add(this.meteorShower.group);
+    this.meteorShower.onImpact = (_impactPos, distanceToPlayer) => {
+      const audibility = MathUtils.clamp(1 - distanceToPlayer / 1.6, 0, 1);
+      if (audibility > 0.01 && this.audioManager.hasSFX(EXPLOSION_SFX_NAME)) {
+        this.audioManager.resumeContextIfNeeded();
+        const rate = 0.7 + Math.random() * 0.5;
+        this.audioManager.playSFX(EXPLOSION_SFX_NAME, 0.15 + audibility * 0.3, rate);
+      }
+      if (distanceToPlayer < 0.72) {
+        this.cameraRig.shake(0.065, 0.7);
+        this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.4);
+      }
+    };
+
       this.ringManager.onCollect = (xp, worldPos, tier) => {
       this.collectVFX.play(worldPos, tier);
       let comboXpMult = 1;
@@ -1096,6 +1113,8 @@ export class Game {
     this.paintballSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
+    this.meteorShower?.dispose();
+    this.meteorShower = null;
     this.remotePlanes?.dispose();
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
@@ -1664,6 +1683,13 @@ export class Game {
       this.aurora?.update(dt, this.cameraRig.camera);
 
       this.localPlayer.group.updateMatrixWorld(true);
+      this.meteorShower?.update(
+        dt,
+        this.moonThreat?.progress ?? 0,
+        this.localPlayer.qPosition,
+        this.localPlayer.heading,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      );
       if (this.playerLight) {
         this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
         const up = this.playerLight.position.clone().normalize();
@@ -1706,6 +1732,14 @@ export class Game {
       this.skyGremlins?.setSuspended(true);
       this.localPlayer.visibility = 1;
       this.moonThreat?.update(dt);
+      this.localPlayer.group.updateMatrixWorld(true);
+      this.meteorShower?.update(
+        dt,
+        this.moonThreat?.progress ?? 0,
+        this.localPlayer.qPosition,
+        this.localPlayer.heading,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      );
       if (this.moonThreat?.isNearImpact || this.moonThreat?.hasImpacted) {
         this.campsiteScene.exit();
         this.localPlayer.group.visible = true;
@@ -1722,6 +1756,14 @@ export class Game {
     }
     if (this.gamePhase === "transitioning") {
       this.skyGremlins?.setSuspended(true);
+      this.localPlayer.group.updateMatrixWorld(true);
+      this.meteorShower?.update(
+        dt,
+        this.moonThreat?.progress ?? 0,
+        this.localPlayer.qPosition,
+        this.localPlayer.heading,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      );
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
     }
@@ -2036,6 +2078,14 @@ export class Game {
       return;
     }
 
+    this.meteorShower?.update(
+      dt,
+      this.moonThreat?.progress ?? 0,
+      this.localPlayer.qPosition,
+      this.localPlayer.heading,
+      questPlayerPos,
+    );
+
     if (!portalInteractionSuppressed && this.packageQuest && this.moonThreat) {
       this.packageQuest.moonProgress = this.moonThreat.progress;
     }
@@ -2100,7 +2150,7 @@ export class Game {
 
   private onDebugKey = (e: KeyboardEvent) => {
     if (e.key === "q" || e.key === "Q") {
-      this.moonThreat?.jumpTo(0.90);
+      this.moonThreat?.jumpTo(0.83);
     }
     if (e.key === "r" || e.key === "R") {
       if (!this.braziers) return;
@@ -2118,6 +2168,7 @@ export class Game {
 
   private startMoonImpactCinematic() {
     if (this.gamePhase === "moonImpact") return;
+    this.meteorShower?.reset();
     this.gamePhase = "moonImpact";
     this.moonCinematicStep = "fadeOut1";
     this.moonCinematicTimer = 0;
@@ -2904,6 +2955,8 @@ export class Game {
     this.paintballSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
+    this.meteorShower?.dispose();
+    this.meteorShower = null;
     this.controls?.dispose();
     this.touchControls?.dispose();
     this.speedLines?.dispose();
