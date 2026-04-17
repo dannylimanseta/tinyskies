@@ -13,6 +13,7 @@ import {
   tangentFrame,
 } from "./SphericalMath";
 import { createCarpet, carpetWobbleY } from "./CarpetMesh";
+import { isLand } from "./SimplexNoise";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
 const CRUISE_SPEED = 0.6;
@@ -71,6 +72,7 @@ export class Carpet {
   private prevAltitude = 0;
   private prevSurfaceAltitude = 0;
   private cliffGlideBonus = 0;
+  isOverWater = false;
   private tassels: { obj: Object3D; baseY: number; cx: number; cz: number }[] = [];
   private capybara: { obj: Object3D; baseY: number; cx: number; cz: number } | null = null;
   private static readonly TASSEL_CURL_MAX = Math.PI / 2;
@@ -160,6 +162,7 @@ export class Carpet {
     this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
 
     const up = tangentFrame(this.qPosition).up;
+    this.isOverWater = !isLand(this.seed, this.terrainType, up.x, up.y, up.z);
     const surfaceAlt = surfaceAltitudeAt(
       this.seed, this.terrainType, up.x, up.y, up.z,
     );

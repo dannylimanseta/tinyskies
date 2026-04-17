@@ -1581,6 +1581,7 @@ export class Game {
       this.audioManager.startLoop("engine_biplane", 0);
     } else if (this.playerVehicle === "carpet") {
       this.audioManager.startLoop("engine_carpet", 0.06);
+      this.audioManager.startLoop(OCEAN_WAVES_LOOP_NAME, 0);
     } else if (this.playerVehicle === "boat") {
       this.audioManager.startLoop(OCEAN_WAVES_LOOP_NAME, OCEAN_WAVES_LOOP_VOL);
     }
@@ -2219,6 +2220,10 @@ export class Game {
       const engineVol =
         0.095 + (this.localPlayer as Plane).engineSpeedRatio * 0.28;
       this.audioManager.setLoopVolume("engine_biplane", engineVol);
+    } else if (this.playerVehicle === "carpet") {
+      const carpet = this.localPlayer as Carpet;
+      const targetVol = carpet.isOverWater ? OCEAN_WAVES_LOOP_VOL * 0.8 : 0;
+      this.audioManager.setLoopVolume(OCEAN_WAVES_LOOP_NAME, targetVol);
     }
 
     const moonProg = this.moonThreat?.progress ?? 0;
