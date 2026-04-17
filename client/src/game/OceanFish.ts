@@ -26,7 +26,7 @@ import { createFishVisual, type OceanFishVisual } from "./OceanFishMesh";
 import { FishCatchVfx } from "./FishCatchVfx";
 import { randomOceanQuaternion } from "./Boat";
 
-export const FISH_COUNT = 90;
+export const FISH_COUNT = 380;
 export const FISH_CATCH_XP = 15;
 
 /** Chord distance (world units) — same convention as SkyJellyfish. */
@@ -65,6 +65,8 @@ const LINE_SEGS = 12;
 
 type FishStatus = "swimming" | "capturing" | "respawning";
 
+export type FishVariant = "normal" | "large";
+
 interface Fish {
   posQ: Quaternion;
   heading: number;
@@ -74,6 +76,7 @@ interface Fish {
   progress: number;
   status: FishStatus;
   phase: number;
+  variant: FishVariant;
   visual: OceanFishVisual;
   respawnT: number;
   respawnMoved: boolean;
@@ -97,7 +100,7 @@ const RING_LOCAL_NORMAL = new Vector3(0, 0, 1);
 
 export class OceanFish {
   readonly group = new Group();
-  onCatch: (() => void) | null = null;
+  onCatch: ((variant: FishVariant) => void) | null = null;
 
   private fish: Fish[] = [];
   private time = 0;
@@ -215,7 +218,8 @@ export class OceanFish {
 
     // ── Fish pool ────────────────────────────────────────────────
     for (let i = 0; i < FISH_COUNT; i++) {
-      const visual = createFishVisual();
+      const variant: FishVariant = i % 5 === 0 ? "large" : "normal";
+      const visual = createFishVisual(variant);
       this.group.add(visual.group);
 
       const seed = worldSeed + sessionSalt * 7919 + i * 982451653 + 901;
@@ -232,6 +236,7 @@ export class OceanFish {
         progress: 0,
         status: "swimming",
         phase: (i * 2.17) % (Math.PI * 2),
+        variant,
         visual,
         respawnT: 0,
         respawnMoved: false,
@@ -366,6 +371,7 @@ export class OceanFish {
 
       // ── Swimming ──
       if (f.status === "swimming") {
+        const speedMult = f.variant === "large" ? 0.9 : 1.0;
         const turn =
           (Math.sin(this.time * 0.7 + f.phase) * 0.4 +
             Math.sin(this.time * 0.23 + f.phase * 1.7) * 0.2) *
@@ -378,11 +384,13 @@ export class OceanFish {
           f.heading += (Math.PI / 2) * (i % 2 === 0 ? 1 : -1) + Math.sin(this.time + f.phase) * 0.4;
         }
 
-        f.posQ = moveOnSphere(f.posQ, f.heading, (FISH_WANDER_SPEED * dt) / this.globeRadius);
+        f.posQ = moveOnSphere(f.posQ, f.heading, (FISH_WANDER_SPEED * speedMult * dt) / this.globeRadius);
       }
 
       // ── Capturing — flee + progress ──
       else if (f.status === "capturing") {
+        const speedMult = f.variant === "large" ? 0.9 : 1.0;
+        const fillMult = f.variant === "large" ? (1 / 1.5) : 1.0;
         const frame = tangentFrame(f.posQ);
 
         // Base wander turn (faster, more erratic when hooked)
@@ -416,18 +424,18 @@ export class OceanFish {
         }
 
         // Move — faster as the fish struggles more
-        const speed = FISH_WANDER_SPEED * (1 + FISH_FLEE_SPEED_MULT * f.progress);
+        const speed = FISH_WANDER_SPEED * speedMult * (1 + FISH_FLEE_SPEED_MULT * f.progress);
         f.posQ = moveOnSphere(f.posQ, f.heading, (speed * dt) / this.globeRadius);
 
         // Post-movement position for capture check
         const wp = cartesianFromSpherical(f.posQ, FISH_SHADOW_ALT, this.globeRadius);
         const dist = wp.distanceTo(boatWorldPos);
         if (dist < FISH_CATCH_RADIUS && captureEnabled && i === activeCapturing) {
-          f.progress = Math.min(1, f.progress + FISH_FILL_RATE * dt);
+          f.progress = Math.min(1, f.progress + FISH_FILL_RATE * fillMult * dt);
           if (f.progress >= 1) {
             this.catchCount += 1;
-            this.catchVfx.spawn(this.group.parent, wp.clone(), boatTargetPos);
-            this.onCatch?.();
+            this.catchVfx.spawn(this.group.parent, wp.clone(), boatTargetPos, f.variant);
+            this.onCatch?.(f.variant);
             f.status = "respawning";
             f.respawnT = 0;
             f.respawnMoved = false;
@@ -556,9 +564,9 @@ export class OceanFish {
 
     const turnDelta = wrapAnglePi(f.heading - f.prevHeading);
     const wiggle =
-      Math.sin(this.time * 2.45 + f.phase) * 0.24 +
-      Math.sin(this.time * 1.04 + f.phase * 1.43) * 0.11 +
-      Math.max(-0.32, Math.min(0.32, turnDelta * 6.2));
+      Math.sin(this.time * 2.8 + f.phase) * 0.35 +
+      Math.sin(this.time * 1.2 + f.phase * 1.43) * 0.15 +
+      Math.max(-0.45, Math.min(0.45, turnDelta * 8.0));
     f.visual.setShadowWiggle(wiggle);
     f.prevHeading = f.heading;
   }

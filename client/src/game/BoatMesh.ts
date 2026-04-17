@@ -11,6 +11,7 @@ import {
   MeshPhongMaterial,
   MeshBasicMaterial,
   CylinderGeometry,
+  TorusGeometry,
   AdditiveBlending,
 } from "three";
 import { addRimLight } from "./RimLight";
@@ -36,6 +37,15 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
 
   const crateDarkMat = new MeshPhongMaterial({ color: 0x6a5530, flatShading: true, shininess: 22 });
   addRimLight(crateDarkMat, 0xffddaa, 0.14, 3.5);
+
+  const glassMat = new MeshPhongMaterial({ color: 0x112233, flatShading: true, shininess: 90 });
+  addRimLight(glassMat, 0x88ccff, 0.4, 3.0);
+
+  const lifeRingMat = new MeshPhongMaterial({ color: 0xe84a35, flatShading: true, shininess: 20 });
+  addRimLight(lifeRingMat, 0xffaadd, 0.2, 3.0);
+
+  const lifeRingWhiteMat = new MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 20 });
+  addRimLight(lifeRingWhiteMat, 0xffffff, 0.2, 3.0);
 
   const foamMat = new MeshBasicMaterial({
     color: 0xffffff,
@@ -191,9 +201,45 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
   cabin.position.set(0, deckY + s * 0.46, s * 0.3);
   boat.add(cabin);
 
+  // Front window
+  const winFront = new Mesh(new BoxGeometry(s * 1.3, s * 0.35, s * 0.05), glassMat);
+  winFront.position.set(0, deckY + s * 0.55, s * -0.36);
+  boat.add(winFront);
+
+  // Side windows
+  for (const side of [-1, 1]) {
+    const winSide = new Mesh(new BoxGeometry(s * 0.05, s * 0.35, s * 0.7), glassMat);
+    winSide.position.set(side * s * 0.76, deckY + s * 0.55, s * 0.1);
+    boat.add(winSide);
+  }
+
   const roof = new Mesh(new BoxGeometry(s * 1.6, s * 0.06, s * 1.4), metalMat);
   roof.position.set(0, deckY + s * 0.9, s * 0.3);
   boat.add(roof);
+
+  // Mast on roof
+  const mast = new Mesh(new CylinderGeometry(s * 0.04, s * 0.06, s * 1.2, 6), metalMat);
+  mast.position.set(0, deckY + s * 1.5, s * 0.1);
+  boat.add(mast);
+
+  const mastCross = new Mesh(new CylinderGeometry(s * 0.03, s * 0.03, s * 0.8, 6), metalMat);
+  mastCross.rotation.z = Math.PI / 2;
+  mastCross.position.set(0, deckY + s * 1.8, s * 0.1);
+  boat.add(mastCross);
+
+  // Life ring attached to the back of the cabin
+  const lifeRing = new Group();
+  const ringTorus = new Mesh(new TorusGeometry(s * 0.25, s * 0.08, 8, 16), lifeRingMat);
+  lifeRing.add(ringTorus);
+  // White bands on life ring
+  for (let i = 0; i < 4; i++) {
+    const band = new Mesh(new BoxGeometry(s * 0.18, s * 0.22, s * 0.22), lifeRingWhiteMat);
+    band.rotation.z = (i * Math.PI) / 2;
+    band.position.set(Math.cos((i * Math.PI) / 2) * s * 0.25, Math.sin((i * Math.PI) / 2) * s * 0.25, 0);
+    lifeRing.add(band);
+  }
+  lifeRing.position.set(0, deckY + s * 0.45, s * 0.98);
+  boat.add(lifeRing);
 
   // ==================== CRATES ====================
 

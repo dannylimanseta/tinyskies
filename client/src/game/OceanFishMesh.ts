@@ -15,7 +15,10 @@ const GLOW_COLOR_NIGHT = new Color(0x66eeff);
 /** Dusk / evening tint for the same glow (warm orange). */
 const GLOW_COLOR_EVENING = new Color(0xff4400);
 
+export type FishVariant = "normal" | "large";
+
 let sharedShadowTexture: CanvasTexture | null = null;
+let sharedLargeShadowTexture: CanvasTexture | null = null;
 let shadowTextureRefCount = 0;
 
 function getSharedFishShadowTexture(): CanvasTexture {
@@ -43,14 +46,13 @@ function getSharedFishShadowTexture(): CanvasTexture {
   ctx.bezierCurveTo(130, 93, 210, 98, 210, 64); // Bottom edge
   ctx.fill();
 
-  // Crescent caudal fin (tail)
+  // Single rounded paddle tail (smaller)
   ctx.fillStyle = tailInk;
   ctx.beginPath();
   ctx.moveTo(65, 64); // Overlap with body
-  ctx.bezierCurveTo(50, 55, 35, 35, 25, 25); // Top lobe tip
-  ctx.bezierCurveTo(35, 45, 45, 55, 50, 64); // Inner fork top
-  ctx.bezierCurveTo(45, 73, 35, 83, 25, 103); // Bottom lobe tip
-  ctx.bezierCurveTo(35, 93, 50, 73, 65, 64); // Back to base
+  ctx.bezierCurveTo(50, 48, 30, 45, 20, 54); // Top curve
+  ctx.bezierCurveTo(15, 60, 15, 68, 20, 74); // Back edge (rounded)
+  ctx.bezierCurveTo(30, 83, 50, 80, 65, 64); // Bottom curve
   ctx.fill();
 
   // Swept-back pectoral fins
@@ -72,6 +74,58 @@ function getSharedFishShadowTexture(): CanvasTexture {
   tex.colorSpace = SRGBColorSpace;
   tex.needsUpdate = true;
   sharedShadowTexture = tex;
+  return tex;
+}
+
+function getSharedLargeFishShadowTexture(): CanvasTexture {
+  if (sharedLargeShadowTexture) return sharedLargeShadowTexture;
+
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 128;
+  const ctx = c.getContext("2d")!;
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  const ink = "rgba(8, 14, 22, 0.85)";
+  const fin = "rgba(6, 12, 20, 0.75)";
+  const tailInk = "rgba(5, 10, 18, 0.96)";
+
+  // Chunky body
+  ctx.fillStyle = ink;
+  ctx.beginPath();
+  ctx.moveTo(220, 64); // Blunt snout
+  ctx.bezierCurveTo(220, 20, 120, 20, 50, 55); // Top edge, wide
+  ctx.lineTo(50, 73); // Thicker peduncle
+  ctx.bezierCurveTo(120, 108, 220, 108, 220, 64); // Bottom edge
+  ctx.fill();
+
+  // Broad, single paddle tail (smaller)
+  ctx.fillStyle = tailInk;
+  ctx.beginPath();
+  ctx.moveTo(55, 64);
+  ctx.bezierCurveTo(40, 40, 20, 35, 15, 50);
+  ctx.bezierCurveTo(10, 58, 10, 70, 15, 78);
+  ctx.bezierCurveTo(20, 93, 40, 88, 55, 64);
+  ctx.fill();
+
+  // Pectorals (larger, sticking out more)
+  ctx.fillStyle = fin;
+  ctx.beginPath();
+  ctx.moveTo(150, 35);
+  ctx.bezierCurveTo(145, 5, 110, 0, 80, 5);
+  ctx.bezierCurveTo(110, 20, 130, 30, 135, 38);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(150, 93);
+  ctx.bezierCurveTo(145, 123, 110, 128, 80, 123);
+  ctx.bezierCurveTo(110, 108, 130, 98, 135, 90);
+  ctx.fill();
+
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.needsUpdate = true;
+  sharedLargeShadowTexture = tex;
   return tex;
 }
 
@@ -138,18 +192,22 @@ const FILL_HALF = BAR_H * 0.5;
  * Fish shadow + vertical progress bar. Parent positions `group` at world position;
  * `shadowGroup` / `barGroup` rotations are set by {@link OceanFish}.
  */
-export function createFishVisual(): OceanFishVisual {
+export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisual {
   shadowTextureRefCount += 1;
   glowTextureRefCount += 1;
-  const tex = getSharedFishShadowTexture();
+  const isLarge = variant === "large";
+  const tex = isLarge ? getSharedLargeFishShadowTexture() : getSharedFishShadowTexture();
   const glowTex = getSharedGlowTexture();
 
   const group = new Group();
 
   const shadowGroup = new Group();
+  // Reduce overall shadow + glow size by ~35%
+  shadowGroup.scale.setScalar(isLarge ? 1.5 * 0.65 : 0.65);
 
   // Top-view shadow (texture +X forward, ±Y lateral); ~50% of prior footprint
-  const shadowGeo = new PlaneGeometry(0.12, 0.055);
+  // 8 segments along X to allow smooth bending of the tail
+  const shadowGeo = new PlaneGeometry(0.12, 0.055, 8, 1);
   const shadowMat = new MeshBasicMaterial({
     map: tex,
     transparent: true,
@@ -157,6 +215,27 @@ export function createFishVisual(): OceanFishVisual {
     depthWrite: false,
     side: DoubleSide,
   });
+
+  const bendUniform = { value: 0.0 };
+  shadowMat.onBeforeCompile = (shader) => {
+    shader.uniforms.bend = bendUniform;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <common>",
+      `#include <common>
+      uniform float bend;`
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+      // uv.x goes from 0 (tail) to 1 (head)
+      float tail = 1.0 - uv.x;
+      // Curve the tail along the local Y axis (lateral)
+      transformed.y += bend * tail * tail * 0.12;
+      // Pull the tail in slightly to preserve length
+      transformed.x -= abs(bend) * tail * tail * 0.03;
+      `
+    );
+  };
   // Bioluminescent night glow — rendered BEFORE the shadow so the dark shadow sits on top.
   // Square plane + square texture → round, blurred halo (not an ellipse).
   const glowGeo = new PlaneGeometry(0.275, 0.275);
@@ -234,9 +313,11 @@ export function createFishVisual(): OceanFishVisual {
   }
 
   function setShadowWiggle(rad: number) {
-    const r = Math.max(-0.55, Math.min(0.55, rad));
-    shadowMesh.rotation.z = r;
-    glowMesh.rotation.z = r * 0.35;
+    const r = Math.max(-0.8, Math.min(0.8, rad));
+    bendUniform.value = r;
+    // Add a small amount of rigid rotation so the head sways slightly too
+    shadowMesh.rotation.z = r * 0.35;
+    glowMesh.rotation.z = r * 0.4;
   }
 
   function setNightGlow(night: number, evening = 0) {
@@ -262,9 +343,15 @@ export function createFishVisual(): OceanFishVisual {
     barFillMat.dispose();
 
     shadowTextureRefCount -= 1;
-    if (shadowTextureRefCount <= 0 && sharedShadowTexture) {
-      sharedShadowTexture.dispose();
-      sharedShadowTexture = null;
+    if (shadowTextureRefCount <= 0) {
+      if (sharedShadowTexture) {
+        sharedShadowTexture.dispose();
+        sharedShadowTexture = null;
+      }
+      if (sharedLargeShadowTexture) {
+        sharedLargeShadowTexture.dispose();
+        sharedLargeShadowTexture = null;
+      }
     }
     glowTextureRefCount -= 1;
     if (glowTextureRefCount <= 0 && sharedGlowTexture) {

@@ -923,10 +923,11 @@ export class Game {
       this.scene.add(this.oceanFish.group);
       this.fishCaught = 0;
       this.hud.setFishCaught(0);
-      this.oceanFish.onCatch = () => {
+      this.oceanFish.onCatch = (variant) => {
         this.fishCaught += 1;
         this.hud.setFishCaught(this.fishCaught);
-        this.awardXP("fish", FISH_CATCH_XP);
+        const xp = variant === "large" ? FISH_CATCH_XP * 2 : FISH_CATCH_XP;
+        this.awardXP("fish", xp);
         this.audioManager.resumeContextIfNeeded();
         this.cameraRig.shake(0.015, 0.12);
         this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.15);

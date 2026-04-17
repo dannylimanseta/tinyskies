@@ -22,6 +22,8 @@ import {
 } from "three";
 import type { AudioManager } from "../audio/AudioManager";
 
+import type { FishVariant } from "./OceanFishMesh";
+
 const JUMP_SEC = 0.62;
 const ARC_HEIGHT = 0.18;
 /** Fade fish mesh after landing on boat (seconds). */
@@ -76,6 +78,7 @@ function splashTex(): CanvasTexture {
 function createFishMesh(
   colorBody: Color,
   colorTail: Color,
+  variant: FishVariant,
 ): { group: Group; matBody: MeshBasicMaterial; matTail: MeshBasicMaterial } {
   const matBody = new MeshBasicMaterial({
     color: colorBody,
@@ -95,72 +98,125 @@ function createFishMesh(
   const matBlack = new MeshBasicMaterial({ color: 0x000000 });
   const g = new Group();
 
-  // Body (flattened laterally, taller)
-  const body = new Mesh(new SphereGeometry(0.048, 16, 12), matBody);
-  body.scale.set(2.6, 1.3, 0.85);
-  g.add(body);
+  if (variant === "large") {
+    // Body (bulkier, taller)
+    const body = new Mesh(new SphereGeometry(0.055, 16, 12), matBody);
+    body.scale.set(2.2, 1.5, 1.1);
+    g.add(body);
 
-  // Snout
-  const snout = new Mesh(new SphereGeometry(0.022, 12, 10), matBody);
-  snout.position.set(0.095, 0.005, 0);
-  snout.scale.set(1.2, 0.8, 0.7);
-  g.add(snout);
+    const snout = new Mesh(new SphereGeometry(0.028, 12, 10), matBody);
+    snout.position.set(0.09, 0.005, 0);
+    snout.scale.set(1.0, 0.9, 0.9);
+    g.add(snout);
 
-  // Dorsal fin (top)
-  const dorsal = new Mesh(new BoxGeometry(0.08, 0.045, 0.01), matTail);
-  dorsal.position.set(0.01, 0.055, 0);
-  dorsal.rotation.z = -0.15;
-  g.add(dorsal);
+    const dorsal = new Mesh(new BoxGeometry(0.1, 0.05, 0.015), matTail);
+    dorsal.position.set(0.0, 0.07, 0);
+    dorsal.rotation.z = -0.1;
+    g.add(dorsal);
 
-  // Pectoral fins (sides)
-  const pecL = new Mesh(new BoxGeometry(0.05, 0.008, 0.04), matTail);
-  pecL.position.set(0.03, -0.015, 0.04);
-  pecL.rotation.x = 0.4;
-  pecL.rotation.y = -0.4;
-  g.add(pecL);
+    const pecL = new Mesh(new BoxGeometry(0.06, 0.01, 0.05), matTail);
+    pecL.position.set(0.04, -0.025, 0.05);
+    pecL.rotation.x = 0.3;
+    pecL.rotation.y = -0.5;
+    g.add(pecL);
 
-  const pecR = new Mesh(new BoxGeometry(0.05, 0.008, 0.04), matTail);
-  pecR.position.set(0.03, -0.015, -0.04);
-  pecR.rotation.x = -0.4;
-  pecR.rotation.y = 0.4;
-  g.add(pecR);
+    const pecR = new Mesh(new BoxGeometry(0.06, 0.01, 0.05), matTail);
+    pecR.position.set(0.04, -0.025, -0.05);
+    pecR.rotation.x = -0.3;
+    pecR.rotation.y = 0.5;
+    g.add(pecR);
 
-  // Tail stem
-  const tailStem = new Mesh(new ConeGeometry(0.03, 0.05, 8), matBody);
-  tailStem.rotation.z = Math.PI / 2;
-  tailStem.position.set(-0.09, 0, 0);
-  tailStem.scale.set(1, 1, 0.6);
-  g.add(tailStem);
+    const tailStem = new Mesh(new ConeGeometry(0.04, 0.06, 8), matBody);
+    tailStem.rotation.z = Math.PI / 2;
+    tailStem.position.set(-0.1, 0, 0);
+    tailStem.scale.set(1, 1.2, 0.8);
+    g.add(tailStem);
 
-  // Caudal fin (Tail)
-  const tailL = new Mesh(new ConeGeometry(0.025, 0.07, 6), matTail);
-  tailL.rotation.set(0, 0, Math.PI / 2 + 0.25);
-  tailL.position.set(-0.12, 0.02, 0);
-  tailL.scale.set(1, 1, 0.4);
-  g.add(tailL);
+    // Caudal fin (Single paddle tail)
+    const tailFin = new Mesh(new ConeGeometry(0.05, 0.1, 6), matTail);
+    tailFin.rotation.set(0, 0, -Math.PI / 2);
+    tailFin.position.set(-0.14, 0, 0);
+    tailFin.scale.set(1, 1, 0.3);
+    g.add(tailFin);
 
-  const tailR = new Mesh(new ConeGeometry(0.025, 0.07, 6), matTail);
-  tailR.rotation.set(0, 0, Math.PI / 2 - 0.25);
-  tailR.position.set(-0.12, -0.02, 0);
-  tailR.scale.set(1, 1, 0.4);
-  g.add(tailR);
+    const eyeL = new Mesh(new SphereGeometry(0.01, 8, 8), matWhite);
+    eyeL.position.set(0.075, 0.035, 0.035);
+    g.add(eyeL);
+    const pupilL = new Mesh(new SphereGeometry(0.005, 8, 8), matBlack);
+    pupilL.position.set(0.078, 0.035, 0.042);
+    g.add(pupilL);
 
-  // Eyes
-  const eyeL = new Mesh(new SphereGeometry(0.008, 8, 8), matWhite);
-  eyeL.position.set(0.075, 0.025, 0.025);
-  g.add(eyeL);
-  const pupilL = new Mesh(new SphereGeometry(0.004, 8, 8), matBlack);
-  pupilL.position.set(0.078, 0.025, 0.03);
-  g.add(pupilL);
+    const eyeR = new Mesh(new SphereGeometry(0.01, 8, 8), matWhite);
+    eyeR.position.set(0.075, 0.035, -0.035);
+    g.add(eyeR);
+    const pupilR = new Mesh(new SphereGeometry(0.005, 8, 8), matBlack);
+    pupilR.position.set(0.078, 0.035, -0.042);
+    g.add(pupilR);
 
-  const eyeR = new Mesh(new SphereGeometry(0.008, 8, 8), matWhite);
-  eyeR.position.set(0.075, 0.025, -0.025);
-  g.add(eyeR);
-  const pupilR = new Mesh(new SphereGeometry(0.004, 8, 8), matBlack);
-  pupilR.position.set(0.078, 0.025, -0.03);
-  g.add(pupilR);
+    g.scale.setScalar(FISH_GROUP_SCALE * 1.4);
+  } else {
+    // Body (flattened laterally, taller)
+    const body = new Mesh(new SphereGeometry(0.048, 16, 12), matBody);
+    body.scale.set(2.6, 1.3, 0.85);
+    g.add(body);
 
-  g.scale.setScalar(FISH_GROUP_SCALE);
+    // Snout
+    const snout = new Mesh(new SphereGeometry(0.022, 12, 10), matBody);
+    snout.position.set(0.095, 0.005, 0);
+    snout.scale.set(1.2, 0.8, 0.7);
+    g.add(snout);
+
+    // Dorsal fin (top)
+    const dorsal = new Mesh(new BoxGeometry(0.08, 0.045, 0.01), matTail);
+    dorsal.position.set(0.01, 0.055, 0);
+    dorsal.rotation.z = -0.15;
+    g.add(dorsal);
+
+    // Pectoral fins (sides)
+    const pecL = new Mesh(new BoxGeometry(0.05, 0.008, 0.04), matTail);
+    pecL.position.set(0.03, -0.015, 0.04);
+    pecL.rotation.x = 0.4;
+    pecL.rotation.y = -0.4;
+    g.add(pecL);
+
+    const pecR = new Mesh(new BoxGeometry(0.05, 0.008, 0.04), matTail);
+    pecR.position.set(0.03, -0.015, -0.04);
+    pecR.rotation.x = -0.4;
+    pecR.rotation.y = 0.4;
+    g.add(pecR);
+
+    // Tail stem
+    const tailStem = new Mesh(new ConeGeometry(0.03, 0.05, 8), matBody);
+    tailStem.rotation.z = Math.PI / 2;
+    tailStem.position.set(-0.09, 0, 0);
+    tailStem.scale.set(1, 1, 0.6);
+    g.add(tailStem);
+
+    // Caudal fin (Single paddle tail)
+    const tailFin = new Mesh(new ConeGeometry(0.04, 0.08, 6), matTail);
+    tailFin.rotation.set(0, 0, -Math.PI / 2);
+    tailFin.position.set(-0.13, 0, 0);
+    tailFin.scale.set(1, 1, 0.3);
+    g.add(tailFin);
+
+    // Eyes
+    const eyeL = new Mesh(new SphereGeometry(0.008, 8, 8), matWhite);
+    eyeL.position.set(0.075, 0.025, 0.025);
+    g.add(eyeL);
+    const pupilL = new Mesh(new SphereGeometry(0.004, 8, 8), matBlack);
+    pupilL.position.set(0.078, 0.025, 0.03);
+    g.add(pupilL);
+
+    const eyeR = new Mesh(new SphereGeometry(0.008, 8, 8), matWhite);
+    eyeR.position.set(0.075, 0.025, -0.025);
+    g.add(eyeR);
+    const pupilR = new Mesh(new SphereGeometry(0.004, 8, 8), matBlack);
+    pupilR.position.set(0.078, 0.025, -0.03);
+    g.add(pupilR);
+
+    g.scale.setScalar(FISH_GROUP_SCALE);
+  }
+
   return { group: g, matBody: matBody, matTail: matTail };
 }
 
@@ -303,6 +359,7 @@ export class FishCatchCelebration {
     scene: Object3D,
     fishCatchWorld: Vector3,
     boatWorld: Vector3,
+    variant: FishVariant,
   ) {
     this.p0 = fishCatchWorld.clone();
     // Target slightly above boat deck, shifted toward boat center (radial in)
@@ -320,7 +377,7 @@ export class FishCatchCelebration {
     const hue = Math.random();
     const colorBody = new Color().setHSL(hue, 0.8, 0.55);
     const colorTail = new Color().setHSL(hue, 0.9, 0.45);
-    const built = createFishMesh(colorBody, colorTail);
+    const built = createFishMesh(colorBody, colorTail, variant);
     this.fish = built.group;
     this.fishMaterials.push(built.matBody, built.matTail);
     this.root.add(this.fish);
@@ -441,9 +498,9 @@ export class FishCatchVfx {
 
   constructor(private readonly audio: AudioManager | null = null) {}
 
-  spawn(scene: Object3D | null, fishWorld: Vector3, boatWorld: Vector3) {
+  spawn(scene: Object3D | null, fishWorld: Vector3, boatWorld: Vector3, variant: FishVariant) {
     if (!scene) return;
-    this.celebrations.push(new FishCatchCelebration(this.audio, scene, fishWorld, boatWorld));
+    this.celebrations.push(new FishCatchCelebration(this.audio, scene, fishWorld, boatWorld, variant));
   }
 
   update(dt: number, boatWorld?: Vector3) {
