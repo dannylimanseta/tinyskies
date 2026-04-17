@@ -5,6 +5,8 @@ export class HUD {
   private el: HTMLDivElement;
   private hidden = false;
   private onKey: (e: KeyboardEvent) => void;
+  private onResize: () => void;
+  private onFullscreenChange: () => void;
 
   private worldNameEl!: HTMLElement;
   private playerCountEl!: HTMLElement;
@@ -12,6 +14,8 @@ export class HUD {
   private xpLevelEl!: HTMLElement;
   private xpBarFill!: HTMLElement;
   private xpValueEl!: HTMLElement;
+  private topRightEl!: HTMLDivElement;
+  private fullscreenBtn!: HTMLButtonElement;
   private muteBtn!: HTMLButtonElement;
 
   private _bubbleVisible = false;
@@ -35,6 +39,9 @@ export class HUD {
     this.buildUI();
     container.appendChild(this.el);
 
+    this.onResize = () => this.syncFullscreenButtonState();
+    this.onFullscreenChange = () => this.syncFullscreenButtonState();
+
     this.onKey = (e: KeyboardEvent) => {
       if (e.key === "h" || e.key === "H") {
         this.hidden = !this.hidden;
@@ -45,6 +52,10 @@ export class HUD {
       }
     };
     window.addEventListener("keydown", this.onKey);
+    window.addEventListener("resize", this.onResize);
+    document.addEventListener("fullscreenchange", this.onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", this.onFullscreenChange);
+    this.syncFullscreenButtonState();
   }
 
   private buildUI() {
@@ -58,6 +69,20 @@ export class HUD {
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2 3 20h18Z"/>
             <path d="M9 20v-6l3-2 3 2v6"/>
+          </svg>
+        </button>
+        <button class="hud-fullscreen-btn" aria-label="Enter fullscreen">
+          <svg class="hud-fullscreen-icon-enter" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="8 3 3 3 3 8"/>
+            <polyline points="16 3 21 3 21 8"/>
+            <polyline points="8 21 3 21 3 16"/>
+            <polyline points="16 21 21 21 21 16"/>
+          </svg>
+          <svg class="hud-fullscreen-icon-exit" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <polyline points="9 3 9 9 3 9"/>
+            <polyline points="15 3 15 9 21 9"/>
+            <polyline points="9 21 9 15 3 15"/>
+            <polyline points="15 21 15 15 21 15"/>
           </svg>
         </button>
         <button class="hud-mute-btn" aria-label="Toggle music">
@@ -90,6 +115,8 @@ export class HUD {
     this.xpLevelEl = this.el.querySelector(".hud-xp-level")!;
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
+    this.topRightEl = this.el.querySelector(".hud-top-right")!;
+    this.fullscreenBtn = this.el.querySelector(".hud-fullscreen-btn")!;
     this.muteBtn = this.el.querySelector(".hud-mute-btn")!;
     this.campsiteBtn = this.el.querySelector(".hud-campsite-btn")!;
 
@@ -99,6 +126,10 @@ export class HUD {
 
     this.campsiteBtn.addEventListener("click", () => {
       this.onCampsiteClick?.();
+    });
+
+    this.fullscreenBtn.addEventListener("click", () => {
+      void this.toggleFullscreen();
     });
 
     this.muteBtn.addEventListener("click", () => {
@@ -374,6 +405,7 @@ export class HUD {
   setCampsiteButtonVisible(visible: boolean) {
     if (!CAMPSITE_HOME_ENABLED) return;
     this.campsiteBtn.style.display = visible ? "" : "none";
+    this.updateTopRightReservedWidth();
   }
 
   registerLandmarkHUD(lhud: { setHidden(h: boolean): void }) {
@@ -398,6 +430,7 @@ export class HUD {
     style.id = "hud-styles";
     style.textContent = `
       #hud {
+        --hud-top-right-reserved: 120px;
         position: fixed; inset: 0; z-index: 100;
         pointer-events: none;
         font-family: 'Inter', system-ui, sans-serif;
@@ -447,6 +480,7 @@ export class HUD {
       }
 
       .hud-campsite-btn,
+      .hud-fullscreen-btn,
       .hud-mute-btn {
         pointer-events: auto;
         background: rgba(255, 255, 255, 0.08);
@@ -463,13 +497,21 @@ export class HUD {
         padding: 0;
       }
       .hud-campsite-btn:hover,
+      .hud-fullscreen-btn:hover,
       .hud-mute-btn:hover {
         background: rgba(255, 255, 255, 0.15);
         color: rgba(255, 255, 255, 0.95);
       }
       .hud-campsite-btn:active,
+      .hud-fullscreen-btn:active,
       .hud-mute-btn:active {
         background: rgba(255, 255, 255, 0.2);
+      }
+
+      @media (max-width: 768px) {
+        .hud-fullscreen-btn {
+          display: none !important;
+        }
       }
 
       .hud-xp-panel {
@@ -1140,6 +1182,7 @@ export class HUD {
           right: max(12px, env(safe-area-inset-right));
         }
         .hud-campsite-btn,
+        .hud-fullscreen-btn,
         .hud-mute-btn {
           width: 40px;
           height: 40px;
@@ -1227,6 +1270,75 @@ export class HUD {
     return this.el;
   }
 
+  private supportsFullscreen(): boolean {
+    const root = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    return !!(
+      root.requestFullscreen ||
+      root.webkitRequestFullscreen ||
+      document.exitFullscreen ||
+      doc.webkitExitFullscreen
+    );
+  }
+
+  private isFullscreenActive(): boolean {
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+    };
+    return !!(document.fullscreenElement || doc.webkitFullscreenElement);
+  }
+
+  private shouldShowFullscreenButton(): boolean {
+    if (!this.supportsFullscreen()) return false;
+    return window.matchMedia("(min-width: 769px) and (hover: hover) and (pointer: fine)").matches;
+  }
+
+  private updateTopRightReservedWidth() {
+    if (!this.topRightEl?.isConnected) return;
+    const rect = this.topRightEl.getBoundingClientRect();
+    const reserved = Math.max(72, Math.ceil(window.innerWidth - rect.left + 12));
+    this.el.style.setProperty("--hud-top-right-reserved", `${reserved}px`);
+  }
+
+  private syncFullscreenButtonState() {
+    if (!this.fullscreenBtn) return;
+    const visible = this.shouldShowFullscreenButton();
+    this.fullscreenBtn.style.display = visible ? "" : "none";
+    const isActive = visible && this.isFullscreenActive();
+    this.fullscreenBtn.querySelector<SVGElement>(".hud-fullscreen-icon-enter")!.style.display = isActive ? "none" : "";
+    this.fullscreenBtn.querySelector<SVGElement>(".hud-fullscreen-icon-exit")!.style.display = isActive ? "" : "none";
+    this.fullscreenBtn.setAttribute("aria-label", isActive ? "Exit fullscreen" : "Enter fullscreen");
+    this.updateTopRightReservedWidth();
+  }
+
+  private async toggleFullscreen() {
+    if (!this.supportsFullscreen()) return;
+    const root = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+
+    try {
+      if (this.isFullscreenActive()) {
+        const exitFullscreen = document.exitFullscreen?.bind(document) ?? doc.webkitExitFullscreen?.bind(doc);
+        await exitFullscreen?.();
+      } else {
+        const requestFullscreen = root.requestFullscreen?.bind(root) ?? root.webkitRequestFullscreen?.bind(root);
+        await requestFullscreen?.();
+      }
+    } catch {
+      // Ignore denied fullscreen requests and just resync the visible icon state.
+    }
+
+    this.syncFullscreenButtonState();
+  }
+
   show() {
     this.hidden = false;
     this.el.style.display = "";
@@ -1247,6 +1359,9 @@ export class HUD {
 
   dispose() {
     window.removeEventListener("keydown", this.onKey);
+    window.removeEventListener("resize", this.onResize);
+    document.removeEventListener("fullscreenchange", this.onFullscreenChange);
+    document.removeEventListener("webkitfullscreenchange", this.onFullscreenChange);
     this.el.remove();
   }
 }

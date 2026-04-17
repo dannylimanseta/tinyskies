@@ -224,7 +224,7 @@ export class PackageQuestHUD {
       .pkg-banner {
         position: absolute;
         top: 28px;
-        right: 72px;
+        right: calc(var(--hud-top-right-reserved, 120px) + 8px);
         font-size: 0.95rem;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.5);
@@ -234,6 +234,10 @@ export class PackageQuestHUD {
         pointer-events: none;
         z-index: 11;
         white-space: nowrap;
+        max-width: calc(100vw - var(--hud-top-right-reserved, 120px) - 48px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: right;
       }
       .pkg-banner-name {
         color: rgba(255, 255, 255, 0.85);
