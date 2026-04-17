@@ -24,7 +24,7 @@ import { isLand } from "./SimplexNoise";
 import { createFishVisual, type OceanFishVisual } from "./OceanFishMesh";
 import { randomOceanQuaternion } from "./Boat";
 
-export const FISH_COUNT = 30;
+export const FISH_COUNT = 90;
 export const FISH_CATCH_XP = 15;
 
 /** Chord distance (world units) — same convention as SkyJellyfish. */
@@ -40,10 +40,10 @@ const FISH_FLEE_TURN_RATE = 3.5;
 /** Speed multiplier added on top of base speed at full progress (so speed → base * (1 + mult)). */
 const FISH_FLEE_SPEED_MULT = 2.2;
 const FISH_SHADOW_ALT = 0.005;
-/** Lifted well above the ocean shader displacement so the ring is never occluded.
- *  Must exceed the tangent-plane sag at the ring's edge:
- *  sag ≈ globeRadius * (1 - cos(FISH_CATCH_RADIUS / globeRadius)) ≈ 0.03 at r=5, so 0.08 leaves headroom. */
-const RING_ALT = 0.08;
+/** Lifted above the ocean so the ring is not occluded; stays above tangent sag (~0.03 at globe r=5). */
+const RING_ALT = 0.055;
+/** Shift the ring astern along the water (tangent), relative to boat heading, to reduce parallax mismatch with the chase camera. World units at shell radius. */
+const RING_PARALLAX_BACK_OFFSET = 0.048;
 /** Outer radius of ring mesh as a fraction of {@link FISH_CATCH_RADIUS}. */
 const RING_OUTER_FRAC = 1.02;
 /**
@@ -240,6 +240,8 @@ export class OceanFish {
     _boatMatrix: Matrix4,
     boatWorldPos: Vector3,
     cameraPos: Vector3,
+    /** Boat yaw on the sphere (radians), 0 = north in {@link tangentFrame}. */
+    boatHeading: number,
     dayWeight: number,
     nightWeight: number,
     allowCapture: boolean,
@@ -420,7 +422,7 @@ export class OceanFish {
 
     // ── Dotted range ring ────────────────────────────────────────
     if (!boatOnLand) {
-      this.updateRing(boatQPos, boatWorldPos);
+      this.updateRing(boatQPos, boatWorldPos, boatHeading);
       this.ringMesh.visible = true;
     } else {
       this.ringMesh.visible = false;
@@ -519,7 +521,8 @@ export class OceanFish {
       f.visual.setOpacityFade(1);
     }
     f.visual.setShadowOpacity(alpha);
-    f.visual.setNightGlow(nightWeight);
+    const eveningWeight = Math.max(0, 1 - dayWeight - nightWeight);
+    f.visual.setNightGlow(nightWeight, eveningWeight);
   }
 
   /**
@@ -532,12 +535,24 @@ export class OceanFish {
    * `setFromRotationMatrix` then yields a bad / randomly twisting orientation.
    * {@link Quaternion.setFromUnitVectors} maps local +Z to `frame.up` correctly.
    */
-  private updateRing(boatQPos: Quaternion, boatWorldPos: Vector3) {
+  private updateRing(boatQPos: Quaternion, boatWorldPos: Vector3, boatHeading: number) {
     const frame = tangentFrame(boatQPos);
     this.ringMesh.quaternion.setFromUnitVectors(RING_LOCAL_NORMAL, frame.up);
+
+    // Tangent "astern": opposite to forward = −(north·cos(heading) + east·sin(heading))
+    _tmpV3
+      .copy(frame.north)
+      .multiplyScalar(Math.cos(boatHeading))
+      .addScaledVector(frame.east, Math.sin(boatHeading))
+      .multiplyScalar(-RING_PARALLAX_BACK_OFFSET);
+
+    const h =
+      boatWorldPos.length() + RING_ALT + (this.globeRadius - boatWorldPos.length());
     this.ringMesh.position
       .copy(boatWorldPos)
-      .addScaledVector(frame.up, RING_ALT + (this.globeRadius - boatWorldPos.length()));
+      .add(_tmpV3)
+      .normalize()
+      .multiplyScalar(h);
   }
 
   /**

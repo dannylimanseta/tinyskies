@@ -2803,6 +2803,7 @@ export class Game {
       this.localPlayer.group.matrixWorld,
       this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       this.fishCamScratch,
+      this.localPlayer.heading,
       this.dayNightCycle.getDayWeight(),
       this.dayNightCycle.getNightWeight(),
       allowCapture,

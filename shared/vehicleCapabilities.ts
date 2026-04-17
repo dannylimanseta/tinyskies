@@ -57,7 +57,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     carpetTrail: false,
     cameraTiltScale: 0.28,
     cameraFollowDistance: 1.2,
-    cameraFollowHeight: 0.7,
+    cameraFollowHeight: 0.95,
     cameraSpeedZoom: 0,
     cameraFovBoost: 10,
     packageQuests: false,

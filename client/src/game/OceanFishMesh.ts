@@ -1,6 +1,7 @@
 import {
   AdditiveBlending,
   CanvasTexture,
+  Color,
   DoubleSide,
   Group,
   Mesh,
@@ -8,6 +9,11 @@ import {
   PlaneGeometry,
   SRGBColorSpace,
 } from "three";
+
+/** Bioluminescent night tint (cool cyan). */
+const GLOW_COLOR_NIGHT = new Color(0x66eeff);
+/** Dusk / evening tint for the same glow (warm orange). */
+const GLOW_COLOR_EVENING = new Color(0xff7722);
 
 let sharedShadowTexture: CanvasTexture | null = null;
 let shadowTextureRefCount = 0;
@@ -96,8 +102,11 @@ export interface OceanFishVisual {
   setProgress(v: number): void;
   setShadowOpacity(a: number): void;
   setOpacityFade(a: number): void;
-  /** 0..1 night weight — drives bioluminescent glow intensity. */
-  setNightGlow(t: number): void;
+  /**
+   * Drives bioluminescent glow: intensity from night and/or evening, color blends
+   * orange (evening) toward cyan (night).
+   */
+  setNightGlow(nightWeight: number, eveningWeight?: number): void;
   dispose(): void;
 }
 
@@ -133,6 +142,7 @@ export function createFishVisual(): OceanFishVisual {
   const glowGeo = new PlaneGeometry(0.55, 0.55);
   const glowMat = new MeshBasicMaterial({
     map: glowTex,
+    color: GLOW_COLOR_NIGHT.clone(),
     transparent: true,
     opacity: 0,
     depthWrite: false,
@@ -203,8 +213,11 @@ export function createFishVisual(): OceanFishVisual {
     opacityFade = Math.max(0, Math.min(1, a));
   }
 
-  function setNightGlow(t: number) {
-    const g = Math.max(0, Math.min(1, t * opacityFade));
+  function setNightGlow(night: number, evening = 0) {
+    const g = Math.max(0, Math.min(1, Math.max(night, evening) * opacityFade));
+    const denom = night + evening + 1e-6;
+    const tNight = night / denom;
+    glowMat.color.copy(GLOW_COLOR_EVENING).lerp(GLOW_COLOR_NIGHT, tNight);
     glowMat.opacity = g * 0.85;
     glowMesh.visible = g > 0.02;
   }
