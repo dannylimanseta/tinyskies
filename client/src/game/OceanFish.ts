@@ -22,6 +22,7 @@ import {
 } from "./SphericalMath";
 import { isLand } from "./SimplexNoise";
 import { createFishVisual, type OceanFishVisual } from "./OceanFishMesh";
+import { FishCatchVfx } from "./FishCatchVfx";
 import { randomOceanQuaternion } from "./Boat";
 
 export const FISH_COUNT = 90;
@@ -115,6 +116,7 @@ export class OceanFish {
   private readonly globeRadius: number;
   private readonly seed: number;
   private readonly terrainType: string;
+  private readonly catchVfx = new FishCatchVfx();
 
   constructor(
     globeRadius: number,
@@ -400,6 +402,7 @@ export class OceanFish {
           f.progress = Math.min(1, f.progress + FISH_FILL_RATE * dt);
           if (f.progress >= 1) {
             this.catchCount += 1;
+            this.catchVfx.spawn(this.group.parent, wp.clone(), boatWorldPos);
             this.onCatch?.();
             f.status = "respawning";
             f.respawnT = 0;
@@ -449,6 +452,8 @@ export class OceanFish {
         this.fishLine.visible = false;
       }
     }
+
+    this.catchVfx.update(dt);
   }
 
   private shadowAlpha(dayWeight: number, nightWeight: number): number {
@@ -628,6 +633,7 @@ export class OceanFish {
     this.ringTexture.dispose();
     this.lineGeometry.dispose();
     this.fishLineMat.dispose();
+    this.catchVfx.dispose();
     this.group.parent?.remove(this.group);
   }
 }
