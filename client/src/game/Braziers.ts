@@ -639,41 +639,10 @@ export class Braziers {
   }
 
   private updateEmberParticles(s: BrazierState, burn: number, dt: number) {
-    s.emberPoints.visible = burn > 0.02;
-    if (!s.emberPoints.visible) return;
-
-    const t = s.time;
-    const pos = s.emberPos;
-    const baseX = s.emberBaseX;
-    const baseZ = s.emberBaseZ;
-    const spd = s.emberSpd;
-    const phase = s.emberPhase;
-    const opacity = s.emberOpacity;
-
-    for (let i = 0; i < EMBER_COUNT; i++) {
-      const i3 = i * 3;
-      let y = pos[i3 + 1]!;
-      y += spd[i]! * dt * burn * 0.82;
-
-      if (y > EMBER_RISE_MAX) {
-        y = -0.02 + Math.random() * 0.07;
-        baseX[i] = (Math.random() - 0.5) * FLAME_W * 0.44;
-        baseZ[i] = (Math.random() - 0.5) * FLAME_W * 0.34;
-      }
-
-      const drift = Math.min(1, Math.max(0, y / EMBER_RISE_MAX));
-      pos[i3 + 0] = baseX[i]! + Math.sin(t * 3.2 + phase[i]!) * 0.014 * drift;
-      pos[i3 + 1] = y;
-      pos[i3 + 2] = baseZ[i]! + Math.cos(t * 2.7 + phase[i]! * 1.2) * 0.014 * drift;
-
-      const ht = Math.max(0, Math.min(1, y / EMBER_RISE_MAX));
-      // True alpha fade (fragment shader) — full opacity at base, ~0 at top
-      const heightFade = Math.pow(1.0 - ht, 2.1);
-      opacity[i] = heightFade * burn;
-    }
-
-    s.emberGeo.attributes.position!.needsUpdate = true;
-    s.emberGeo.attributes.opacity!.needsUpdate = true;
+    void burn;
+    void dt;
+    // Keep the ember particle layer disabled while preserving the main flame/glow visuals.
+    s.emberPoints.visible = false;
   }
 
   /* ── Per-frame update ────────────────────────────────────────── */
