@@ -32,9 +32,9 @@ const TURN_INPUT_SMOOTH = 8;
 const ELEVATE_INPUT_SMOOTH = 6;
 
 /** Default hover clearance above terrain surface. */
-export const CARPET_HOVER_HEIGHT = 0.08;
+export const CARPET_HOVER_HEIGHT = 0.045;
 /** Height above terrain when elevate is held. */
-const BOOST_HEIGHT = 0.6;
+const BOOST_HEIGHT = 0.52;
 /** How fast altitude lerps toward the target (lower = slower climb = longer tilt). */
 const ALTITUDE_LERP = 0.6;
 /** Max nose-up tilt when climbing (~35 degrees). */
