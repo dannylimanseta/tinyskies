@@ -83,6 +83,8 @@ import { LevelUpCards } from "../ui/LevelUpCards";
 import { ProgressionManager, UNLOCK_BRAZIERS_MIN_MAX_LEVEL } from "./ProgressionManager";
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
+import { SkyJellyfish, JELLY_CAPTURE_XP } from "./SkyJellyfish";
+import { CircularProgressRing } from "../ui/CircularProgressRing";
 
 /**
  * Distance to balloon for greeting (world units, same space as globe radius ~5).
@@ -154,7 +156,8 @@ type XpSource =
   | "rainbow"
   | "lantern"
   | "firefly"
-  | "volcano";
+  | "volcano"
+  | "jellyfish";
 
 const DIAMOND_SFX_IDS = [
   "diamond_collect_1",
@@ -285,6 +288,9 @@ export class Game {
   private hullColor = 0xff4444;
   private moonThreat: MoonThreat | null = null;
   private meteorShower: MeteorShower | null = null;
+  private skyJellyfish: SkyJellyfish | null = null;
+  private jellyfishCaptureRing: CircularProgressRing | null = null;
+  private selfieProgressCached = 0;
   private vhsOverlay: HTMLDivElement | null = null;
   private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
   private progression!: ProgressionManager;
@@ -833,6 +839,18 @@ export class Game {
       }
     };
 
+    if (this.localPlayer instanceof Carpet) {
+      this.skyJellyfish = new SkyJellyfish(globeRadius, seed, spawnSessionSalt, terrainType);
+      this.scene.add(this.skyJellyfish.group);
+      this.skyJellyfish.onCapture = (_colorIndex) => {
+        this.awardXP("jellyfish", JELLY_CAPTURE_XP);
+        this.audioManager.resumeContextIfNeeded();
+        this.audioManager.playSFX("portal_1", 0.35, 1.3);
+        this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.2);
+        this.cameraRig.shake(0.02, 0.15);
+      };
+    }
+
       this.ringManager.onCollect = (xp, worldPos, tier) => {
       this.collectVFX.play(worldPos, tier);
       let comboXpMult = 1;
@@ -893,6 +911,10 @@ export class Game {
     this.propagateUpgrades();
 
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
+
+    if (this.skyJellyfish) {
+      this.jellyfishCaptureRing = new CircularProgressRing(this.hud.root);
+    }
 
     if (vehicle === "plane" && this.paintballSystem) {
       this.skyGremlins = new SkyGremlins(
@@ -1047,6 +1069,7 @@ export class Game {
         new Array(butterflyN).fill(false),
       );
       this.carpetLandmarkSelfieQuest.onProgressChange = (p) => {
+        this.selfieProgressCached = p;
         this.carpetSelfiePhotoUI?.setProgress(p);
       };
       this.carpetLandmarkSelfieQuest.onPhotoTaken = (payload) => {
@@ -1115,6 +1138,11 @@ export class Game {
     this.skyGremlins = null;
     this.meteorShower?.dispose();
     this.meteorShower = null;
+    this.skyJellyfish?.dispose();
+    this.skyJellyfish = null;
+    this.jellyfishCaptureRing?.dispose();
+    this.jellyfishCaptureRing = null;
+    this.selfieProgressCached = 0;
     this.remotePlanes?.dispose();
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
@@ -1690,6 +1718,14 @@ export class Game {
         this.localPlayer.heading,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       );
+      this.skyJellyfish?.update(
+        dt,
+        this.localPlayer.group.matrixWorld,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+        false,
+        false,
+      );
+      this.jellyfishCaptureRing?.setProgress(this.skyJellyfish?.getCaptureProgress() ?? 0);
       if (this.playerLight) {
         this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
         const up = this.playerLight.position.clone().normalize();
@@ -1740,6 +1776,13 @@ export class Game {
         this.localPlayer.heading,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       );
+      this.skyJellyfish?.update(
+        dt,
+        this.localPlayer.group.matrixWorld,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+        false,
+        false,
+      );
       if (this.moonThreat?.isNearImpact || this.moonThreat?.hasImpacted) {
         this.campsiteScene.exit();
         this.localPlayer.group.visible = true;
@@ -1763,6 +1806,13 @@ export class Game {
         this.localPlayer.qPosition,
         this.localPlayer.heading,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      );
+      this.skyJellyfish?.update(
+        dt,
+        this.localPlayer.group.matrixWorld,
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+        false,
+        false,
       );
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
@@ -2086,6 +2136,19 @@ export class Game {
       questPlayerPos,
     );
 
+    if (this.skyJellyfish) {
+      this.localPlayer.group.updateMatrixWorld(true);
+      const selfieActive = this.selfieProgressCached > 0;
+      this.skyJellyfish.update(
+        dt,
+        this.localPlayer.group.matrixWorld,
+        questPlayerPos,
+        !portalInteractionSuppressed,
+        selfieActive,
+      );
+      this.jellyfishCaptureRing?.setProgress(this.skyJellyfish.getCaptureProgress());
+    }
+
     if (!portalInteractionSuppressed && this.packageQuest && this.moonThreat) {
       this.packageQuest.moonProgress = this.moonThreat.progress;
     }
@@ -2169,6 +2232,7 @@ export class Game {
   private startMoonImpactCinematic() {
     if (this.gamePhase === "moonImpact") return;
     this.meteorShower?.reset();
+    this.skyJellyfish?.reset();
     this.gamePhase = "moonImpact";
     this.moonCinematicStep = "fadeOut1";
     this.moonCinematicTimer = 0;
@@ -2507,6 +2571,7 @@ export class Game {
     this.carpetWake.reset();
     this.carpetLeaves.reset();
     this.localPlayer.group.updateMatrixWorld(true);
+    this.skyJellyfish?.snapFollowers(this.localPlayer.group.matrixWorld);
 
     this.cameraRig.snapTo(
       this.localPlayer.qPosition,
@@ -2957,6 +3022,10 @@ export class Game {
     this.skyGremlins = null;
     this.meteorShower?.dispose();
     this.meteorShower = null;
+    this.skyJellyfish?.dispose();
+    this.skyJellyfish = null;
+    this.jellyfishCaptureRing?.dispose();
+    this.jellyfishCaptureRing = null;
     this.controls?.dispose();
     this.touchControls?.dispose();
     this.speedLines?.dispose();
