@@ -20,6 +20,10 @@ const CRUISE_SPEED = 0.22;
 const BRAKE_DECEL = 0.85;
 const ACCEL = 0.35;
 const MAX_SPEED = 0.42;
+/** Peak speed after collecting a diamond (above normal max). */
+const DIAMOND_BOOST_SPEED = 0.58;
+const DIAMOND_BOOST_DURATION_SEC = 3;
+const ABSOLUTE_MAX_BOOST_SPEED = 0.72;
 const COAST_DECAY = 0.07;
 const FREEBOARD = 0.015;
 /** Yaw rate multiplier — higher = snappier turns. */
@@ -122,12 +126,16 @@ export class Boat {
   private bobPitch = 0;
   private bobRoll = 0;
   private turnInputSmoothed = 0;
+  /** Remaining time at diamond boost speed after {@link speedBoost} (diamond pickup). */
+  private boostTimer = 0;
 
   /** Active upgrade multipliers; updated by Game.propagateUpgrades() after each pick. */
   upgrades = {
     maxSpeedMult: 1,
     turnMult: 1,
     accelMult: 1,
+    boostSpeedMult: 1,
+    boostDurationMult: 1,
   };
 
   /**
@@ -165,9 +173,20 @@ export class Boat {
     _elevate: boolean = false,
     _paintball: boolean = false,
   ) {
+    if (this.boostTimer > 0) {
+      this.boostTimer = Math.max(0, this.boostTimer - dt);
+    }
+
     const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult;
     const effAccel = ACCEL * this.upgrades.accelMult;
-    if (forward) {
+    const effBoostSpeed = Math.min(
+      DIAMOND_BOOST_SPEED * this.upgrades.boostSpeedMult,
+      ABSOLUTE_MAX_BOOST_SPEED,
+    );
+
+    if (this.boostTimer > 0) {
+      this.speed = effBoostSpeed;
+    } else if (forward) {
       this.speed = Math.min(effMaxSpeed, this.speed + effAccel * dt);
     } else if (brake) {
       this.speed = Math.max(0, this.speed - BRAKE_DECEL * dt);
@@ -206,6 +225,16 @@ export class Boat {
     this.applyMatrix();
   }
 
+  /** Temporary surge from collecting a diamond (matches plane/carpet diamond pickup). */
+  speedBoost() {
+    const eff = Math.min(
+      DIAMOND_BOOST_SPEED * this.upgrades.boostSpeedMult,
+      ABSOLUTE_MAX_BOOST_SPEED,
+    );
+    this.boostTimer = DIAMOND_BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
+    this.speed = eff;
+  }
+
   applyMatrix() {
     const m = buildBoatMatrix(
       this.qPosition,
@@ -222,6 +251,7 @@ export class Boat {
   get speedRatio(): number {
     const ms = MAX_SPEED * this.upgrades.maxSpeedMult;
     if (ms <= 0) return 0;
+    if (this.boostTimer > 0) return 1;
     return Math.max(0, Math.min(1, this.speed / ms));
   }
 

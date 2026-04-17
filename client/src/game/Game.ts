@@ -887,7 +887,11 @@ export class Game {
       }
       this.vehicleFlashTimer = 0.35;
       this.cameraRig.shake();
-      if (this.localPlayer instanceof Plane || this.localPlayer instanceof Carpet) {
+      if (
+        this.localPlayer instanceof Plane ||
+        this.localPlayer instanceof Carpet ||
+        this.localPlayer instanceof Boat
+      ) {
         this.localPlayer.speedBoost();
         const boostPick =
           SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
@@ -2868,6 +2872,8 @@ export class Game {
         maxSpeedMult: s.boatSpeedMult,
         turnMult: s.boatTurnMult,
         accelMult: s.boatAccelMult,
+        boostSpeedMult: s.boostSpeedMult,
+        boostDurationMult: s.boostDurationMult,
       });
     }
 
