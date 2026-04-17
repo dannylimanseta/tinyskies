@@ -28,6 +28,8 @@ export interface VehicleGameFeatures {
   cameraFovBoost: number;
   /** Village-to-village package delivery quests */
   packageQuests: boolean;
+  /** Ocean fish shadows + fishing range + catch progress (boat only) */
+  fishingMiniGame: boolean;
 }
 
 const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
@@ -44,6 +46,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     cameraSpeedZoom: 0,
     cameraFovBoost: 28,
     packageQuests: true,
+    fishingMiniGame: false,
   },
   boat: {
     collectibleDiamonds: true,
@@ -58,6 +61,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     cameraSpeedZoom: 0,
     cameraFovBoost: 10,
     packageQuests: false,
+    fishingMiniGame: true,
   },
   carpet: {
     collectibleDiamonds: true,
@@ -74,6 +78,7 @@ const VEHICLE_FEATURES: Record<Vehicle, VehicleGameFeatures> = {
     /** Was 50° — wide FOV + tight chase made motion feel like violent spins when zoomed in. */
     cameraFovBoost: 26,
     packageQuests: false,
+    fishingMiniGame: false,
   },
 };
 

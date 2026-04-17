@@ -84,6 +84,7 @@ import { ProgressionManager, UNLOCK_BRAZIERS_MIN_MAX_LEVEL } from "./Progression
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 import { SkyJellyfish, JELLY_CAPTURE_XP } from "./SkyJellyfish";
+import { OceanFish, FISH_CATCH_XP } from "./OceanFish";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
 
 /**
@@ -157,7 +158,8 @@ type XpSource =
   | "lantern"
   | "firefly"
   | "volcano"
-  | "jellyfish";
+  | "jellyfish"
+  | "fish";
 
 const DIAMOND_SFX_IDS = [
   "diamond_collect_1",
@@ -290,6 +292,9 @@ export class Game {
   private meteorShower: MeteorShower | null = null;
   private skyJellyfish: SkyJellyfish | null = null;
   private jellyfishCaptureRing: CircularProgressRing | null = null;
+  private oceanFish: OceanFish | null = null;
+  private fishCaught = 0;
+  private fishCamScratch = new Vector3();
   private selfieProgressCached = 0;
   private vhsOverlay: HTMLDivElement | null = null;
   private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
@@ -898,7 +903,27 @@ export class Game {
     });
     this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
+      showFishCounter: this.vehicleFeatures.fishingMiniGame,
     });
+
+    if (this.localPlayer instanceof Boat && this.vehicleFeatures.fishingMiniGame) {
+      this.oceanFish = new OceanFish(globeRadius, seed, spawnSessionSalt, terrainType);
+      this.scene.add(this.oceanFish.group);
+      this.fishCaught = 0;
+      this.hud.setFishCaught(0);
+      this.oceanFish.onCatch = () => {
+        this.fishCaught += 1;
+        this.hud.setFishCaught(this.fishCaught);
+        this.awardXP("fish", FISH_CATCH_XP);
+        this.audioManager.resumeContextIfNeeded();
+        if (this.audioManager.hasSFX("diamond_collect_1")) {
+          this.audioManager.playSFX("diamond_collect_1", 0.25, 1.4);
+        }
+        this.cameraRig.shake(0.015, 0.12);
+        this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.15);
+      };
+      this.oceanFish.setFishingLineResolution(this.container.clientWidth, this.container.clientHeight);
+    }
     this.vehicleHintsEl = mountControlHints(this.hud.root, vehicle, !this.mobile);
     this.hud.hideUI();
 
@@ -1142,6 +1167,8 @@ export class Game {
     this.skyJellyfish = null;
     this.jellyfishCaptureRing?.dispose();
     this.jellyfishCaptureRing = null;
+    this.oceanFish?.dispose();
+    this.oceanFish = null;
     this.selfieProgressCached = 0;
     this.remotePlanes?.dispose();
     this.landmarkHUD?.dispose();
@@ -1726,6 +1753,7 @@ export class Game {
         false,
       );
       this.jellyfishCaptureRing?.setProgress(this.skyJellyfish?.getCaptureProgress() ?? 0);
+      this.updateOceanFish(dt, false);
       if (this.playerLight) {
         this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
         const up = this.playerLight.position.clone().normalize();
@@ -1783,6 +1811,7 @@ export class Game {
         false,
         false,
       );
+      this.updateOceanFish(dt, false);
       if (this.moonThreat?.isNearImpact || this.moonThreat?.hasImpacted) {
         this.campsiteScene.exit();
         this.localPlayer.group.visible = true;
@@ -1814,6 +1843,7 @@ export class Game {
         false,
         false,
       );
+      this.updateOceanFish(dt, false);
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
     }
@@ -2078,6 +2108,7 @@ export class Game {
     if (this.vehicleFeatures.wakeTrail) {
       this.wakeTrail.update(this.localPlayer.group.matrixWorld, this.cameraRig.camera);
     }
+    this.updateOceanFish(dt, !portalInteractionSuppressed);
     if (this.vehicleFeatures.carpetTrail) {
       this.carpetTrail.update(
         this.localPlayer.group.matrixWorld,
@@ -2592,6 +2623,7 @@ export class Game {
     this.renderer.setSize(w, h);
     this.cameraRig.resize(w / h);
     this.campsiteScene?.resize(w / h);
+    this.oceanFish?.setFishingLineResolution(w, h);
   };
 
   /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -2762,6 +2794,21 @@ export class Game {
    * RingManager (diamondXpMult, frequentFlyer, wake_rider highSpeedMult) so
    * we only add Night Owl on top for "diamond".
    */
+  private updateOceanFish(dt: number, allowCapture: boolean) {
+    if (!this.oceanFish || !(this.localPlayer instanceof Boat)) return;
+    this.cameraRig.camera.getWorldPosition(this.fishCamScratch);
+    this.oceanFish.update(
+      dt,
+      this.localPlayer.qPosition,
+      this.localPlayer.group.matrixWorld,
+      this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      this.fishCamScratch,
+      this.dayNightCycle.getDayWeight(),
+      this.dayNightCycle.getNightWeight(),
+      allowCapture,
+    );
+  }
+
   private awardXP(source: XpSource, base: number) {
     if (base <= 0) return;
     const s = this.progression.upgrades.state;
@@ -3026,6 +3073,8 @@ export class Game {
     this.skyJellyfish = null;
     this.jellyfishCaptureRing?.dispose();
     this.jellyfishCaptureRing = null;
+    this.oceanFish?.dispose();
+    this.oceanFish = null;
     this.controls?.dispose();
     this.touchControls?.dispose();
     this.speedLines?.dispose();

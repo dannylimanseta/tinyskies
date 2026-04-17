@@ -15,6 +15,7 @@ export class HUD {
   private xpBarFill!: HTMLElement;
   private xpValueEl!: HTMLElement;
   private topRightEl!: HTMLDivElement;
+  private fishCaughtEl: HTMLDivElement | null = null;
   private fullscreenBtn!: HTMLButtonElement;
   private muteBtn!: HTMLButtonElement;
 
@@ -65,6 +66,7 @@ export class HUD {
         <div class="hud-player-count">1 player</div>
       </div>
       <div class="hud-top-right">
+        <div class="hud-fish-count" style="display:none" aria-live="polite">Fish: 0</div>
         <button class="hud-campsite-btn" aria-label="Go to campsite">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2 3 20h18Z"/>
@@ -116,6 +118,7 @@ export class HUD {
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
     this.topRightEl = this.el.querySelector(".hud-top-right")!;
+    this.fishCaughtEl = this.el.querySelector(".hud-fish-count");
     this.fullscreenBtn = this.el.querySelector(".hud-fullscreen-btn")!;
     this.muteBtn = this.el.querySelector(".hud-mute-btn")!;
     this.campsiteBtn = this.el.querySelector(".hud-campsite-btn")!;
@@ -174,9 +177,22 @@ export class HUD {
     this.worldNameEl.textContent = name;
   }
 
-  setVehicle(_vehicle: Vehicle, options?: { showXpProgression?: boolean }) {
+  setVehicle(_vehicle: Vehicle, options?: { showXpProgression?: boolean; showFishCounter?: boolean }) {
     const showXp = options?.showXpProgression ?? true;
     this.xpPanelEl.style.display = showXp ? "flex" : "none";
+    const showFish = options?.showFishCounter ?? false;
+    if (this.fishCaughtEl) {
+      this.fishCaughtEl.style.display = showFish ? "block" : "none";
+      if (showFish) {
+        this.fishCaughtEl.textContent = "Fish: 0";
+      }
+    }
+  }
+
+  setFishCaught(n: number) {
+    if (!this.fishCaughtEl) return;
+    this.fishCaughtEl.textContent = `Fish: ${n}`;
+    this.fishCaughtEl.style.display = "";
   }
 
   setPlayerCount(count: number) {
@@ -467,6 +483,14 @@ export class HUD {
         font-size: 0.75rem;
         font-weight: 400;
         color: rgba(255, 255, 255, 0.45);
+      }
+      .hud-fish-count {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: rgba(180, 220, 255, 0.85);
+        white-space: nowrap;
+        margin-right: 4px;
+        pointer-events: none;
       }
 
       .hud-top-right {
