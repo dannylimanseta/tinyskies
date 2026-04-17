@@ -13,7 +13,7 @@ import {
 /** Bioluminescent night tint (cool cyan). */
 const GLOW_COLOR_NIGHT = new Color(0x66eeff);
 /** Dusk / evening tint for the same glow (warm orange). */
-const GLOW_COLOR_EVENING = new Color(0xff7722);
+const GLOW_COLOR_EVENING = new Color(0xff4400);
 
 let sharedShadowTexture: CanvasTexture | null = null;
 let shadowTextureRefCount = 0;
@@ -21,33 +21,51 @@ let shadowTextureRefCount = 0;
 function getSharedFishShadowTexture(): CanvasTexture {
   if (sharedShadowTexture) return sharedShadowTexture;
 
+  /**
+   * Top-down silhouette: canvas +X = fish forward (head), +Y = lateral.
+   */
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 64;
+  c.width = 256;
+  c.height = 128;
   const ctx = c.getContext("2d")!;
   ctx.clearRect(0, 0, c.width, c.height);
 
-  const cx = 56;
-  const cy = 32;
-  const rx = 38;
-  const ry = 18;
+  const ink = "rgba(8, 14, 22, 0.78)";
+  const fin = "rgba(6, 12, 20, 0.68)";
+  const tailInk = "rgba(5, 10, 18, 0.94)";
 
-  const grd = ctx.createRadialGradient(cx - 8, cy, 4, cx, cy, rx + 8);
-  grd.addColorStop(0, "rgba(0, 0, 0, 1.0)");
-  grd.addColorStop(0.55, "rgba(0, 2, 6, 0.85)");
-  grd.addColorStop(1, "rgba(0, 2, 6, 0)");
-
-  ctx.fillStyle = grd;
+  // Sleek, organic teardrop body using bezier curves
+  ctx.fillStyle = ink;
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.moveTo(210, 64); // Snout
+  ctx.bezierCurveTo(210, 30, 130, 35, 60, 60); // Top edge
+  ctx.lineTo(60, 68); // Tail peduncle
+  ctx.bezierCurveTo(130, 93, 210, 98, 210, 64); // Bottom edge
   ctx.fill();
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.95)";
+  // Crescent caudal fin (tail)
+  ctx.fillStyle = tailInk;
   ctx.beginPath();
-  ctx.moveTo(cx - rx + 4, cy);
-  ctx.lineTo(cx - rx - 22, cy + 6);
-  ctx.lineTo(cx - rx - 18, cy - 5);
-  ctx.closePath();
+  ctx.moveTo(65, 64); // Overlap with body
+  ctx.bezierCurveTo(50, 55, 35, 35, 25, 25); // Top lobe tip
+  ctx.bezierCurveTo(35, 45, 45, 55, 50, 64); // Inner fork top
+  ctx.bezierCurveTo(45, 73, 35, 83, 25, 103); // Bottom lobe tip
+  ctx.bezierCurveTo(35, 93, 50, 73, 65, 64); // Back to base
+  ctx.fill();
+
+  // Swept-back pectoral fins
+  ctx.fillStyle = fin;
+  // Left (Top on canvas)
+  ctx.beginPath();
+  ctx.moveTo(140, 42); // Root front
+  ctx.bezierCurveTo(135, 20, 110, 10, 90, 15); // Tip
+  ctx.bezierCurveTo(110, 25, 120, 35, 125, 45); // Root back
+  ctx.fill();
+  // Right (Bottom on canvas)
+  ctx.beginPath();
+  ctx.moveTo(140, 86);
+  ctx.bezierCurveTo(135, 108, 110, 118, 90, 113);
+  ctx.bezierCurveTo(110, 103, 120, 93, 125, 83);
   ctx.fill();
 
   const tex = new CanvasTexture(c);
@@ -74,14 +92,14 @@ function getSharedGlowTexture(): CanvasTexture {
   const cy = 128;
   const outer = 124;
 
-  // Soft, multi-stop gradient — bright core fades gradually into transparency.
+  // Neutral luminance — tint comes from {@link MeshBasicMaterial#color} (cyan night, orange evening).
   const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, outer);
-  grd.addColorStop(0.0, "rgba(120, 240, 220, 1.00)");
-  grd.addColorStop(0.15, "rgba(80, 220, 220, 0.75)");
-  grd.addColorStop(0.35, "rgba(40, 180, 220, 0.45)");
-  grd.addColorStop(0.60, "rgba(20, 120, 200, 0.22)");
-  grd.addColorStop(0.85, "rgba(10, 70, 140, 0.07)");
-  grd.addColorStop(1.0, "rgba(0, 40, 100, 0)");
+  grd.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  grd.addColorStop(0.15, "rgba(255, 255, 255, 0.78)");
+  grd.addColorStop(0.35, "rgba(220, 220, 220, 0.48)");
+  grd.addColorStop(0.6, "rgba(140, 140, 140, 0.22)");
+  grd.addColorStop(0.85, "rgba(60, 60, 60, 0.07)");
+  grd.addColorStop(1.0, "rgba(0, 0, 0, 0)");
 
   ctx.fillStyle = grd;
   ctx.beginPath();
@@ -102,6 +120,8 @@ export interface OceanFishVisual {
   setProgress(v: number): void;
   setShadowOpacity(a: number): void;
   setOpacityFade(a: number): void;
+  /** Roll in the water plane (radians) for swimming wiggle — applied to shadow silhouette. */
+  setShadowWiggle(rad: number): void;
   /**
    * Drives bioluminescent glow: intensity from night and/or evening, color blends
    * orange (evening) toward cyan (night).
@@ -110,8 +130,8 @@ export interface OceanFishVisual {
   dispose(): void;
 }
 
-const BAR_H = 0.09;
-const BAR_W = 0.014;
+const BAR_H = 0.045;
+const BAR_W = 0.007;
 const FILL_HALF = BAR_H * 0.5;
 
 /**
@@ -128,8 +148,8 @@ export function createFishVisual(): OceanFishVisual {
 
   const shadowGroup = new Group();
 
-  // Main dark shadow
-  const shadowGeo = new PlaneGeometry(0.18, 0.09);
+  // Top-view shadow (texture +X forward, ±Y lateral); ~50% of prior footprint
+  const shadowGeo = new PlaneGeometry(0.12, 0.055);
   const shadowMat = new MeshBasicMaterial({
     map: tex,
     transparent: true,
@@ -139,7 +159,7 @@ export function createFishVisual(): OceanFishVisual {
   });
   // Bioluminescent night glow — rendered BEFORE the shadow so the dark shadow sits on top.
   // Square plane + square texture → round, blurred halo (not an ellipse).
-  const glowGeo = new PlaneGeometry(0.55, 0.55);
+  const glowGeo = new PlaneGeometry(0.275, 0.275);
   const glowMat = new MeshBasicMaterial({
     map: glowTex,
     color: GLOW_COLOR_NIGHT.clone(),
@@ -154,7 +174,7 @@ export function createFishVisual(): OceanFishVisual {
   glowMesh.renderOrder = 7;
   shadowGroup.add(glowMesh);
 
-  // Dark shadow — rendered AFTER glow so it draws on top
+  // Dark shadow — rendered AFTER glow so it draws on top.
   const shadowMesh = new Mesh(shadowGeo, shadowMat);
   shadowMesh.rotation.x = -Math.PI / 2;
   shadowMesh.renderOrder = 8;
@@ -213,12 +233,21 @@ export function createFishVisual(): OceanFishVisual {
     opacityFade = Math.max(0, Math.min(1, a));
   }
 
+  function setShadowWiggle(rad: number) {
+    const r = Math.max(-0.55, Math.min(0.55, rad));
+    shadowMesh.rotation.z = r;
+    glowMesh.rotation.z = r * 0.35;
+  }
+
   function setNightGlow(night: number, evening = 0) {
     const g = Math.max(0, Math.min(1, Math.max(night, evening) * opacityFade));
     const denom = night + evening + 1e-6;
     const tNight = night / denom;
+    // Neutral glow map → material color reads clearly: orange (evening) vs cyan (night).
     glowMat.color.copy(GLOW_COLOR_EVENING).lerp(GLOW_COLOR_NIGHT, tNight);
-    glowMat.opacity = g * 0.85;
+
+    const alphaScale = 0.35 * (1 - tNight) + 0.15 * tNight;
+    glowMat.opacity = g * alphaScale;
     glowMesh.visible = g > 0.02;
   }
 
@@ -246,6 +275,7 @@ export function createFishVisual(): OceanFishVisual {
 
   setProgress(0);
   setNightGlow(0);
+  setShadowWiggle(0);
 
   return {
     group,
@@ -254,6 +284,7 @@ export function createFishVisual(): OceanFishVisual {
     setProgress,
     setShadowOpacity,
     setOpacityFade,
+    setShadowWiggle,
     setNightGlow,
     dispose,
   };

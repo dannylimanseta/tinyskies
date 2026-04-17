@@ -34,7 +34,7 @@ const FISH_CATCH_EXIT_RADIUS = 0.75;
 const FISH_FILL_RATE = 1 / 2.0;
 const FISH_DECAY_RATE = 0.6;
 /** Normal cruising speed (world units/s along arc). */
-const FISH_WANDER_SPEED = 0.20;
+const FISH_WANDER_SPEED = 0.17;
 const FISH_TURN_RATE = 0.8;
 /** Max additional flee turn rate (rad/s) at full progress. */
 const FISH_FLEE_TURN_RATE = 3.5;
@@ -67,6 +67,8 @@ type FishStatus = "swimming" | "capturing" | "respawning";
 interface Fish {
   posQ: Quaternion;
   heading: number;
+  /** Heading at end of previous frame — for shadow wiggle from turn rate. */
+  prevHeading: number;
   worldPos: Vector3;
   progress: number;
   status: FishStatus;
@@ -82,6 +84,13 @@ interface Fish {
 const _tmpV1 = new Vector3();
 const _tmpV2 = new Vector3();
 const _tmpV3 = new Vector3();
+const _boatForward = new Vector3();
+
+function wrapAnglePi(a: number): number {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
 /** `RingGeometry` faces +Z in local space; we rotate so +Z aligns with globe surface normal. */
 const RING_LOCAL_NORMAL = new Vector3(0, 0, 1);
 
@@ -211,9 +220,11 @@ export class OceanFish {
         this.pickOceanQuaternion(seed, null) ??
         randomOceanQuaternion(worldSeed, terrainType, sessionSalt + i * 17);
       const spawn = randomSpawnQuaternionAndHeading(seed + 3);
+      const h0 = spawn.heading + i * 0.31;
       const fish: Fish = {
         posQ: posQ.clone(),
-        heading: spawn.heading + i * 0.31,
+        heading: h0,
+        prevHeading: h0,
         worldPos: new Vector3(),
         progress: 0,
         status: "swimming",
@@ -253,6 +264,15 @@ export class OceanFish {
 
     const boatRadial = _tmpV2.copy(boatWorldPos).normalize();
     const captureEnabled = allowCapture;
+
+    const boatFrame = tangentFrame(boatQPos);
+    _boatForward
+      .copy(boatFrame.north)
+      .multiplyScalar(Math.cos(boatHeading))
+      .addScaledVector(boatFrame.east, Math.sin(boatHeading));
+    
+    // Shift landing spot slightly astern (backwards) so it lands on the deck, not the bow
+    const boatTargetPos = boatWorldPos.clone().addScaledVector(_boatForward, -0.075);
 
     // Pre-compute world positions (used for range checks before movement)
     for (const f of this.fish) {
@@ -322,6 +342,7 @@ export class OceanFish {
               randomOceanQuaternion(this.seed, this.terrainType, this.respawnSalt + i * 31);
             f.posQ.copy(q);
             f.heading = randomSpawnQuaternionAndHeading(this.seed + i * 9973 + this.respawnSalt).heading;
+            f.prevHeading = f.heading;
             f.progress = 0;
             f.visual.setProgress(0);
             f.visual.setOpacityFade(0);
@@ -402,7 +423,7 @@ export class OceanFish {
           f.progress = Math.min(1, f.progress + FISH_FILL_RATE * dt);
           if (f.progress >= 1) {
             this.catchCount += 1;
-            this.catchVfx.spawn(this.group.parent, wp.clone(), boatWorldPos);
+            this.catchVfx.spawn(this.group.parent, wp.clone(), boatTargetPos);
             this.onCatch?.();
             f.status = "respawning";
             f.respawnT = 0;
@@ -453,12 +474,12 @@ export class OceanFish {
       }
     }
 
-    this.catchVfx.update(dt);
+    this.catchVfx.update(dt, boatTargetPos);
   }
 
   private shadowAlpha(dayWeight: number, nightWeight: number): number {
     const eveningWeight = Math.max(0, 1 - dayWeight - nightWeight);
-    return 0.62 * dayWeight + 0.58 * eveningWeight + 0.78 * nightWeight;
+    return 0.5 * dayWeight + 0.9 * eveningWeight + 0.9 * nightWeight;
   }
 
   private pickOceanQuaternion(salt: number, boatWorldPos: Vector3 | null): Quaternion | null {
@@ -500,6 +521,7 @@ export class OceanFish {
     const radialUp = frame.up;
     if (radialUp.dot(boatRadial) <= -0.1) {
       f.visual.group.visible = false;
+      f.prevHeading = f.heading;
       return;
     }
     f.visual.group.visible = true;
@@ -518,7 +540,7 @@ export class OceanFish {
     const xAxis = new Vector3().crossVectors(radialUp, inPlane).normalize();
     const mBar = new Matrix4().makeBasis(xAxis, radialUp, inPlane.clone());
     f.visual.barGroup.quaternion.setFromRotationMatrix(mBar);
-    f.visual.barGroup.position.copy(radialUp).multiplyScalar(0.08);
+    f.visual.barGroup.position.copy(radialUp).multiplyScalar(0.04);
 
     const alpha = this.shadowAlpha(dayWeight, nightWeight);
     f.visual.setProgress(f.status === "capturing" ? f.progress : 0);
@@ -528,6 +550,14 @@ export class OceanFish {
     f.visual.setShadowOpacity(alpha);
     const eveningWeight = Math.max(0, 1 - dayWeight - nightWeight);
     f.visual.setNightGlow(nightWeight, eveningWeight);
+
+    const turnDelta = wrapAnglePi(f.heading - f.prevHeading);
+    const wiggle =
+      Math.sin(this.time * 2.45 + f.phase) * 0.24 +
+      Math.sin(this.time * 1.04 + f.phase * 1.43) * 0.11 +
+      Math.max(-0.32, Math.min(0.32, turnDelta * 6.2));
+    f.visual.setShadowWiggle(wiggle);
+    f.prevHeading = f.heading;
   }
 
   /**

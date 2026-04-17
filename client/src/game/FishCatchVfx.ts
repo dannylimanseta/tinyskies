@@ -3,9 +3,11 @@
  */
 import {
   AdditiveBlending,
+  BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
+  Color,
   ConeGeometry,
   Group,
   Matrix4,
@@ -24,7 +26,7 @@ const ARC_HEIGHT = 0.18;
 /** Fade fish mesh after landing on boat (seconds). */
 const FISH_FADE_AT_BOAT_SEC = 0.16;
 /** Overall size vs globe (~5u radius); keep visually small next to the boat. */
-const FISH_GROUP_SCALE = 0.2;
+const FISH_GROUP_SCALE = 0.1;
 
 /** Splash particle pool per burst */
 const SPLASH_N = 56;
@@ -66,41 +68,97 @@ function splashTex(): CanvasTexture {
 }
 
 /**
- * Build a very simple fish: stretched body + cone tail, faces +X.
+ * Cartoon fish facing +X: fusiform body, dorsal + paired fins, forked tail.
  */
-function createFishMesh(): { group: Group; matBody: MeshBasicMaterial; matTail: MeshBasicMaterial } {
-  const mat = new MeshBasicMaterial({
-    color: 0x5a9ec8,
+function createFishMesh(
+  colorBody: Color,
+  colorTail: Color,
+): { group: Group; matBody: MeshBasicMaterial; matTail: MeshBasicMaterial } {
+  const matBody = new MeshBasicMaterial({
+    color: colorBody,
     transparent: true,
     opacity: 1,
     depthTest: true,
     depthWrite: true,
   });
   const matTail = new MeshBasicMaterial({
-    color: 0x3d7aa8,
+    color: colorTail,
     transparent: true,
     opacity: 1,
     depthTest: true,
     depthWrite: true,
   });
+  const matWhite = new MeshBasicMaterial({ color: 0xffffff });
+  const matBlack = new MeshBasicMaterial({ color: 0x000000 });
   const g = new Group();
 
-  const body = new Mesh(new SphereGeometry(0.05, 10, 8), mat);
-  body.scale.set(2.2, 1.0, 1.15);
-  body.position.x = 0;
+  // Body (flattened laterally, taller)
+  const body = new Mesh(new SphereGeometry(0.048, 16, 12), matBody);
+  body.scale.set(2.6, 1.3, 0.85);
   g.add(body);
 
-  const tail = new Mesh(new ConeGeometry(0.045, 0.09, 6), matTail);
-  tail.rotation.z = Math.PI / 2;
-  tail.position.x = -0.1;
-  g.add(tail);
+  // Snout
+  const snout = new Mesh(new SphereGeometry(0.022, 12, 10), matBody);
+  snout.position.set(0.095, 0.005, 0);
+  snout.scale.set(1.2, 0.8, 0.7);
+  g.add(snout);
 
-  const eye = new Mesh(new SphereGeometry(0.012, 6, 6), matTail);
-  eye.position.set(0.06, 0.02, 0.028);
-  g.add(eye);
+  // Dorsal fin (top)
+  const dorsal = new Mesh(new BoxGeometry(0.08, 0.045, 0.01), matTail);
+  dorsal.position.set(0.01, 0.055, 0);
+  dorsal.rotation.z = -0.15;
+  g.add(dorsal);
+
+  // Pectoral fins (sides)
+  const pecL = new Mesh(new BoxGeometry(0.05, 0.008, 0.04), matTail);
+  pecL.position.set(0.03, -0.015, 0.04);
+  pecL.rotation.x = 0.4;
+  pecL.rotation.y = -0.4;
+  g.add(pecL);
+
+  const pecR = new Mesh(new BoxGeometry(0.05, 0.008, 0.04), matTail);
+  pecR.position.set(0.03, -0.015, -0.04);
+  pecR.rotation.x = -0.4;
+  pecR.rotation.y = 0.4;
+  g.add(pecR);
+
+  // Tail stem
+  const tailStem = new Mesh(new ConeGeometry(0.03, 0.05, 8), matBody);
+  tailStem.rotation.z = Math.PI / 2;
+  tailStem.position.set(-0.09, 0, 0);
+  tailStem.scale.set(1, 1, 0.6);
+  g.add(tailStem);
+
+  // Caudal fin (Tail)
+  const tailL = new Mesh(new ConeGeometry(0.025, 0.07, 6), matTail);
+  tailL.rotation.set(0, 0, Math.PI / 2 + 0.25);
+  tailL.position.set(-0.12, 0.02, 0);
+  tailL.scale.set(1, 1, 0.4);
+  g.add(tailL);
+
+  const tailR = new Mesh(new ConeGeometry(0.025, 0.07, 6), matTail);
+  tailR.rotation.set(0, 0, Math.PI / 2 - 0.25);
+  tailR.position.set(-0.12, -0.02, 0);
+  tailR.scale.set(1, 1, 0.4);
+  g.add(tailR);
+
+  // Eyes
+  const eyeL = new Mesh(new SphereGeometry(0.008, 8, 8), matWhite);
+  eyeL.position.set(0.075, 0.025, 0.025);
+  g.add(eyeL);
+  const pupilL = new Mesh(new SphereGeometry(0.004, 8, 8), matBlack);
+  pupilL.position.set(0.078, 0.025, 0.03);
+  g.add(pupilL);
+
+  const eyeR = new Mesh(new SphereGeometry(0.008, 8, 8), matWhite);
+  eyeR.position.set(0.075, 0.025, -0.025);
+  g.add(eyeR);
+  const pupilR = new Mesh(new SphereGeometry(0.004, 8, 8), matBlack);
+  pupilR.position.set(0.078, 0.025, -0.03);
+  g.add(pupilR);
 
   g.scale.setScalar(FISH_GROUP_SCALE);
-  return { group: g, matBody: mat, matTail: matTail };
+  return { group: g, matBody: matBody, matTail: matTail };
 }
 
 function createSplashPoints(): { points: Points; pool: Splash[]; geo: BufferGeometry; mat: PointsMaterial } {
@@ -246,10 +304,14 @@ export class FishCatchCelebration {
     _tan.normalize();
     _bin.crossVectors(_rad, _tan).normalize();
 
-    this.p1 = boatWorld.clone().addScaledVector(_rad, 0.14).addScaledVector(_tan, 0.06);
+    this.p1 = boatWorld.clone().addScaledVector(_rad, 0.14);
 
     this.root = new Group();
-    const built = createFishMesh();
+    // Randomize fish colors (hue variation)
+    const hue = Math.random();
+    const colorBody = new Color().setHSL(hue, 0.8, 0.55);
+    const colorTail = new Color().setHSL(hue, 0.9, 0.45);
+    const built = createFishMesh(colorBody, colorTail);
     this.fish = built.group;
     this.fishMaterials.push(built.matBody, built.matTail);
     this.root.add(this.fish);
@@ -281,8 +343,14 @@ export class FishCatchCelebration {
   /**
    * @returns true while still updating (keep calling), false when done and disposed.
    */
-  update(dt: number): boolean {
+  update(dt: number, boatWorld?: Vector3): boolean {
     if (this.finished) return false;
+
+    if (boatWorld) {
+      // Dynamically update target position so fish tracks the moving boat
+      _rad.copy(boatWorld).normalize();
+      this.p1.copy(boatWorld).addScaledVector(_rad, 0.14);
+    }
 
     this.time += dt;
     const u = Math.min(1, this.time / JUMP_SEC);
@@ -353,9 +421,9 @@ export class FishCatchVfx {
     this.celebrations.push(new FishCatchCelebration(scene, fishWorld, boatWorld));
   }
 
-  update(dt: number) {
+  update(dt: number, boatWorld?: Vector3) {
     for (let i = this.celebrations.length - 1; i >= 0; i--) {
-      if (!this.celebrations[i]!.update(dt)) {
+      if (!this.celebrations[i]!.update(dt, boatWorld)) {
         this.celebrations.splice(i, 1);
       }
     }
