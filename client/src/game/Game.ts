@@ -2060,7 +2060,7 @@ export class Game {
 
     if (this.playerVehicle === "plane") {
       const engineVol =
-        0.08 + (this.localPlayer as Plane).engineSpeedRatio * 0.25;
+        0.095 + (this.localPlayer as Plane).engineSpeedRatio * 0.28;
       this.audioManager.setLoopVolume("engine_biplane", engineVol);
     }
 
