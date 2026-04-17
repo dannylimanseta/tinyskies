@@ -51,7 +51,7 @@ const JELLY_SCALE_FOLLOW = 0.075;
 /** Follow damping rate (higher = tighter). */
 const JELLY_FOLLOW_DAMPING = 1.5;
 /** Snap time for "entering orbit" after capture completes. */
-const JELLY_CAPTURE_HANDOFF_SEC = 0.6;
+const JELLY_CAPTURE_HANDOFF_SEC = 1.2;
 /** Reset fade duration (moon impact). */
 const JELLY_RESET_FADE_SEC = 0.9;
 
@@ -73,12 +73,12 @@ export const JELLY_COLORS = [
  * +Z = behind, +X = carpet's right, +Y = up.
  */
 const JELLY_FOLLOW_OFFSETS: readonly Vector3[] = [
-  new Vector3(-0.08, 0.02, -0.02),   // left wing, slightly ahead
-  new Vector3( 0.08, 0.02, -0.02),   // right wing, slightly ahead
-  new Vector3(-0.12, 0.05,  0.04),   // left-back, slightly high
-  new Vector3( 0.12, 0.05,  0.04),   // right-back, slightly high
-  new Vector3( 0.00, 0.08, -0.04),   // above-center, leading
-  new Vector3( 0.00, 0.03,  0.08),   // center-back, trailing
+  new Vector3(-0.08, 0.02,  0.02),   // left wing, slightly behind
+  new Vector3( 0.08, 0.02,  0.02),   // right wing, slightly behind
+  new Vector3(-0.14, 0.06,  0.12),   // left-back, trailing more
+  new Vector3( 0.14, 0.06,  0.12),   // right-back, trailing more
+  new Vector3( 0.00, 0.08,  0.00),   // above-center
+  new Vector3( 0.00, 0.03,  0.22),   // center-back, trailing furthest
 ];
 
 type JellyStatus = "world" | "capturing" | "handoff" | "following" | "fading";
@@ -288,7 +288,31 @@ export class SkyJellyfish {
           const smooth = t * t * (3 - 2 * t);
           this.computeOrbitTarget(j, carpetMatrix, _tmpTarget);
           j.handoffEnd.copy(_tmpTarget);
-          _tmpV.copy(j.handoffStart).lerp(j.handoffEnd, smooth);
+
+          // Quadratic Bezier arc: jelly glides gracefully up-and-in rather than
+          // moving in a straight line. Control point is lifted in the globe-radial
+          // (outward) direction from the midpoint.
+          _bezierCtrl.copy(j.handoffStart).lerp(j.handoffEnd, 0.5);
+          _bezierDir.copy(j.handoffStart).normalize(); // outward-radial from globe center
+          _bezierCtrl.addScaledVector(_bezierDir, 0.3); // lift control point outward
+
+          const s1 = 1 - smooth;
+          // Q(t) = (1-t)²·P0 + 2(1-t)t·P1 + t²·P2
+          _tmpV.set(0, 0, 0)
+            .addScaledVector(j.handoffStart, s1 * s1)
+            .addScaledVector(_bezierCtrl, 2 * s1 * smooth)
+            .addScaledVector(j.handoffEnd, smooth * smooth);
+
+          // Overlay a small swimming oscillation along the travel direction so
+          // it looks like the jelly is actively propelling itself over.
+          _pathDir.copy(j.handoffEnd).sub(j.handoffStart);
+          const pathLen = _pathDir.length();
+          if (pathLen > 1e-4) {
+            _pathDir.multiplyScalar(1 / pathLen);
+            const swim = Math.sin(j.handoffT * Math.PI * 2 * 0.75) * 0.015 * (1 - t);
+            _tmpV.addScaledVector(_pathDir, swim);
+          }
+
           j.followPos.copy(_tmpV);
           j.visual.group.position.copy(j.followPos);
           j.visual.group.scale.setScalar(MathUtils.lerp(JELLY_SCALE_WORLD, JELLY_SCALE_FOLLOW, smooth));
@@ -387,13 +411,20 @@ export class SkyJellyfish {
   private computeOrbitTarget(j: Jelly, carpetMatrix: Matrix4, out: Vector3) {
     const offset = JELLY_FOLLOW_OFFSETS[j.orbitSlot % JELLY_FOLLOW_OFFSETS.length]!;
     _orbitLocalScratch.copy(offset);
-    // Bob in the carpet's local up/right directions so the motion reads as
-    // "swimming" relative to the carpet (not the world) — holds shape in turns.
-    // Reduced amplitude so they float around less.
-    const bob = Math.sin(this.time * 1.9 + j.bobPhase) * 0.025;
-    const sway = Math.sin(this.time * 1.3 + j.bobPhase * 1.7) * 0.015;
+
+    // Small gentle bob in the carpet's local up/right.
+    const bob  = Math.sin(this.time * 2.2 + j.bobPhase)       * 0.020;
+    const sway = Math.sin(this.time * 1.4 + j.bobPhase * 1.7) * 0.018;
     _orbitLocalScratch.y += bob;
     _orbitLocalScratch.x += sway;
+
+    // Swimming impulse in forward direction, synchronized with the bell shader's
+    // pulse frequency (0.75 Hz). Burst forward on the power stroke, drift back
+    // gently on the glide — net displacement is ~zero per cycle.
+    const swimCycle = this.time * 0.75 * Math.PI * 2 + j.bobPhase;
+    const swim = Math.sin(swimCycle) * 0.012;
+    _orbitLocalScratch.z -= swim; // -Z is forward in carpet-local space
+
     out.copy(_orbitLocalScratch).applyMatrix4(carpetMatrix);
   }
 
@@ -412,9 +443,9 @@ export class SkyJellyfish {
 
     // Tilt/roll around the forward axis so the jelly rocks side to side like
     // it's steering. Uses the same forward vector as the rotation axis.
-    const tilt = Math.sin(this.time * 2.5 + j.bobPhase) * 0.15;
+    const tilt = Math.sin(this.time * 2.5 + j.bobPhase) * 0.25;
     // A smaller pitch nod around the right axis so it also bobs head-down/up.
-    const nod = Math.sin(this.time * 1.8 + j.bobPhase * 1.3) * 0.1;
+    const nod = Math.sin(this.time * 1.8 + j.bobPhase * 1.3) * 0.15;
 
     _tiltQ.setFromAxisAngle(_forwardScratch, tilt);
     q.premultiply(_tiltQ);
@@ -427,11 +458,14 @@ export class SkyJellyfish {
   }
 }
 
-const _forwardScratch = new Vector3();
-const _rightScratch = new Vector3();
-const _upScratch = new Vector3();
+const _forwardScratch  = new Vector3();
+const _rightScratch    = new Vector3();
+const _upScratch       = new Vector3();
 const _orbitLocalScratch = new Vector3();
-const _followQ = new Quaternion();
-const _tiltQ = new Quaternion();
-const _mat4 = new Matrix4();
+const _bezierCtrl      = new Vector3();
+const _bezierDir       = new Vector3();
+const _pathDir         = new Vector3();
+const _followQ  = new Quaternion();
+const _tiltQ    = new Quaternion();
+const _mat4     = new Matrix4();
 const JELLY_LOCAL_UP = new Vector3(0, 1, 0);
