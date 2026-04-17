@@ -490,7 +490,7 @@ export class OceanFish {
 
   private shadowAlpha(dayWeight: number, nightWeight: number): number {
     const eveningWeight = Math.max(0, 1 - dayWeight - nightWeight);
-    return 0.5 * dayWeight + 0.9 * eveningWeight + 0.9 * nightWeight;
+    return 0.3 * dayWeight + 0.9 * eveningWeight + 0.9 * nightWeight;
   }
 
   private pickOceanQuaternion(salt: number, boatWorldPos: Vector3 | null): Quaternion | null {
