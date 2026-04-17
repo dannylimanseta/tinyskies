@@ -233,7 +233,7 @@ export class HUD {
   }
 
   showRainbowCelebrate() {
-    this.showCenteredToast("hud-rainbow-celebration", "You flew through a rainbow", 1600);
+    this.showCenteredToast("hud-rainbow-celebration", "You went through the rainbow", 1600);
   }
 
   showLanternCelebrate(_count: number) {

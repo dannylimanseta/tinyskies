@@ -1973,14 +1973,16 @@ export class Game {
 
     if (!portalInteractionSuppressed && this.rainbowArches.length > 0) {
       const dayW = this.dayNightCycle.getDayWeight();
+      let rainbowHits = 0;
       for (const arch of this.rainbowArches) {
         const { justCollected } = arch.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude, dayW);
-        if (justCollected) {
-          this.hud.showRainbowCelebrate();
-          this.awardXP("rainbow", RAINBOW_XP);
-          this.vehicleFlashTimer = 0.35;
-          this.cameraRig.shake();
-        }
+        if (justCollected) rainbowHits++;
+      }
+      if (rainbowHits > 0) {
+        this.hud.showRainbowCelebrate();
+        this.awardXP("rainbow", RAINBOW_XP * rainbowHits);
+        this.vehicleFlashTimer = 0.35;
+        this.cameraRig.shake();
       }
     }
 
