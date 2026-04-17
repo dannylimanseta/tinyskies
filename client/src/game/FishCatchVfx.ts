@@ -20,6 +20,7 @@ import {
   SphereGeometry,
   Vector3,
 } from "three";
+import type { AudioManager } from "../audio/AudioManager";
 
 const JUMP_SEC = 0.62;
 const ARC_HEIGHT = 0.18;
@@ -29,8 +30,8 @@ const FISH_FADE_AT_BOAT_SEC = 0.16;
 const FISH_GROUP_SCALE = 0.1;
 
 /** Splash particle pool per burst */
-const SPLASH_N = 56;
-const SPLASH_LIFE = 0.45;
+const SPLASH_N = 128;
+const SPLASH_LIFE = 0.6;
 /** Pull particles slightly toward globe center (reads like water spray falling back). */
 const SPLASH_INWARD = 1.4;
 
@@ -50,9 +51,11 @@ function makeSplashTexture(): CanvasTexture {
   c.width = 32;
   c.height = 32;
   const ctx = c.getContext("2d")!;
+  // Sharper core for distinct water droplets
   const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 15);
-  g.addColorStop(0, "rgba(220,245,255,1)");
-  g.addColorStop(0.45, "rgba(120,190,230,0.5)");
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.2, "rgba(200,240,255,0.9)");
+  g.addColorStop(0.5, "rgba(120,190,230,0.4)");
   g.addColorStop(1, "rgba(80,150,200,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 32, 32);
@@ -292,9 +295,15 @@ export class FishCatchCelebration {
   private readonly p1: Vector3;
   /** Splash only where the fish leaves the water (catch point), not at the boat. */
   private readonly takeoffSplash: ReturnType<typeof createSplashPoints>;
+  private landed = false;
   private finished = false;
 
-  constructor(scene: Object3D, fishCatchWorld: Vector3, boatWorld: Vector3) {
+  constructor(
+    private readonly audio: AudioManager | null,
+    scene: Object3D,
+    fishCatchWorld: Vector3,
+    boatWorld: Vector3,
+  ) {
     this.p0 = fishCatchWorld.clone();
     // Target slightly above boat deck, shifted toward boat center (radial in)
     _rad.copy(boatWorld).normalize();
@@ -327,6 +336,12 @@ export class FishCatchCelebration {
     _tan.normalize();
     _bin.crossVectors(_rad, _tan).normalize();
     emitSplash(this.takeoffSplash.pool, this.p0, _rad.clone(), _tan.clone(), _bin.clone(), 0.55);
+
+    if (this.audio) {
+      this.audio.resumeContextIfNeeded();
+      const splashId = Math.random() < 0.5 ? "splash_1" : "splash_2";
+      this.audio.playSFX(splashId, 0.55);
+    }
 
     scene.add(this.root);
 
@@ -378,6 +393,14 @@ export class FishCatchCelebration {
     );
 
     if (u >= 1) {
+      if (!this.landed) {
+        this.landed = true;
+        if (this.audio) {
+          this.audio.resumeContextIfNeeded();
+          this.audio.playSFX("fish_catch_1", 0.58);
+        }
+      }
+
       this.fishFadeT += dt;
       const k = Math.min(1, this.fishFadeT / FISH_FADE_AT_BOAT_SEC);
       const op = 1 - k;
@@ -416,9 +439,11 @@ export class FishCatchCelebration {
 export class FishCatchVfx {
   private readonly celebrations: FishCatchCelebration[] = [];
 
+  constructor(private readonly audio: AudioManager | null = null) {}
+
   spawn(scene: Object3D | null, fishWorld: Vector3, boatWorld: Vector3) {
     if (!scene) return;
-    this.celebrations.push(new FishCatchCelebration(scene, fishWorld, boatWorld));
+    this.celebrations.push(new FishCatchCelebration(this.audio, scene, fishWorld, boatWorld));
   }
 
   update(dt: number, boatWorld?: Vector3) {

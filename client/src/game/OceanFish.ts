@@ -21,6 +21,7 @@ import {
   tangentFrame,
 } from "./SphericalMath";
 import { isLand } from "./SimplexNoise";
+import type { AudioManager } from "../audio/AudioManager";
 import { createFishVisual, type OceanFishVisual } from "./OceanFishMesh";
 import { FishCatchVfx } from "./FishCatchVfx";
 import { randomOceanQuaternion } from "./Boat";
@@ -125,17 +126,19 @@ export class OceanFish {
   private readonly globeRadius: number;
   private readonly seed: number;
   private readonly terrainType: string;
-  private readonly catchVfx = new FishCatchVfx();
+  private readonly catchVfx: FishCatchVfx;
 
   constructor(
     globeRadius: number,
     worldSeed: number,
     sessionSalt: number,
     terrainType: string,
+    audioManager: AudioManager | null = null,
   ) {
     this.globeRadius = globeRadius;
     this.seed = worldSeed;
     this.terrainType = terrainType;
+    this.catchVfx = new FishCatchVfx(audioManager);
 
     // ── Dashed fishing-range ring (textured disc) ────────────────
     // Canvas with a ring of radial dashes painted around the circumference.
@@ -272,7 +275,7 @@ export class OceanFish {
       .addScaledVector(boatFrame.east, Math.sin(boatHeading));
     
     // Shift landing spot slightly astern (backwards) so it lands on the deck, not the bow
-    const boatTargetPos = boatWorldPos.clone().addScaledVector(_boatForward, -0.075);
+    const boatTargetPos = boatWorldPos.clone().addScaledVector(_boatForward, -0.18);
 
     // Pre-compute world positions (used for range checks before movement)
     for (const f of this.fish) {

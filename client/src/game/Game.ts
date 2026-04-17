@@ -128,6 +128,10 @@ const RUMBLE_LOOP_NAME = "rumbling_1";
 /** Moon rumble at 100% progress (0 at 75%, ramps up to this by impact). */
 const RUMBLE_MAX_VOL = 0.42;
 
+/** Boat: ambient ocean waves (looping while flying). */
+const OCEAN_WAVES_LOOP_NAME = "ocean_waves_1";
+const OCEAN_WAVES_LOOP_VOL = 0.16;
+
 const EXPLOSION_SFX_NAME = "explosion_1";
 const EXPLOSION_SFX_VOLUME = 0.48;
 
@@ -405,6 +409,10 @@ export class Game {
       this.audioManager.loadSFX("camera", "/audio/sfx/camera.mp3");
       this.audioManager.loadSFX("portal_1", "/audio/sfx/portal_1.mp3");
       this.audioManager.loadSFX("portal_open", "/audio/sfx/portal_open.mp3");
+      this.audioManager.loadSFX("splash_1", "/audio/sfx/splash_1.mp3");
+      this.audioManager.loadSFX("splash_2", "/audio/sfx/splash_2.mp3");
+      this.audioManager.loadSFX("fish_catch_1", "/audio/sfx/fish_catch_1.mp3");
+      this.audioManager.loadSFX(OCEAN_WAVES_LOOP_NAME, "/audio/sfx/ocean_waves_1.mp3");
     });
     this.playerName = ProgressionManager.loadPlayerName() ?? generateWhimsicalName();
     ProgressionManager.savePlayerName(this.playerName);
@@ -907,7 +915,7 @@ export class Game {
     });
 
     if (this.localPlayer instanceof Boat && this.vehicleFeatures.fishingMiniGame) {
-      this.oceanFish = new OceanFish(globeRadius, seed, spawnSessionSalt, terrainType);
+      this.oceanFish = new OceanFish(globeRadius, seed, spawnSessionSalt, terrainType, this.audioManager);
       this.scene.add(this.oceanFish.group);
       this.fishCaught = 0;
       this.hud.setFishCaught(0);
@@ -916,9 +924,6 @@ export class Game {
         this.hud.setFishCaught(this.fishCaught);
         this.awardXP("fish", FISH_CATCH_XP);
         this.audioManager.resumeContextIfNeeded();
-        if (this.audioManager.hasSFX("diamond_collect_1")) {
-          this.audioManager.playSFX("diamond_collect_1", 0.25, 1.4);
-        }
         this.cameraRig.shake(0.015, 0.12);
         this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.15);
       };
@@ -1206,6 +1211,7 @@ export class Game {
 
     this.audioManager.stopLoop("engine_biplane");
     this.audioManager.stopLoop("engine_carpet");
+    this.audioManager.stopLoop(OCEAN_WAVES_LOOP_NAME);
     for (const id of DIALOGUE_LOOP_IDS) {
       this.audioManager.fadeOutLoop(id);
     }
@@ -1570,6 +1576,8 @@ export class Game {
       this.audioManager.startLoop("engine_biplane", 0);
     } else if (this.playerVehicle === "carpet") {
       this.audioManager.startLoop("engine_carpet", 0.06);
+    } else if (this.playerVehicle === "boat") {
+      this.audioManager.startLoop(OCEAN_WAVES_LOOP_NAME, OCEAN_WAVES_LOOP_VOL);
     }
   }
 
