@@ -112,6 +112,8 @@ const STONEHENGE_WHISPER_COOLDOWN = 45;
 const BRAZIER_WHISPER_DIST      = 1.6;
 const BRAZIER_WHISPER_EXIT_DIST = 2.2;
 const BRAZIER_WHISPER_COOLDOWN  = 60;
+const MOONSTONE_ACTIVATE_DIST = 1.1;
+const MOONSTONE_ACTIVATE_RETRY_MS = 1_000;
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -274,6 +276,7 @@ export class Game {
   private brazierInRange: boolean[] = [];
   private brazierCooldown: number[] = [];
   private lastBrazierProgress: number[] = [];
+  private moonstoneActivationRetryAt: number[] = [];
   /** Offline-only edge detect for all-five shield (no server). */
   private prevAllFiveBraziers = false;
   /** Only show the moon-resumed banner after a locally-announced brazier pause. */
@@ -951,6 +954,7 @@ export class Game {
     if (this.skyJellyfish) {
       this.jellyfishCaptureRing = new CircularProgressRing(this.hud.root);
     }
+    this.moonstoneActivationRetryAt = new Array(this.globe.moonstoneRuinCenters.length).fill(0);
 
     if (vehicle === "plane" && this.paintballSystem) {
       this.skyGremlins = new SkyGremlins(
@@ -1200,6 +1204,7 @@ export class Game {
     this.braziers?.dispose();
     this.braziers = null;
     this.pendingBrazierSync = null;
+    this.moonstoneActivationRetryAt = [];
     this.portalInteractionSuppressTimer = 0;
     this.hud.disposeBrazierTracker();
     this.campsiteScene?.dispose();
@@ -1560,6 +1565,14 @@ export class Game {
 
     this.socketClient.onBrazierMoonPause((payload) => {
       this.applyBrazierMoonShield(payload.remainingMs, payload.announce !== false);
+    });
+
+    this.socketClient.onMoonstoneSync((payload) => {
+      this.globe.syncMoonstoneRuinCycles(payload.cycleStartsAt);
+    });
+
+    this.socketClient.onMoonstoneActivated((ev) => {
+      this.globe.startMoonstoneRuinCycle(ev.index, ev.cycleStartAt);
     });
 
     this.socketClient.onPaintballFired((ev) => {
@@ -2167,11 +2180,16 @@ export class Game {
       this.landmarkDetector.update(this.localPlayer.qPosition);
     }
     const questPlayerPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+    const moonstoneShakeTrauma =
+      this.playerVehicle === "carpet"
+        ? this.globe.getMoonstoneShakeTrauma(questPlayerPos)
+        : 0;
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
     this.moonThreat?.update(dt);
+    const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
+    this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma));
     if (this.moonThreat) {
-      this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
       if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
         this.startMoonImpactCinematic();
       }
@@ -2190,6 +2208,8 @@ export class Game {
       questPlayerPos,
     );
 
+    const moonstoneProgress = this.updateMoonstoneRuins(questPlayerPos, !portalInteractionSuppressed);
+
     if (this.skyJellyfish) {
       this.localPlayer.group.updateMatrixWorld(true);
       const selfieActive = this.selfieProgressCached > 0;
@@ -2200,7 +2220,10 @@ export class Game {
         !portalInteractionSuppressed,
         selfieActive,
       );
-      this.jellyfishCaptureRing?.setProgress(this.skyJellyfish.getCaptureProgress());
+      const jellyfishProgress = this.skyJellyfish.getCaptureProgress();
+      this.jellyfishCaptureRing?.setProgress(moonstoneProgress > 0 ? moonstoneProgress : jellyfishProgress);
+    } else {
+      this.jellyfishCaptureRing?.setProgress(moonstoneProgress);
     }
 
     if (!portalInteractionSuppressed && this.packageQuest && this.moonThreat) {
@@ -2836,6 +2859,30 @@ export class Game {
       this.dayNightCycle.getNightWeight(),
       allowCapture,
     );
+  }
+
+  /**
+   * Carpet-only moonstone ritual: entering range of an idle ruin requests the shared
+   * lift cycle from the server. The returned 0..1 value drives the reused HUD ring
+   * while the nearest nearby ruin is in its 5-second raise phase.
+   */
+  private updateMoonstoneRuins(playerWorldPos: Vector3, allowInteraction: boolean): number {
+    if (!(this.localPlayer instanceof Carpet)) return 0;
+
+    const now = Date.now();
+    if (allowInteraction) {
+      const idx = this.globe.findNearestActivatableMoonstone(playerWorldPos, MOONSTONE_ACTIVATE_DIST, now);
+      if (idx >= 0 && now >= (this.moonstoneActivationRetryAt[idx] ?? 0)) {
+        this.moonstoneActivationRetryAt[idx] = now + MOONSTONE_ACTIVATE_RETRY_MS;
+        if (this.socketClient?.connected) {
+          this.socketClient.emitMoonstoneActivate(idx);
+        } else {
+          this.globe.startMoonstoneRuinCycle(idx, now);
+        }
+      }
+    }
+
+    return this.globe.getNearbyMoonstoneRaiseProgress(playerWorldPos, MOONSTONE_ACTIVATE_DIST, now);
   }
 
   private awardXP(source: XpSource, base: number) {

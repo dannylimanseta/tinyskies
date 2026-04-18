@@ -23,10 +23,19 @@ import {
   Float32BufferAttribute,
   InstancedBufferAttribute,
   BufferGeometry,
+  BufferAttribute,
+  Points,
+  PointsMaterial,
   type Scene,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import {
+  MOONSTONE_FLOAT_MS,
+  MOONSTONE_LOWER_MS,
+  MOONSTONE_RAISE_MS,
+  MOONSTONE_RUIN_COUNT,
+} from "@globefly/shared";
 import { addRimLight } from "./RimLight";
 import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, sampleTerrain } from "./SimplexNoise";
@@ -68,6 +77,9 @@ const CLOUD_DRIFT_SPEED = 0.03;
 const BALLOON_COUNT = 5;
 const BALLOON_ALTITUDE = 0.6;
 const WINDMILL_COUNT = 5;
+const MOONSTONE_FLOAT_HEIGHT = 0.82;
+const MOONSTONE_DUST_COUNT = 56;
+const MOONSTONE_DUST_GRAVITY = 4.2;
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -96,6 +108,27 @@ function minMeshVertexProjectionAlongNormal(root: Object3D, normal: Vector3): nu
     }
   });
   return min;
+}
+
+type MoonstoneRuinPhase = "idle" | "raising" | "floating" | "lowering";
+
+interface MoonstoneDustState {
+  geometry: BufferGeometry;
+  points: Points;
+  position: Float32Array;
+  velocity: Float32Array;
+  life: Float32Array;
+}
+
+interface MoonstoneRuinState {
+  normal: Vector3;
+  tangent: Vector3;
+  bitangent: Vector3;
+  basePosition: Vector3;
+  root: Object3D | null;
+  cycleStartAt: number | null;
+  restQuaternion: Quaternion;
+  dust: MoonstoneDustState | null;
 }
 
 export class Globe {
@@ -136,6 +169,9 @@ export class Globe {
   readonly hotspringCenters: { normal: Vector3 }[] = [];
   readonly mushroomCenters: { normal: Vector3 }[] = [];
   readonly butterflyCenters: { normal: Vector3 }[] = [];
+  /** Buried moonstone ring halves — giant ruin props; two sites, far apart. */
+  readonly moonstoneRuinCenters: { normal: Vector3 }[] = [];
+  private moonstoneRuins: MoonstoneRuinState[] = [];
 
   private hotspringSteamInstanced: InstancedMesh | null = null;
   private shrineSparkleInstanced: InstancedMesh | null = null;
@@ -189,6 +225,7 @@ export class Globe {
   }[] = [];
   private readonly floatingTreeDummy   = new Object3D();
   private readonly floatingTreePosScratch = new Vector3();  // avoids per-frame allocation
+  private readonly moonstoneEmitScratch = new Vector3();
   private floatingTreesActive          = false;             // skip updates when t=0
   private static readonly FT_CLUSTERS         = 28;   // forest-anchored clusters (impact-biased)
   private static readonly FT_PER_CLUSTER      = 40;   // base trees per forest cluster
@@ -272,6 +309,7 @@ export class Globe {
     this.createHotsprings();
     this.createMushrooms();
     this.createButterflyGardens();
+    this.createMoonstoneRuins();
     this.createFloatingTreeClusters();
     this.createBalloons();
     this.createClouds();
@@ -2944,6 +2982,365 @@ transformed.z += sway2;`,
     }
   }
 
+  /**
+   * Two giant buried halves of the moonstone ring at inland sites (left / right GLB),
+   * grounded on terrain and sunk along the surface normal for a ruin look.
+   */
+  private createMoonstoneRuins() {
+    const RUIN_COUNT = MOONSTONE_RUIN_COUNT;
+    const MIN_ELEVATION = 0.06;
+    const MAX_ELEVATION = 0.7;
+    const MIN_SEPARATION_DOT = 0.84;
+    const INLAND_CHECKS = 8;
+    const INLAND_CHECK_DIST = 0.07;
+    const MAX_WATER_RATIO = 0.26;
+    const ROUGH_RING_DIST = 0.085;
+    const MAX_ROUGHNESS = 0.26;
+    /** World units: max dimension after scale (~half of the original giant ruin size). */
+    const TARGET_MAX_DIM = 0.875;
+    /** Fraction of {@link TARGET_MAX_DIM} buried below nominal ground after grounding. */
+    const BURY_DEPTH_RATIO = 0.44;
+    /** Tilt the carved face toward the zenith (rad); primary = along surface tangent, secondary = diagonal. */
+    const TILT_ORNATE_TOWARD_SKY = 0.36;
+    const TILT_DIAGONAL = 0.14;
+
+    const rand = seededRandom(771133 + this.seed);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 8000 && candidates.length < 220) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    candidates.sort((a, b) => a.elevation - b.elevation);
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= RUIN_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+    if (chosen.length === 0) return;
+
+    const placements = chosen.map((normal) => {
+      const displacement = surfaceDisplacementAt(this.seed, this.terrainType, normal.x, normal.y, normal.z);
+      const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+      return { normal, surfaceR };
+    });
+    for (const { normal, surfaceR } of placements) {
+      this.moonstoneRuinCenters.push({ normal: normal.clone() });
+      this.moonstoneRuins.push({
+        normal: normal.clone(),
+        tangent: new Vector3(),
+        bitangent: new Vector3(),
+        basePosition: normal.clone().multiplyScalar(surfaceR),
+        root: null,
+        cycleStartAt: null,
+        restQuaternion: new Quaternion(),
+        dust: null,
+      });
+    }
+
+    const REF_UP = new Vector3(0, 1, 0);
+    const spin = seededRandom(991122 + this.seed);
+
+    const placeModel = (gltf: { scene: Object3D }, index: number) => {
+      const state = this.moonstoneRuins[index];
+      const placement = placements[index];
+      if (!state || !placement) return;
+      const { normal, surfaceR } = placement;
+      const template = gltf.scene;
+      template.updateMatrixWorld(true);
+      const box = new Box3().setFromObject(template);
+      const size = new Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z, 1e-4);
+      const uniformScale = TARGET_MAX_DIM / maxDim;
+
+      const model = template.clone(true);
+      model.scale.setScalar(uniformScale);
+      model.position.copy(normal.clone().multiplyScalar(surfaceR));
+      model.quaternion.setFromUnitVectors(REF_UP, normal);
+      model.rotateY(spin() * Math.PI * 2 + index * 2.17);
+      // Surface tangent basis: tip the half-ring so the relief side reads toward the sky (radial outward).
+      const tangent = new Vector3(-normal.y, normal.x, 0);
+      if (tangent.lengthSq() < 1e-6) tangent.set(0, -normal.z, normal.y);
+      tangent.normalize();
+      const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+      model.rotateOnWorldAxis(tangent, TILT_ORNATE_TOWARD_SKY);
+      model.rotateOnWorldAxis(bitangent, TILT_DIAGONAL * (index === 0 ? 1 : -1));
+      model.updateMatrixWorld(true);
+      let minAlong = minMeshVertexProjectionAlongNormal(model, normal);
+      if (!Number.isFinite(minAlong)) {
+        const bb = new Box3().setFromObject(model);
+        const corners = [
+          new Vector3(bb.min.x, bb.min.y, bb.min.z),
+          new Vector3(bb.max.x, bb.min.y, bb.min.z),
+          new Vector3(bb.min.x, bb.max.y, bb.min.z),
+          new Vector3(bb.max.x, bb.max.y, bb.min.z),
+          new Vector3(bb.min.x, bb.min.y, bb.max.z),
+          new Vector3(bb.max.x, bb.min.y, bb.max.z),
+          new Vector3(bb.min.x, bb.max.y, bb.max.z),
+          new Vector3(bb.max.x, bb.max.y, bb.max.z),
+        ];
+        minAlong = Infinity;
+        for (const c of corners) {
+          const d = c.dot(normal);
+          if (d < minAlong) minAlong = d;
+        }
+      }
+      const lift = surfaceR - minAlong;
+      model.position.addScaledVector(normal, lift);
+      model.position.addScaledVector(normal, -BURY_DEPTH_RATIO * TARGET_MAX_DIM);
+
+      model.traverse((child) => {
+        if ((child as Mesh).isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      state.basePosition.copy(model.position);
+      state.tangent.copy(tangent);
+      state.bitangent.copy(bitangent);
+      state.restQuaternion.copy(model.quaternion);
+      state.root = model;
+      const liftAlpha = this.getMoonstoneLiftAlpha(state.cycleStartAt);
+      model.position.copy(state.basePosition).addScaledVector(normal, liftAlpha * MOONSTONE_FLOAT_HEIGHT);
+      this.group.add(model);
+      this.initMoonstoneDust(state);
+    };
+
+    const loader = new GLTFLoader();
+    const leftUrl = "/3D/moonstone_left.glb";
+    const rightUrl = "/3D/moonstone_right.glb";
+
+    loader.load(
+      leftUrl,
+      (gltf) => {
+        placeModel(gltf, 0);
+        if (placements.length < 2) return;
+        loader.load(
+          rightUrl,
+          (gltf2) => {
+            placeModel(gltf2, 1);
+          },
+          undefined,
+          (err) => {
+            console.error("[Globe] Failed to load", rightUrl, err);
+          },
+        );
+      },
+      undefined,
+      (err) => {
+        console.error("[Globe] Failed to load", leftUrl, err);
+      },
+    );
+  }
+
+  private getMoonstonePhase(cycleStartAt: number | null, now = Date.now()): MoonstoneRuinPhase {
+    if (cycleStartAt == null) return "idle";
+    const elapsed = now - cycleStartAt;
+    if (elapsed < 0) return "raising";
+    if (elapsed < MOONSTONE_RAISE_MS) return "raising";
+    if (elapsed < MOONSTONE_RAISE_MS + MOONSTONE_FLOAT_MS) return "floating";
+    if (elapsed < MOONSTONE_RAISE_MS + MOONSTONE_FLOAT_MS + MOONSTONE_LOWER_MS) return "lowering";
+    return "idle";
+  }
+
+  private getMoonstoneLiftAlpha(cycleStartAt: number | null, now = Date.now()): number {
+    const phase = this.getMoonstonePhase(cycleStartAt, now);
+    if (phase === "idle") return 0;
+    if (phase === "floating") return 1;
+    if (cycleStartAt == null) return 0;
+    if (phase === "raising") {
+      const t = MathUtils.clamp((now - cycleStartAt) / MOONSTONE_RAISE_MS, 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+    const lowerStart = cycleStartAt + MOONSTONE_RAISE_MS + MOONSTONE_FLOAT_MS;
+    const t = MathUtils.clamp((now - lowerStart) / MOONSTONE_LOWER_MS, 0, 1);
+    const smooth = t * t * (3 - 2 * t);
+    return 1 - smooth;
+  }
+
+  syncMoonstoneRuinCycles(cycleStartsAt: readonly (number | null)[]) {
+    const now = Date.now();
+    for (let i = 0; i < this.moonstoneRuins.length; i++) {
+      const start = cycleStartsAt[i] ?? null;
+      const state = this.moonstoneRuins[i]!;
+      state.cycleStartAt = this.getMoonstonePhase(start, now) === "idle" ? null : start;
+    }
+  }
+
+  startMoonstoneRuinCycle(index: number, cycleStartAt: number) {
+    const state = this.moonstoneRuins[index];
+    if (!state) return;
+    state.cycleStartAt = cycleStartAt;
+  }
+
+  findNearestActivatableMoonstone(playerWorldPos: Vector3, maxDistance: number, now = Date.now()): number {
+    let bestIndex = -1;
+    let bestDist = maxDistance;
+    for (let i = 0; i < this.moonstoneRuins.length; i++) {
+      const state = this.moonstoneRuins[i]!;
+      if (this.getMoonstonePhase(state.cycleStartAt, now) !== "idle") continue;
+      const d = playerWorldPos.distanceTo(state.basePosition);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIndex = i;
+      }
+    }
+    return bestIndex;
+  }
+
+  getNearbyMoonstoneRaiseProgress(playerWorldPos: Vector3, maxDistance: number, now = Date.now()): number {
+    let bestDist = maxDistance;
+    let progress = 0;
+    for (const state of this.moonstoneRuins) {
+      if (this.getMoonstonePhase(state.cycleStartAt, now) !== "raising") continue;
+      const pos = state.root?.position ?? state.basePosition;
+      const d = playerWorldPos.distanceTo(pos);
+      if (d >= bestDist) continue;
+      bestDist = d;
+      progress = MathUtils.clamp((now - (state.cycleStartAt ?? now)) / MOONSTONE_RAISE_MS, 0, 1);
+    }
+    return progress;
+  }
+
+  getMoonstoneShakeTrauma(playerWorldPos: Vector3, maxDistance = 1.58, now = Date.now()): number {
+    let trauma = 0;
+    for (const state of this.moonstoneRuins) {
+      if (this.getMoonstonePhase(state.cycleStartAt, now) !== "raising") continue;
+      const pos = state.root?.position ?? state.basePosition;
+      const dist = playerWorldPos.distanceTo(pos);
+      if (dist >= maxDistance) continue;
+      const distW = 1 - dist / maxDistance;
+      const raiseW = MathUtils.clamp((now - (state.cycleStartAt ?? now)) / MOONSTONE_RAISE_MS, 0, 1);
+      trauma = Math.max(trauma, distW * (0.16 + 0.38 * raiseW));
+    }
+    return trauma;
+  }
+
+  private initMoonstoneDust(state: MoonstoneRuinState) {
+    const n = MOONSTONE_DUST_COUNT;
+    const pos = new Float32Array(n * 3);
+    const vel = new Float32Array(n * 3);
+    const life = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      life[i] = 0;
+      pos[i * 3 + 0] = 1e4;
+      pos[i * 3 + 1] = 1e4;
+      pos[i * 3 + 2] = 1e4;
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute("position", new BufferAttribute(pos, 3));
+    const mat = new PointsMaterial({
+      color: 0xc8b8a6,
+      size: 0.048,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const points = new Points(geometry, mat);
+    points.frustumCulled = false;
+    points.renderOrder = 2;
+    this.group.add(points);
+    state.dust = { geometry, points, position: pos, velocity: vel, life };
+  }
+
+  private updateMoonstoneDust(state: MoonstoneRuinState, dt: number, now: number) {
+    const dust = state.dust;
+    const root = state.root;
+    const nrm = state.normal;
+    const tan = state.tangent;
+    const bit = state.bitangent;
+    if (!dust || !root) return;
+
+    const phase = this.getMoonstonePhase(state.cycleStartAt, now);
+    const liftAlpha = this.getMoonstoneLiftAlpha(state.cycleStartAt, now);
+    const pos = dust.position;
+    const vel = dust.velocity;
+    const life = dust.life;
+    const n = MOONSTONE_DUST_COUNT;
+    const g = MOONSTONE_DUST_GRAVITY;
+
+    root.updateMatrixWorld(true);
+    root.getWorldPosition(this.moonstoneEmitScratch);
+    this.moonstoneEmitScratch.addScaledVector(nrm, -0.11);
+    const emit = this.moonstoneEmitScratch;
+
+    let spawnBudget =
+      phase === "raising" ? Math.min(14, Math.max(1, Math.floor(dt * 95 + Math.random() * 2))) : 0;
+
+    for (let i = 0; i < n; i++) {
+      if (life[i] > 0) {
+        life[i] -= dt * 0.5;
+        vel[i * 3 + 0] += -nrm.x * g * dt;
+        vel[i * 3 + 1] += -nrm.y * g * dt;
+        vel[i * 3 + 2] += -nrm.z * g * dt;
+        const drag = Math.exp(-2.2 * dt);
+        vel[i * 3 + 0] *= drag;
+        vel[i * 3 + 1] *= drag;
+        vel[i * 3 + 2] *= drag;
+        pos[i * 3 + 0] += vel[i * 3 + 0] * dt;
+        pos[i * 3 + 1] += vel[i * 3 + 1] * dt;
+        pos[i * 3 + 2] += vel[i * 3 + 2] * dt;
+        if (life[i] <= 0) {
+          pos[i * 3 + 0] = 1e4;
+          pos[i * 3 + 1] = 1e4;
+          pos[i * 3 + 2] = 1e4;
+        }
+      } else if (spawnBudget > 0) {
+        spawnBudget--;
+        life[i] = 0.55 + Math.random() * 0.55;
+        const spread = 0.07 + liftAlpha * 0.05;
+        const ox = (Math.random() - 0.5) * spread;
+        const oy = (Math.random() - 0.5) * spread;
+        pos[i * 3 + 0] = emit.x + tan.x * ox + bit.x * oy;
+        pos[i * 3 + 1] = emit.y + tan.y * ox + bit.y * oy;
+        pos[i * 3 + 2] = emit.z + tan.z * ox + bit.z * oy;
+        const s1 = (Math.random() - 0.5) * 0.55;
+        const s2 = (Math.random() - 0.5) * 0.55;
+        const down = 0.45 + Math.random() * 0.35;
+        vel[i * 3 + 0] = tan.x * s1 + bit.x * s2 - nrm.x * down;
+        vel[i * 3 + 1] = tan.y * s1 + bit.y * s2 - nrm.y * down;
+        vel[i * 3 + 2] = tan.z * s1 + bit.z * s2 - nrm.z * down;
+      }
+    }
+    dust.geometry.attributes.position!.needsUpdate = true;
+  }
+
   private ensureShrineMaterials() {
     if (this.shrineMaterials) return;
     const torii = new MeshPhongMaterial({ color: 0xc42828, flatShading: true });
@@ -4453,6 +4850,36 @@ transformed.z += sway2;`,
       w.pivot.rotation.z += dt * w.speed;
     }
 
+    const now = Date.now();
+    for (let mi = 0; mi < this.moonstoneRuins.length; mi++) {
+      const state = this.moonstoneRuins[mi]!;
+      const root = state.root;
+      if (!root) continue;
+      const phase = this.getMoonstonePhase(state.cycleStartAt, now);
+      if (phase === "idle") state.cycleStartAt = null;
+      const liftAlpha = this.getMoonstoneLiftAlpha(state.cycleStartAt, now);
+      const nrm = state.normal;
+      root.position.copy(state.basePosition).addScaledVector(nrm, liftAlpha * MOONSTONE_FLOAT_HEIGHT);
+
+      let wobble = 0;
+      if (phase === "raising") {
+        wobble = 0.2 + 0.8 * liftAlpha;
+      } else if (phase === "floating") {
+        wobble = 0.1;
+      }
+      const t = now * 0.001;
+      const posAmp = 0.012 * wobble;
+      const rotAmp = 0.032 * wobble;
+      const k = mi * 2.31 + this.seed * 0.01;
+      root.position.addScaledVector(state.tangent, Math.sin(t * 19.2 + k) * posAmp);
+      root.position.addScaledVector(state.bitangent, Math.cos(t * 16.7 + k * 1.3) * posAmp);
+      root.quaternion.copy(state.restQuaternion);
+      root.rotateOnWorldAxis(state.tangent, Math.sin(t * 21.4 + k) * rotAmp);
+      root.rotateOnWorldAxis(state.bitangent, Math.cos(t * 18.9 + k * 0.9) * rotAmp);
+
+      this.updateMoonstoneDust(state, dt, now);
+    }
+
     this.balloonTime += dt;
     for (const b of this.balloons) {
       const bob = Math.sin(this.balloonTime * 0.5 + b.phase) * 0.04;
@@ -4497,5 +4924,11 @@ transformed.z += sway2;`,
     (this.surfaceMesh.material as MeshPhongMaterial).dispose();
     this.atmosphereMesh.geometry.dispose();
     (this.atmosphereMesh.material as ShaderMaterial).dispose();
+    for (const state of this.moonstoneRuins) {
+      const dust = state.dust;
+      if (!dust) continue;
+      dust.geometry.dispose();
+      (dust.points.material as PointsMaterial).dispose();
+    }
   }
 }

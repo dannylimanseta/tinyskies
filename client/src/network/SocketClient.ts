@@ -3,6 +3,8 @@ import type {
   BrazierLitEvent,
   BrazierMoonPausePayload,
   BrazierSyncPayload,
+  MoonstoneRuinActivatedEvent,
+  MoonstoneRuinSyncPayload,
   PaintballFiredEvent,
   PaintballHitEvent,
   PaintballUpgradeFlags,
@@ -53,6 +55,10 @@ export class SocketClient {
     this.socket.emit("brazier:ignite", index);
   }
 
+  emitMoonstoneActivate(index: number) {
+    this.socket.emit("moonstone:activate", index);
+  }
+
   emitPaintballFire() {
     this.socket.emit("paintball:fire");
   }
@@ -99,6 +105,14 @@ export class SocketClient {
 
   onBrazierMoonPause(cb: (payload: BrazierMoonPausePayload) => void) {
     this.socket.on("brazier:moonPause", cb);
+  }
+
+  onMoonstoneSync(cb: (payload: MoonstoneRuinSyncPayload) => void) {
+    this.socket.on("moonstone:sync", cb);
+  }
+
+  onMoonstoneActivated(cb: (event: MoonstoneRuinActivatedEvent) => void) {
+    this.socket.on("moonstone:activated", cb);
   }
 
   disconnect() {

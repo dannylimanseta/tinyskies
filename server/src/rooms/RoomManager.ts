@@ -83,6 +83,7 @@ export class RoomManager {
         announce: false,
       });
     }
+    socket.emit("moonstone:sync", room.getMoonstoneSyncPayload());
 
     socket.on("player:move", (moveState) => {
       room.updatePlayer(socket.id, moveState);
@@ -90,6 +91,10 @@ export class RoomManager {
 
     socket.on("brazier:ignite", (index: number) => {
       room.igniteBrazier(socket.id, index);
+    });
+
+    socket.on("moonstone:activate", (index: number) => {
+      room.activateMoonstone(socket.id, index);
     });
 
     socket.on("paintball:fire", () => {

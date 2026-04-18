@@ -3,6 +3,8 @@ import type {
   BrazierLitEvent,
   BrazierMoonPausePayload,
   BrazierSyncPayload,
+  MoonstoneRuinActivatedEvent,
+  MoonstoneRuinSyncPayload,
   PaintballFiredEvent,
   PaintballHitEvent,
   PaintballUpgradeFlags,
@@ -30,10 +32,15 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
-/** Must match `BRAZIER_COUNT` / `BRAZIER_BURN_MS` / `BRAZIER_MOON_PAUSE_MS` in `@globefly/shared`. */
+/** Must match `@globefly/shared` runtime constants. */
 const BRAZIER_COUNT = 5;
 const BRAZIER_BURN_MS = 45_000;
 const BRAZIER_MOON_PAUSE_MS = 60_000;
+const MOONSTONE_RUIN_COUNT = 2;
+const MOONSTONE_RAISE_MS = 5_000;
+const MOONSTONE_FLOAT_MS = 15_000;
+const MOONSTONE_LOWER_MS = 5_000;
+const MOONSTONE_TOTAL_MS = MOONSTONE_RAISE_MS + MOONSTONE_FLOAT_MS + MOONSTONE_LOWER_MS;
 
 interface ConnectedPlayer {
   socket: Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -58,6 +65,11 @@ export class Room {
   );
   /** Wall-clock ms when shared moon-pause shield ends; null if not active. */
   private brazierMoonPauseEndsAt: number | null = null;
+  /** Per-index wall-clock cycle start (ms), or null when the ruin is idle. */
+  private moonstoneCycleStartsAt: (number | null)[] = Array.from(
+    { length: MOONSTONE_RUIN_COUNT },
+    () => null,
+  );
 
   constructor(slug: string, globeRadius: number) {
     this.slug = slug;
@@ -221,6 +233,24 @@ export class Room {
     return end - now;
   }
 
+  private getActiveMoonstoneStart(startAt: number | null, now: number): number | null {
+    if (startAt == null) return null;
+    if (startAt + MOONSTONE_TOTAL_MS <= now) return null;
+    return startAt;
+  }
+
+  /** Current ruin lift schedule for clients that just joined (expired slots -> null). */
+  getMoonstoneSyncPayload(): MoonstoneRuinSyncPayload {
+    const now = Date.now();
+    return {
+      cycleStartsAt: this.moonstoneCycleStartsAt.map((t, i) => {
+        const active = this.getActiveMoonstoneStart(t, now);
+        this.moonstoneCycleStartsAt[i] = active;
+        return active;
+      }),
+    };
+  }
+
   private allBraziersActive(now: number): boolean {
     return this.brazierBurnEndsAt.every((t) => t != null && t > now);
   }
@@ -262,6 +292,33 @@ export class Room {
     for (const [, p] of this.players) {
       p.socket.emit("brazier:sync", syncPayload);
       p.socket.emit("brazier:moonPause", moonPausePayload);
+    }
+  }
+
+  /** A carpet player activated a moonstone ruin; shared timing is authoritative on the server. */
+  activateMoonstone(socketId: string, index: number) {
+    if (!Number.isInteger(index) || index < 0 || index >= MOONSTONE_RUIN_COUNT) return;
+    const player = this.players.get(socketId);
+    if (!player) return;
+    if (player.state.vehicle !== "carpet") return;
+
+    const now = Date.now();
+    const activeStart = this.getActiveMoonstoneStart(this.moonstoneCycleStartsAt[index], now);
+    this.moonstoneCycleStartsAt[index] = activeStart;
+    if (activeStart != null) return;
+
+    const cycleStartAt = now;
+    this.moonstoneCycleStartsAt[index] = cycleStartAt;
+
+    const payload: MoonstoneRuinActivatedEvent = {
+      index,
+      playerId: socketId,
+      playerName: player.state.name,
+      cycleStartAt,
+    };
+
+    for (const [, p] of this.players) {
+      p.socket.emit("moonstone:activated", payload);
     }
   }
 
