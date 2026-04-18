@@ -74,19 +74,6 @@ export const MOONSTONE_FLOAT_MS = 15_000;
 /** Lowering mirrors the raise unless retuned later. */
 export const MOONSTONE_LOWER_MS = 5_000;
 
-export interface MoonstoneRuinSyncPayload {
-  /** ms epoch when the current lift cycle started, or null when idle */
-  cycleStartsAt: (number | null)[];
-}
-
-export interface MoonstoneRuinActivatedEvent {
-  index: number;
-  playerId: string;
-  playerName: string;
-  /** ms epoch when raise phase started */
-  cycleStartAt: number;
-}
-
 /** ms between paintball shots (client UX + server authority). */
 export const PAINTBALL_COOLDOWN_MS = 500;
 /** Double-tap burst: min window between the start of successive bursts (post-burst recovery). */
@@ -154,8 +141,6 @@ export interface ServerToClientEvents {
   "brazier:sync": (payload: BrazierSyncPayload) => void;
   "brazier:lit": (event: BrazierLitEvent) => void;
   "brazier:moonPause": (payload: BrazierMoonPausePayload) => void;
-  "moonstone:sync": (payload: MoonstoneRuinSyncPayload) => void;
-  "moonstone:activated": (event: MoonstoneRuinActivatedEvent) => void;
   "paintball:fired": (event: PaintballFiredEvent) => void;
   "paintball:hit": (event: PaintballHitEvent) => void;
 }
@@ -169,7 +154,6 @@ export interface ClientToServerEvents {
     reservationId?: string,
   ) => void;
   "brazier:ignite": (index: number) => void;
-  "moonstone:activate": (index: number) => void;
   "paintball:fire": () => void;
   "paintball:setUpgrades": (flags: PaintballUpgradeFlags) => void;
 }

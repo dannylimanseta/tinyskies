@@ -3218,15 +3218,6 @@ transformed.z += sway2;`,
     return 1 - smooth;
   }
 
-  syncMoonstoneRuinCycles(cycleStartsAt: readonly (number | null)[]) {
-    const now = Date.now();
-    for (let i = 0; i < this.moonstoneRuins.length; i++) {
-      const start = cycleStartsAt[i] ?? null;
-      const state = this.moonstoneRuins[i]!;
-      state.cycleStartAt = this.getMoonstonePhase(start, now) === "idle" ? null : start;
-    }
-  }
-
   startMoonstoneRuinCycle(index: number, cycleStartAt: number) {
     const state = this.moonstoneRuins[index];
     if (!state) return;
