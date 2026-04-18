@@ -113,7 +113,6 @@ const BRAZIER_WHISPER_DIST      = 1.6;
 const BRAZIER_WHISPER_EXIT_DIST = 2.2;
 const BRAZIER_WHISPER_COOLDOWN  = 60;
 const MOONSTONE_ACTIVATE_DIST = 1.1;
-const MOONSTONE_ACTIVATE_RETRY_MS = 1_000;
 const MOONSTONE_RUMBLE_LOOP_NAME = "moonstone_rumble";
 /** Looping rumble while the carpet is in range of a ruin in its raise phase. */
 const MOONSTONE_RUMBLE_MAX_VOL = 0.74;
@@ -279,7 +278,6 @@ export class Game {
   private brazierInRange: boolean[] = [];
   private brazierCooldown: number[] = [];
   private lastBrazierProgress: number[] = [];
-  private moonstoneActivationRetryAt: number[] = [];
   /** Offline-only edge detect for all-five shield (no server). */
   private prevAllFiveBraziers = false;
   /** Only show the moon-resumed banner after a locally-announced brazier pause. */
@@ -961,8 +959,6 @@ export class Game {
     if (this.skyJellyfish) {
       this.jellyfishCaptureRing = new CircularProgressRing(this.hud.root);
     }
-    this.moonstoneActivationRetryAt = new Array(this.globe.moonstoneRuinCenters.length).fill(0);
-
     if (vehicle === "plane" && this.paintballSystem) {
       this.skyGremlins = new SkyGremlins(
         this.scene,
@@ -1211,7 +1207,6 @@ export class Game {
     this.braziers?.dispose();
     this.braziers = null;
     this.pendingBrazierSync = null;
-    this.moonstoneActivationRetryAt = [];
     this.portalInteractionSuppressTimer = 0;
     this.hud.disposeBrazierTracker();
     this.campsiteScene?.dispose();
@@ -1573,14 +1568,6 @@ export class Game {
 
     this.socketClient.onBrazierMoonPause((payload) => {
       this.applyBrazierMoonShield(payload.remainingMs, payload.announce !== false);
-    });
-
-    this.socketClient.onMoonstoneSync((payload) => {
-      this.globe.syncMoonstoneRuinCycles(payload.cycleStartsAt);
-    });
-
-    this.socketClient.onMoonstoneActivated((ev) => {
-      this.globe.startMoonstoneRuinCycle(ev.index, ev.cycleStartAt);
     });
 
     this.socketClient.onPaintballFired((ev) => {
@@ -2875,8 +2862,8 @@ export class Game {
   }
 
   /**
-   * Carpet-only moonstone ritual: entering range of an idle ruin requests the shared
-   * lift cycle from the server. The returned 0..1 value drives the reused HUD ring
+   * Carpet-only moonstone ritual: entering range of an idle ruin starts a local-only
+   * lift cycle on this client. The returned 0..1 value drives the reused HUD ring
    * while the nearest nearby ruin is in its 5-second raise phase.
    */
   private updateMoonstoneRuins(playerWorldPos: Vector3, allowInteraction: boolean): number {
@@ -2885,13 +2872,8 @@ export class Game {
     const now = Date.now();
     if (allowInteraction) {
       const idx = this.globe.findNearestActivatableMoonstone(playerWorldPos, MOONSTONE_ACTIVATE_DIST, now);
-      if (idx >= 0 && now >= (this.moonstoneActivationRetryAt[idx] ?? 0)) {
-        this.moonstoneActivationRetryAt[idx] = now + MOONSTONE_ACTIVATE_RETRY_MS;
-        if (this.socketClient?.connected) {
-          this.socketClient.emitMoonstoneActivate(idx);
-        } else {
-          this.globe.startMoonstoneRuinCycle(idx, now);
-        }
+      if (idx >= 0) {
+        this.globe.startMoonstoneRuinCycle(idx, now);
       }
     }
 
