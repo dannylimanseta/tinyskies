@@ -114,6 +114,9 @@ const BRAZIER_WHISPER_EXIT_DIST = 2.2;
 const BRAZIER_WHISPER_COOLDOWN  = 60;
 const MOONSTONE_ACTIVATE_DIST = 1.1;
 const MOONSTONE_ACTIVATE_RETRY_MS = 1_000;
+const MOONSTONE_RUMBLE_LOOP_NAME = "moonstone_rumble";
+/** Looping rumble while the carpet is in range of a ruin in its raise phase. */
+const MOONSTONE_RUMBLE_MAX_VOL = 0.74;
 
 /** Max linear gain for night crickets loop (soft; scales with night blend 0–1). */
 const CRICKETS_LOOP_MAX_VOL = 0.045;
@@ -417,6 +420,7 @@ export class Game {
       this.audioManager.loadSFX("splash_2", "/audio/sfx/splash_2.mp3");
       this.audioManager.loadSFX("fish_catch_1", "/audio/sfx/fish_catch_1.mp3");
       this.audioManager.loadSFX(OCEAN_WAVES_LOOP_NAME, "/audio/sfx/ocean_waves_1.mp3");
+      this.audioManager.loadSFX(MOONSTONE_RUMBLE_LOOP_NAME, "/audio/sfx/rumble.mp3");
     });
     this.playerName = ProgressionManager.loadPlayerName() ?? generateWhimsicalName();
     ProgressionManager.savePlayerName(this.playerName);
@@ -452,6 +456,9 @@ export class Game {
         });
         void this.audioManager.loadSFX(RUMBLE_LOOP_NAME, "/audio/sfx/rumbling_1.mp3").then(() => {
           this.audioManager.startLoop(RUMBLE_LOOP_NAME, 0);
+        });
+        void this.audioManager.loadSFX(MOONSTONE_RUMBLE_LOOP_NAME, "/audio/sfx/rumble.mp3").then(() => {
+          this.audioManager.startLoop(MOONSTONE_RUMBLE_LOOP_NAME, 0);
         });
         void this.audioManager.loadSFX(EXPLOSION_SFX_NAME, "/audio/sfx/explosion_1.mp3");
         for (const id of LANTERN_COLLECT_SFX_IDS) {
@@ -1228,6 +1235,7 @@ export class Game {
     }
     this.audioManager.setEndTimesWeight(0);
     this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
+    this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, 0);
 
     this.progression?.save();
     this.progression?.upgrades.reset();
@@ -2209,6 +2217,11 @@ export class Game {
     );
 
     const moonstoneProgress = this.updateMoonstoneRuins(questPlayerPos, !portalInteractionSuppressed);
+    const moonstoneRumbleVol =
+      moonstoneProgress > 0
+        ? MOONSTONE_RUMBLE_MAX_VOL * (0.5 + 0.5 * moonstoneProgress)
+        : 0;
+    this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, moonstoneRumbleVol);
 
     if (this.skyJellyfish) {
       this.localPlayer.group.updateMatrixWorld(true);
