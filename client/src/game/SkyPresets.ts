@@ -140,16 +140,17 @@ const EVENING_PRESET: SkyPreset = {
 };
 
 const NIGHT_PRESET: SkyPreset = {
+  /** Zenith → horizon: deep blue into purple / violet (flipped vs earlier; radial in Game.paintRadialSky). */
   skyGradient: [
-    { stop: 0.0, color: "#02030c" },
-    { stop: 0.15, color: "#050a1e" },
-    { stop: 0.3, color: "#081032" },
-    { stop: 0.45, color: "#0c1846" },
-    { stop: 0.55, color: "#101e58" },
-    { stop: 0.65, color: "#142668" },
-    { stop: 0.75, color: "#182e74" },
-    { stop: 0.85, color: "#1c3684" },
-    { stop: 1.0, color: "#203c94" },
+    { stop: 0.0, color: "#020818" },
+    { stop: 0.12, color: "#050f22" },
+    { stop: 0.25, color: "#08142a" },
+    { stop: 0.38, color: "#0c1834" },
+    { stop: 0.5, color: "#121a3c" },
+    { stop: 0.62, color: "#241858" },
+    { stop: 0.74, color: "#321c70" },
+    { stop: 0.86, color: "#4428a0" },
+    { stop: 1.0, color: "#5a34c8" },
   ],
   fogColor: 0x08142c,
   fogNear: 10,
@@ -179,7 +180,8 @@ const NIGHT_PRESET: SkyPreset = {
   oceanDeep: 0x040c20,
   oceanFoam: 0x2050aa,
 
-  rimColor: 0x3070ff,
+  /** Matches night sky purple; drives `globalRimColor` + globe rim. */
+  rimColor: 0x9a7af0,
   cloudOpacity: 0.06,
 
   atmosphereGlow: 0x2850aa,

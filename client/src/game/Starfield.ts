@@ -9,12 +9,12 @@ import {
   Quaternion,
 } from "three";
 
-const STAR_COUNT = 3000;
-const BRIGHT_STAR_COUNT = 120;
+const STAR_COUNT = 6000;
+const BRIGHT_STAR_COUNT = 240;
 const SPHERE_RADIUS = 80;
 
-const MILKY_STAR_COUNT = 4000;
-const MILKY_CLOUD_COUNT = 600;
+const MILKY_STAR_COUNT = 8000;
+const MILKY_CLOUD_COUNT = 1200;
 const BAND_TILT = Math.PI * 0.35;
 
 const starVert = `

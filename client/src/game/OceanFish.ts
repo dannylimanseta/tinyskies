@@ -18,6 +18,7 @@ import {
   cartesianFromSpherical,
   moveOnSphere,
   randomSpawnQuaternionAndHeading,
+  seededRandom,
   tangentFrame,
 } from "./SphericalMath";
 import { isLand } from "./SimplexNoise";
@@ -27,7 +28,7 @@ import { FishCatchVfx } from "./FishCatchVfx";
 import { randomOceanQuaternion } from "./Boat";
 import type { UpgradeState } from "./UpgradeManager";
 
-export const FISH_COUNT = 380;
+export const FISH_COUNT = 240;
 export const FISH_CATCH_XP = 15;
 
 /** Chord distance (world units) — same convention as SkyJellyfish. */
@@ -64,7 +65,21 @@ const LOOKAHEAD_ARC = 0.15;
 const SPAWN_ATTEMPTS = 80;
 const LINE_SEGS = 12;
 
+/** Schools move as units; fish stay in a small tangent blob so players must travel to find them. */
+const NUM_SCHOOLS = 24;
+const FISH_PER_SCHOOL = Math.ceil(FISH_COUNT / NUM_SCHOOLS);
+/** Max tangent offset from school center (world units at globe surface). */
+const SCHOOL_MAX_OFFSET = 0.82;
+/** School centroid wander speed along the sphere (slightly slower than old solo fish). */
+const SCHOOL_WANDER_SPEED = 0.11;
+
 type FishStatus = "swimming" | "capturing" | "respawning";
+
+interface SchoolState {
+  centerQ: Quaternion;
+  heading: number;
+  phase: number;
+}
 
 export type FishVariant = "normal" | "large";
 
@@ -83,6 +98,12 @@ interface Fish {
   respawnMoved: boolean;
   /** Previous bar +Z in world space (degenerate billboard fallback). */
   prevBarZ: Vector3;
+  /** Index into {@link OceanFish.schools} (swimming / respawn placement). */
+  schoolId: number;
+  /** Angle in the school's tangent plane for blob layout. */
+  ringAngle: number;
+  /** 0–1 scales how far from school center this fish sits. */
+  spreadRad: number;
 }
 
 /** Module-level scratch vectors to avoid per-frame allocations. */
@@ -90,6 +111,9 @@ const _tmpV1 = new Vector3();
 const _tmpV2 = new Vector3();
 const _tmpV3 = new Vector3();
 const _boatForward = new Vector3();
+const _schoolCenterPos = new Vector3();
+const _schoolFishNormal = new Vector3();
+const _WORLD_UP = new Vector3(0, 1, 0);
 
 function wrapAnglePi(a: number): number {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -140,6 +164,8 @@ export class OceanFish {
   private readonly seed: number;
   private readonly terrainType: string;
   private readonly catchVfx: FishCatchVfx;
+
+  private schools: SchoolState[] = [];
 
   constructor(
     globeRadius: number,
@@ -246,6 +272,20 @@ export class OceanFish {
     this.fishLineB.visible = false;
     this.group.add(this.fishLineB);
 
+    // ── School centroids (fish cluster around these as they move) ─
+    for (let s = 0; s < NUM_SCHOOLS; s++) {
+      const schSeed = worldSeed + sessionSalt * 7919 + s * 10007;
+      const q =
+        this.pickOceanQuaternion(schSeed, null) ??
+        randomOceanQuaternion(worldSeed, terrainType, sessionSalt + s * 17);
+      const spawn = randomSpawnQuaternionAndHeading(schSeed + 3);
+      this.schools.push({
+        centerQ: q.clone(),
+        heading: spawn.heading + s * 0.19,
+        phase: (s * 2.31) % (Math.PI * 2),
+      });
+    }
+
     // ── Fish pool ────────────────────────────────────────────────
     for (let i = 0; i < FISH_COUNT; i++) {
       const variant: FishVariant = i % 5 === 0 ? "large" : "normal";
@@ -253,13 +293,14 @@ export class OceanFish {
       this.group.add(visual.group);
 
       const seed = worldSeed + sessionSalt * 7919 + i * 982451653 + 901;
-      const posQ =
-        this.pickOceanQuaternion(seed, null) ??
-        randomOceanQuaternion(worldSeed, terrainType, sessionSalt + i * 17);
+      const rnd = seededRandom(seed);
+      const schoolId = Math.min(NUM_SCHOOLS - 1, Math.floor(i / FISH_PER_SCHOOL));
+      const ringAngle = rnd() * Math.PI * 2;
+      const spreadRad = 0.1 + 0.9 * rnd();
       const spawn = randomSpawnQuaternionAndHeading(seed + 3);
       const h0 = spawn.heading + i * 0.31;
       const fish: Fish = {
-        posQ: posQ.clone(),
+        posQ: new Quaternion(),
         heading: h0,
         prevHeading: h0,
         worldPos: new Vector3(),
@@ -271,7 +312,11 @@ export class OceanFish {
         respawnT: 0,
         respawnMoved: false,
         prevBarZ: new Vector3(0, 0, 1),
+        schoolId,
+        ringAngle,
+        spreadRad,
       };
+      this.computeFishQFromSchoolInto(fish, fish.posQ);
       this.fish.push(fish);
     }
   }
@@ -301,6 +346,62 @@ export class OceanFish {
     if (j >= 0) this.activeCaptures.splice(j, 1);
   }
 
+  private updateSchools(dt: number) {
+    for (let s = 0; s < this.schools.length; s++) {
+      const sch = this.schools[s]!;
+      const turn =
+        (Math.sin(this.time * 0.52 + sch.phase) * 0.38 +
+          Math.sin(this.time * 0.2 + sch.phase * 1.4) * 0.22) *
+        FISH_TURN_RATE *
+        0.55;
+      sch.heading += turn * dt;
+
+      const qAhead = moveOnSphere(sch.centerQ, sch.heading, LOOKAHEAD_ARC / this.globeRadius);
+      const ahead = cartesianFromSpherical(qAhead, 0, 1);
+      if (isLand(this.seed, this.terrainType, ahead.x, ahead.y, ahead.z)) {
+        sch.heading +=
+          (Math.PI / 2) * (s % 2 === 0 ? 1 : -1) + Math.sin(this.time + sch.phase) * 0.32;
+      }
+
+      sch.centerQ.copy(
+        moveOnSphere(sch.centerQ, sch.heading, (SCHOOL_WANDER_SPEED * dt) / this.globeRadius),
+      );
+    }
+  }
+
+  /** Places `out` on the globe near school `f.schoolId` (tangent-plane blob). */
+  private computeFishQFromSchoolInto(f: Fish, out: Quaternion): Quaternion {
+    const sch = this.schools[f.schoolId]!;
+    const frame = tangentFrame(sch.centerQ);
+    const wobble =
+      Math.sin(this.time * 1.85 + f.phase) * 0.09 +
+      Math.sin(this.time * 0.62 + f.phase * 1.3) * 0.05;
+    const angle = f.ringAngle + wobble;
+    const d = f.spreadRad * SCHOOL_MAX_OFFSET;
+    _schoolCenterPos.copy(cartesianFromSpherical(sch.centerQ, 0, this.globeRadius));
+    _tmpV1
+      .copy(frame.north)
+      .multiplyScalar(Math.cos(angle) * d)
+      .addScaledVector(frame.east, Math.sin(angle) * d);
+    _schoolFishNormal.copy(_schoolCenterPos).add(_tmpV1).normalize();
+    return out.setFromUnitVectors(_WORLD_UP, _schoolFishNormal);
+  }
+
+  /** Prefer respawning into a school far from the boat so schools stay explorable. */
+  private pickSchoolForRespawn(boatWorldPos: Vector3): number {
+    let bestS = 0;
+    let bestDist = -1;
+    for (let s = 0; s < this.schools.length; s++) {
+      const p = cartesianFromSpherical(this.schools[s]!.centerQ, FISH_SHADOW_ALT, this.globeRadius);
+      const chord = p.distanceTo(boatWorldPos);
+      if (chord > bestDist) {
+        bestDist = chord;
+        bestS = s;
+      }
+    }
+    return bestS;
+  }
+
   update(
     dt: number,
     boatQPos: Quaternion,
@@ -315,6 +416,18 @@ export class OceanFish {
   ) {
     if (this.disposed) return;
     this.time += dt;
+
+    this.updateSchools(dt);
+    for (const f of this.fish) {
+      if (f.status === "swimming") {
+        this.computeFishQFromSchoolInto(f, f.posQ);
+        const sch = this.schools[f.schoolId]!;
+        f.heading =
+          sch.heading +
+          Math.sin(this.time * 1.15 + f.phase) * 0.2 +
+          Math.sin(this.time * 0.41 + f.phase * 1.7) * 0.09;
+      }
+    }
 
     const boatRadial = _tmpV2.copy(boatWorldPos).normalize();
     const captureEnabled = allowCapture;
@@ -381,11 +494,12 @@ export class OceanFish {
         } else {
           if (!f.respawnMoved) {
             f.respawnMoved = true;
-            const q =
-              this.pickOceanQuaternion(this.seed + this.respawnSalt++, boatWorldPos) ??
-              randomOceanQuaternion(this.seed, this.terrainType, this.respawnSalt + i * 31);
-            f.posQ.copy(q);
-            f.heading = randomSpawnQuaternionAndHeading(this.seed + i * 9973 + this.respawnSalt).heading;
+            const rnd = seededRandom(this.seed + this.respawnSalt++ + i * 9973);
+            f.schoolId = this.pickSchoolForRespawn(boatWorldPos);
+            f.ringAngle = rnd() * Math.PI * 2;
+            f.spreadRad = 0.12 + 0.88 * rnd();
+            this.computeFishQFromSchoolInto(f, f.posQ);
+            f.heading = this.schools[f.schoolId]!.heading + (rnd() - 0.5) * 0.38;
             f.prevHeading = f.heading;
             f.progress = 0;
             f.visual.setProgress(0);
@@ -405,26 +519,10 @@ export class OceanFish {
         continue;
       }
 
-      // ── Swimming ──
-      if (f.status === "swimming") {
-        const speedMult = f.variant === "large" ? 0.9 : 1.0;
-        const turn =
-          (Math.sin(this.time * 0.7 + f.phase) * 0.4 +
-            Math.sin(this.time * 0.23 + f.phase * 1.7) * 0.2) *
-          FISH_TURN_RATE;
-        f.heading += turn * dt;
-
-        const qAhead = moveOnSphere(f.posQ, f.heading, LOOKAHEAD_ARC / this.globeRadius);
-        const ahead = cartesianFromSpherical(qAhead, 0, 1);
-        if (isLand(this.seed, this.terrainType, ahead.x, ahead.y, ahead.z)) {
-          f.heading += (Math.PI / 2) * (i % 2 === 0 ? 1 : -1) + Math.sin(this.time + f.phase) * 0.4;
-        }
-
-        f.posQ = moveOnSphere(f.posQ, f.heading, (FISH_WANDER_SPEED * speedMult * dt) / this.globeRadius);
-      }
+      // ── Swimming: position comes from school centroid (see top of update) ──
 
       // ── Capturing — flee + progress ──
-      else if (f.status === "capturing") {
+      if (f.status === "capturing") {
         const speedMult = f.variant === "large" ? 0.9 : 1.0;
         const fillMult = f.variant === "large" ? (1 / 1.5) : 1.0;
         const frame = tangentFrame(f.posQ);
