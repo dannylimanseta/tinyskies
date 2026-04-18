@@ -43,7 +43,7 @@ import { createBoat } from "./BoatMesh";
 import { createCarpet } from "./CarpetMesh";
 import { PilotAvatar } from "./PilotAvatar";
 import { CampsiteControls, type CampsiteControlState } from "./CampsiteControls";
-import { addRimLight } from "./RimLight";
+import { addRimLight, globalRimColor } from "./RimLight";
 
 const CAMP_SIZE = 50;
 const CAMP_HALF = CAMP_SIZE / 2;
@@ -325,8 +325,6 @@ export class CampsiteScene {
 
   private mobile: boolean;
 
-  /** Shared rim tint for Phong meshes + grass; synced from `SkyPreset.rimColor`. */
-  private rimLightColor = new Color(0xffeebb);
   private rimMaterialsDone = new WeakSet<MeshPhongMaterial>();
 
   constructor(
@@ -760,7 +758,7 @@ gl_FragColor.rgb = mix(_alb, gl_FragColor.rgb, 0.68);
         uHemiGroundColor: { value: new Vector3(0.4, 0.66, 0.27) },
         uHemiIntensity: { value: 1.25 },
         uCampHalf: { value: CAMP_HALF },
-        uRimColor: { value: this.rimLightColor },
+        uRimColor: { value: globalRimColor },
         uRimIntensity: { value: 0.28 },
         uRimPower: { value: 3.0 },
       },
@@ -1059,7 +1057,7 @@ transformed.z += sway2;`,
     this.fill2Light.color.set(preset.fill2Color);
     this.fill2Light.intensity = preset.fill2Intensity;
 
-    this.rimLightColor.set(preset.rimColor);
+    globalRimColor.set(preset.rimColor);
 
     const sunT = MathUtils.clamp((preset.sunIntensity - 1.0) / 2.5, 0, 1);
     /* Warm yellow–green turf multiply. */
@@ -1159,7 +1157,7 @@ transformed.z += sway2;`,
         if (!(mat instanceof MeshPhongMaterial)) continue;
         if (this.rimMaterialsDone.has(mat)) continue;
         this.rimMaterialsDone.add(mat);
-        addRimLight(mat, this.rimLightColor, 0.48, 3.0);
+        addRimLight(mat, globalRimColor, 0.48, 3.0);
         if (mat.userData.campsiteTreeSway) {
           this.attachCampsiteTreeSway(mat);
         }

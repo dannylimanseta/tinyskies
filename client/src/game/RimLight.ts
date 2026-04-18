@@ -1,19 +1,24 @@
 import { MeshPhongMaterial, Color } from "three";
 
 /**
+ * Shared Fresnel tint for all `addRimLight` meshes. `Game.applyDayNightPreset` updates
+ * this from `SkyPreset.rimColor` so boat, plane, globe props, etc. match time of day.
+ */
+export const globalRimColor = new Color(0xffeebb);
+
+/**
  * Patches a MeshPhongMaterial to add a bright Fresnel rim glow.
  * Injects a few lines into the fragment shader -- zero extra draw calls.
+ * The `color` argument is kept for call-site readability; the shader uses {@link globalRimColor}.
  */
 export function addRimLight(
   mat: MeshPhongMaterial,
-  color: Color | number = 0xffffff,
+  _color: Color | number = 0xffffff,
   intensity: number = 0.6,
   power: number = 2.5,
 ) {
-  const rimColor = color instanceof Color ? color : new Color(color);
-
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.rimColor = { value: rimColor };
+    shader.uniforms.rimColor = { value: globalRimColor };
     shader.uniforms.rimIntensity = { value: intensity };
     shader.uniforms.rimPower = { value: power };
 

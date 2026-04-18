@@ -40,18 +40,19 @@ export interface SkyPreset {
 }
 
 const DAY_PRESET: SkyPreset = {
+  /** Zenith → horizon (see Game.paintRadialSky): blue aloft, cyan mid, wide yellow band at horizon. */
   skyGradient: [
     { stop: 0.0, color: "#1a4a82" },
-    { stop: 0.1, color: "#266498" },
-    { stop: 0.2, color: "#2080b0" },
-    { stop: 0.3, color: "#209cc8" },
-    { stop: 0.4, color: "#28b8dc" },
-    { stop: 0.5, color: "#38d0ea" },
-    { stop: 0.6, color: "#50e4f4" },
-    { stop: 0.7, color: "#70f2fc" },
-    { stop: 0.8, color: "#8cf7ff" },
-    { stop: 0.9, color: "#a8fbff" },
-    { stop: 1.0, color: "#c4fdff" },
+    { stop: 0.12, color: "#1e5c90" },
+    { stop: 0.26, color: "#2a8cb4" },
+    { stop: 0.4, color: "#40c8dc" },
+    { stop: 0.52, color: "#60d8e8" },
+    { stop: 0.62, color: "#80e8f4" },
+    { stop: 0.72, color: "#b8f4f0" },
+    { stop: 0.78, color: "#e0f0d0" },
+    { stop: 0.84, color: "#f2eca8" },
+    { stop: 0.91, color: "#fff078" },
+    { stop: 1.0, color: "#fff050" },
   ],
   fogColor: 0x60ccde,
   fogNear: 15,

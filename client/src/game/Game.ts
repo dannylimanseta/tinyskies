@@ -50,6 +50,7 @@ import { CarpetWake } from "./CarpetWake";
 import { CarpetLeaves } from "./CarpetLeaves";
 import { LensFlare } from "./LensFlare";
 import { Starfield } from "./Starfield";
+import { globalRimColor } from "./RimLight";
 import { Aurora } from "./Aurora";
 import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
@@ -2712,6 +2713,7 @@ export class Game {
 
     this.globe.setAtmosphereGlow(p.atmosphereGlow);
     this.globe.setCloudOpacity(p.cloudOpacity);
+    globalRimColor.set(p.rimColor);
     this.globe.setRimColor(p.rimColor);
     this.globe.setOceanColors(p.oceanShallow, p.oceanDeep, p.oceanFoam);
 
