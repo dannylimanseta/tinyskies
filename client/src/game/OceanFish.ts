@@ -25,6 +25,7 @@ import type { AudioManager } from "../audio/AudioManager";
 import { createFishVisual, type OceanFishVisual } from "./OceanFishMesh";
 import { FishCatchVfx } from "./FishCatchVfx";
 import { randomOceanQuaternion } from "./Boat";
+import type { UpgradeState } from "./UpgradeManager";
 
 export const FISH_COUNT = 380;
 export const FISH_CATCH_XP = 15;
@@ -104,8 +105,12 @@ export class OceanFish {
 
   private fish: Fish[] = [];
   private time = 0;
-  private capturingIndex = -1;
+  /** Fish indices currently on the line (max {@link fishMaxConcurrent}). */
+  private activeCaptures: number[] = [];
   private catchCount = 0;
+  private fishCatchRadiusMult = 1;
+  private fishFillRateMult = 1;
+  private fishMaxConcurrent = 1;
   private respawnSalt = 0;
   private disposed = false;
 
@@ -125,6 +130,11 @@ export class OceanFish {
   private fishLineMat: LineMaterial;
   /** After first {@link LineGeometry#setPositions}; avoid reallocating fat-line buffers every frame. */
   private fishLineGpuReady = false;
+  private linePositionsB: Float32Array;
+  private lineGeometryB: LineGeometry;
+  private fishLineB: Line2;
+  private fishLineMatB: LineMaterial;
+  private fishLineGpuReadyB = false;
 
   private readonly globeRadius: number;
   private readonly seed: number;
@@ -216,6 +226,26 @@ export class OceanFish {
     // and/or hard-fail boat startup.
     this.group.add(this.fishLine);
 
+    this.linePositionsB = new Float32Array((LINE_SEGS + 1) * 3);
+    this.lineGeometryB = new LineGeometry();
+    this.fishLineMatB = new LineMaterial({
+      color: 0xcce8ff,
+      worldUnits: true,
+      linewidth: FISH_LINE_WIDTH,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.fishLineMatB.resolution.set(
+      typeof window !== "undefined" ? window.innerWidth : 1024,
+      typeof window !== "undefined" ? window.innerHeight : 768,
+    );
+    this.fishLineB = new Line2(this.lineGeometryB, this.fishLineMatB);
+    this.fishLineB.renderOrder = 14;
+    this.fishLineB.visible = false;
+    this.group.add(this.fishLineB);
+
     // ── Fish pool ────────────────────────────────────────────────
     for (let i = 0; i < FISH_COUNT; i++) {
       const variant: FishVariant = i % 5 === 0 ? "large" : "normal";
@@ -246,13 +276,29 @@ export class OceanFish {
     }
   }
 
+  /** Called from Game when upgrade state changes. */
+  setTuningFromUpgrades(s: UpgradeState) {
+    this.fishCatchRadiusMult = Math.max(0.5, Math.min(2.5, s.fishCatchRadiusMult));
+    this.fishFillRateMult = Math.max(0.5, Math.min(2.5, s.fishFillRateMult));
+    this.fishMaxConcurrent = Math.max(1, Math.min(2, Math.floor(s.fishMaxConcurrent)));
+    this.ringMesh.scale.setScalar(this.fishCatchRadiusMult);
+  }
+
   getCaptureProgress(): number {
-    if (this.capturingIndex < 0) return 0;
-    return this.fish[this.capturingIndex]?.progress ?? 0;
+    let best = 0;
+    for (const idx of this.activeCaptures) {
+      best = Math.max(best, this.fish[idx]?.progress ?? 0);
+    }
+    return best;
   }
 
   getCatchCount(): number {
     return this.catchCount;
+  }
+
+  private removeActiveCapture(idx: number) {
+    const j = this.activeCaptures.indexOf(idx);
+    if (j >= 0) this.activeCaptures.splice(j, 1);
   }
 
   update(
@@ -287,27 +333,22 @@ export class OceanFish {
       f.worldPos.copy(cartesianFromSpherical(f.posQ, FISH_SHADOW_ALT, this.globeRadius));
     }
 
-    // Validate or clear current capture
-    let activeCapturing = this.capturingIndex;
-    if (activeCapturing >= 0) {
-      const f = this.fish[activeCapturing]!;
-      if (!captureEnabled || f.status !== "capturing") {
-        this.capturingIndex = -1;
-        activeCapturing = -1;
-      } else {
-        const dist = f.worldPos.distanceTo(boatWorldPos);
-        if (dist > FISH_CATCH_EXIT_RADIUS) {
-          this.capturingIndex = -1;
-          activeCapturing = -1;
-        }
-      }
-    }
+    const effCatchR = FISH_CATCH_RADIUS * this.fishCatchRadiusMult;
+    const effExitR = FISH_CATCH_EXIT_RADIUS * this.fishCatchRadiusMult;
+    const effFill = FISH_FILL_RATE * this.fishFillRateMult;
 
-    // Pick a new capture target if none
-    if (captureEnabled && activeCapturing < 0) {
+    this.activeCaptures = this.activeCaptures.filter((idx) => {
+      const f = this.fish[idx];
+      if (!f || !captureEnabled || f.status !== "capturing") return false;
+      const dist = f.worldPos.distanceTo(boatWorldPos);
+      return dist <= effExitR;
+    });
+
+    while (captureEnabled && this.activeCaptures.length < this.fishMaxConcurrent) {
       let bestIdx = -1;
-      let bestDist = FISH_CATCH_RADIUS;
+      let bestDist = effCatchR;
       for (let i = 0; i < this.fish.length; i++) {
+        if (this.activeCaptures.includes(i)) continue;
         const f = this.fish[i]!;
         if (f.status !== "swimming") continue;
         const d = f.worldPos.distanceTo(boatWorldPos);
@@ -316,11 +357,9 @@ export class OceanFish {
           bestIdx = i;
         }
       }
-      if (bestIdx >= 0) {
-        this.fish[bestIdx]!.status = "capturing";
-        this.capturingIndex = bestIdx;
-        activeCapturing = bestIdx;
-      }
+      if (bestIdx < 0) break;
+      this.fish[bestIdx]!.status = "capturing";
+      this.activeCaptures.push(bestIdx);
     }
 
     const boatOnLand = isLand(
@@ -330,9 +369,6 @@ export class OceanFish {
       boatRadial.y,
       boatRadial.z,
     );
-
-    // Geodesic ring half-angle
-    const gamma = 2 * Math.asin(Math.min(1, FISH_CATCH_RADIUS / (2 * this.globeRadius)));
 
     for (let i = 0; i < this.fish.length; i++) {
       const f = this.fish[i]!;
@@ -430,8 +466,8 @@ export class OceanFish {
         // Post-movement position for capture check
         const wp = cartesianFromSpherical(f.posQ, FISH_SHADOW_ALT, this.globeRadius);
         const dist = wp.distanceTo(boatWorldPos);
-        if (dist < FISH_CATCH_RADIUS && captureEnabled && i === activeCapturing) {
-          f.progress = Math.min(1, f.progress + FISH_FILL_RATE * fillMult * dt);
+        if (dist < effCatchR && captureEnabled && this.activeCaptures.includes(i)) {
+          f.progress = Math.min(1, f.progress + effFill * fillMult * dt);
           if (f.progress >= 1) {
             this.catchCount += 1;
             this.catchVfx.spawn(this.group.parent, wp.clone(), boatTargetPos, f.variant);
@@ -441,13 +477,13 @@ export class OceanFish {
             f.respawnMoved = false;
             f.progress = 0;
             f.visual.setProgress(0);
-            if (this.capturingIndex === i) this.capturingIndex = -1;
+            this.removeActiveCapture(i);
           }
         } else {
           f.progress = Math.max(0, f.progress - FISH_DECAY_RATE * dt);
-          if (f.progress <= 0 && dist > FISH_CATCH_EXIT_RADIUS) {
+          if (f.progress <= 0 && dist > effExitR) {
             f.status = "swimming";
-            if (this.capturingIndex === i) this.capturingIndex = -1;
+            this.removeActiveCapture(i);
           }
         }
       }
@@ -463,29 +499,63 @@ export class OceanFish {
       this.ringMesh.visible = false;
     }
 
-    // ── Fishing line ─────────────────────────────────────────────
-    if (activeCapturing >= 0) {
-      const capFish = this.fish[activeCapturing]!;
-      const prog = capFish.progress;
-      if (prog > 0.001) {
-        this.updateFishLine(boatWorldPos, capFish.worldPos, prog);
-        this.fishLine.visible = true;
+    // ── Fishing line(s) ─────────────────────────────────────────
+    const cap0 = this.activeCaptures[0];
+    const cap1 = this.activeCaptures[1];
+    const fish0 = cap0 !== undefined ? this.fish[cap0] : undefined;
+    const fish1 = cap1 !== undefined ? this.fish[cap1] : undefined;
+    const show0 = fish0 && fish0.progress > 0.001;
+    const show1 = fish1 && fish1.progress > 0.001;
+
+    if (show0) {
+      this.fishLineGpuReady = this.updateFishLineGeometry(
+        this.linePositions,
+        this.lineGeometry,
+        this.fishLine,
+        this.fishLineMat,
+        this.fishLineGpuReady,
+        boatWorldPos,
+        fish0.worldPos,
+        fish0.progress,
+      );
+      this.fishLine.visible = true;
+    } else {
+      this.fadeFishLine(this.fishLineMat, this.fishLine, dt);
+    }
+
+    if (this.fishMaxConcurrent >= 2) {
+      if (show1) {
+        this.fishLineGpuReadyB = this.updateFishLineGeometry(
+          this.linePositionsB,
+          this.lineGeometryB,
+          this.fishLineB,
+          this.fishLineMatB,
+          this.fishLineGpuReadyB,
+          boatWorldPos,
+          fish1!.worldPos,
+          fish1!.progress,
+        );
+        this.fishLineB.visible = true;
       } else {
-        this.fishLine.visible = false;
+        this.fadeFishLine(this.fishLineMatB, this.fishLineB, dt);
       }
     } else {
-      // Fade out line when no longer capturing
-      const prevOpacity = this.fishLineMat.opacity;
-      if (prevOpacity > 0.005) {
-        this.fishLineMat.opacity = Math.max(0, prevOpacity - dt * 4);
-        this.fishLine.visible = true;
-      } else {
-        this.fishLineMat.opacity = 0;
-        this.fishLine.visible = false;
-      }
+      this.fishLineMatB.opacity = 0;
+      this.fishLineB.visible = false;
     }
 
     this.catchVfx.update(dt, boatTargetPos);
+  }
+
+  private fadeFishLine(mat: LineMaterial, line: Line2, dt: number) {
+    const prevOpacity = mat.opacity;
+    if (prevOpacity > 0.005) {
+      mat.opacity = Math.max(0, prevOpacity - dt * 4);
+      line.visible = true;
+    } else {
+      mat.opacity = 0;
+      line.visible = false;
+    }
   }
 
   private shadowAlpha(dayWeight: number, nightWeight: number): number {
@@ -604,8 +674,18 @@ export class OceanFish {
   /**
    * Draws a geodesic arc from `boatPos` to `fishPos` along the sphere surface,
    * lifted by `LINE_ALT`. Opacity fades in with `progress`.
+   * @returns true once GPU buffers are initialized (always true after first successful call).
    */
-  private updateFishLine(boatPos: Vector3, fishPos: Vector3, progress: number) {
+  private updateFishLineGeometry(
+    linePositions: Float32Array,
+    geom: LineGeometry,
+    line: Line2,
+    mat: LineMaterial,
+    gpuReady: boolean,
+    boatPos: Vector3,
+    fishPos: Vector3,
+    progress: number,
+  ): boolean {
     const r = this.globeRadius + LINE_ALT;
     _tmpV1.copy(boatPos).normalize();
     _tmpV2.copy(fishPos).normalize();
@@ -614,24 +694,21 @@ export class OceanFish {
       const t = j / LINE_SEGS;
       _tmpV3.copy(_tmpV1).lerp(_tmpV2, t).normalize().multiplyScalar(r);
       const o = j * 3;
-      this.linePositions[o] = _tmpV3.x;
-      this.linePositions[o + 1] = _tmpV3.y;
-      this.linePositions[o + 2] = _tmpV3.z;
+      linePositions[o] = _tmpV3.x;
+      linePositions[o + 1] = _tmpV3.y;
+      linePositions[o + 2] = _tmpV3.z;
     }
 
-    const geom = this.lineGeometry;
-
-    if (!this.fishLineGpuReady) {
-      geom.setPositions(this.linePositions);
-      this.fishLine.computeLineDistances();
-      this.fishLineGpuReady = true;
+    if (!gpuReady) {
+      geom.setPositions(linePositions);
+      line.computeLineDistances();
     } else {
       const posStart = geom.attributes.instanceStart as InterleavedBufferAttribute;
       const posBuf = posStart.data.array as Float32Array;
       for (let seg = 0; seg < LINE_SEGS; seg++) {
         const o = seg * 3;
         const b = seg * 6;
-        posBuf.set(this.linePositions.subarray(o, o + 6), b);
+        posBuf.set(linePositions.subarray(o, o + 6), b);
       }
       posStart.data.needsUpdate = true;
 
@@ -654,12 +731,14 @@ export class OceanFish {
     geom.computeBoundingBox();
     geom.computeBoundingSphere();
 
-    this.fishLineMat.opacity = progress * 0.75;
+    mat.opacity = progress * 0.75;
+    return true;
   }
 
   /** Fat-line shader needs viewport size; call from game resize handler. */
   setFishingLineResolution(width: number, height: number) {
     this.fishLineMat.resolution.set(width, height);
+    this.fishLineMatB.resolution.set(width, height);
   }
 
   dispose() {
@@ -673,7 +752,9 @@ export class OceanFish {
     this.ringMat.dispose();
     this.ringTexture.dispose();
     this.lineGeometry.dispose();
+    this.lineGeometryB.dispose();
     this.fishLineMat.dispose();
+    this.fishLineMatB.dispose();
     this.catchVfx.dispose();
     this.group.parent?.remove(this.group);
   }

@@ -2844,6 +2844,9 @@ export class Game {
       case "portal":
         amt *= s.carpetPortalXpMult;
         break;
+      case "fish":
+        amt *= s.fishXpMult;
+        break;
       default:
         break;
     }
@@ -2904,6 +2907,10 @@ export class Game {
         speedMult: s.paintballSpeedMult,
         rangeMult: s.paintballRangeMult,
       });
+    }
+
+    if (this.oceanFish && this.localPlayer instanceof Boat) {
+      this.oceanFish.setTuningFromUpgrades(s);
     }
 
     this.spawnExtraCollectibles(s);

@@ -126,6 +126,10 @@ const UPGRADE_ICONS: Record<string, string> = {
   // Boat
   keel_cut: "⛵",
   steady_rudder: "🧭",
+  wide_cast: "◎",
+  quick_reel: "🎣",
+  twin_lines: "〰️",
+  fish_bounty: "🐟",
   foam_surge: "🌊",
   wake_rider: "💨",
 };

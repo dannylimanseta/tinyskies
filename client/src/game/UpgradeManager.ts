@@ -30,6 +30,16 @@ export interface UpgradeState {
   /** Diamond XP multiplier while boat is at >=80% of its max speed. */
   boatHighSpeedDiamondMult: number;
 
+  // ── Boat fishing (OceanFish) ────────────────────────
+  /** Multiplier on fishing catch / exit chord radii. */
+  fishCatchRadiusMult: number;
+  /** Multiplier on capture bar fill rate. */
+  fishFillRateMult: number;
+  /** XP multiplier for fish catches (applied in awardXP). */
+  fishXpMult: number;
+  /** How many fish can be hooked at once (1–3). */
+  fishMaxConcurrent: number;
+
   // ── Paintball (plane-only) ────────────────────────
   paintballSpeedMult: number;
   paintballRangeMult: number;
@@ -86,6 +96,11 @@ function defaultState(): UpgradeState {
     boatTurnMult: 1,
     boatAccelMult: 1,
     boatHighSpeedDiamondMult: 1,
+
+    fishCatchRadiusMult: 1,
+    fishFillRateMult: 1,
+    fishXpMult: 1,
+    fishMaxConcurrent: 1,
 
     paintballSpeedMult: 1,
     paintballRangeMult: 1,
@@ -259,7 +274,7 @@ const CARPET_UPGRADES: UpgradeDefinition[] = [
   },
 ];
 
-/** Boat ability pool. */
+/** Boat ability pool — fishing-focused + handling + speed. */
 const BOAT_UPGRADES: UpgradeDefinition[] = [
   {
     id: "keel_cut",
@@ -275,6 +290,38 @@ const BOAT_UPGRADES: UpgradeDefinition[] = [
     category: "performance",
     apply: (s) => { s.boatTurnMult *= 1.22; },
   },
+  {
+    id: "wide_cast",
+    name: "Wide Cast",
+    description: "+15% fishing range radius",
+    category: "performance",
+    apply: (s) => { s.fishCatchRadiusMult *= 1.15; },
+  },
+  {
+    id: "quick_reel",
+    name: "Quick Reel",
+    description: "+22% catch speed",
+    category: "performance",
+    apply: (s) => { s.fishFillRateMult *= 1.22; },
+  },
+  {
+    id: "twin_lines",
+    name: "Twin Lines",
+    description: "Fish two targets at once",
+    category: "performance",
+    apply: (s) => { s.fishMaxConcurrent = Math.min(2, s.fishMaxConcurrent + 1); },
+  },
+  {
+    id: "fish_bounty",
+    name: "Fish Bounty",
+    description: "+25% XP from fish catches",
+    category: "economy",
+    apply: (s) => { s.fishXpMult *= 1.25; },
+  },
+];
+
+/** Old boat cards — not drawn, but `apply` must run for restored saves. */
+const LEGACY_BOAT_UPGRADES: UpgradeDefinition[] = [
   {
     id: "foam_surge",
     name: "Foam Surge",
@@ -296,6 +343,7 @@ const ALL_POOLS: UpgradeDefinition[][] = [
   PLANE_UPGRADES,
   CARPET_UPGRADES,
   BOAT_UPGRADES,
+  LEGACY_BOAT_UPGRADES,
 ];
 
 function vehiclePool(vehicle: Vehicle): UpgradeDefinition[] {
