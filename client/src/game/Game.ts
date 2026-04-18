@@ -1643,6 +1643,8 @@ export class Game {
   /* ── Main game loop ──────────────────────────────────────────────── */
 
   private static readonly INTRO_DURATION = 5.2;
+  /** Gremlins stay hidden until this many seconds after the session starts (`gameTime`). */
+  private static readonly SKY_GREMLIN_SPAWN_DELAY_SEC = 30;
   /** Tangent-plane heading (rad) for the Home intro camera approach toward the campsite. */
   private static readonly CAMP_INTRO_APPROACH = 0.85;
 
@@ -1934,8 +1936,12 @@ export class Game {
 
     this.remotePlanes.update(dt, this.cameraRig.camera);
     if (this.localPlayer instanceof Plane && this.skyGremlins) {
-      this.skyGremlins.setSuspended(false);
-      this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0, this.cameraRig.camera.position);
+      if (this.gameTime >= Game.SKY_GREMLIN_SPAWN_DELAY_SEC) {
+        this.skyGremlins.setSuspended(false);
+        this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0, this.cameraRig.camera.position);
+      } else {
+        this.skyGremlins.setSuspended(true);
+      }
     } else {
       this.skyGremlins?.setSuspended(true);
     }
