@@ -26,6 +26,7 @@ import {
   BufferAttribute,
   Points,
   PointsMaterial,
+  CanvasTexture,
   type Scene,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -80,6 +81,30 @@ const WINDMILL_COUNT = 5;
 const MOONSTONE_FLOAT_HEIGHT = 0.82;
 const MOONSTONE_DUST_COUNT = 56;
 const MOONSTONE_DUST_GRAVITY = 4.2;
+
+/** Shared soft round alpha for moonstone dust Points; disposed in Globe.dispose(). */
+let moonstoneDustSpriteTexture: CanvasTexture | null = null;
+
+function getMoonstoneDustSpriteTexture(): CanvasTexture {
+  if (moonstoneDustSpriteTexture) return moonstoneDustSpriteTexture;
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const c = size * 0.5;
+  const grd = ctx.createRadialGradient(c, c, 0, c, c, c - 0.5);
+  grd.addColorStop(0, "rgba(255,255,255,1)");
+  grd.addColorStop(0.4, "rgba(255,255,255,0.75)");
+  grd.addColorStop(0.72, "rgba(255,255,255,0.2)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  moonstoneDustSpriteTexture = tex;
+  return tex;
+}
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -3265,10 +3290,11 @@ transformed.z += sway2;`,
     const geometry = new BufferGeometry();
     geometry.setAttribute("position", new BufferAttribute(pos, 3));
     const mat = new PointsMaterial({
-      color: 0xc8b8a6,
-      size: 0.048,
+      map: getMoonstoneDustSpriteTexture(),
+      color: 0x4a4543,
+      size: 0.024,
       transparent: true,
-      opacity: 0.62,
+      opacity: 0.7,
       depthWrite: false,
       sizeAttenuation: true,
     });
@@ -4928,7 +4954,11 @@ transformed.z += sway2;`,
       const dust = state.dust;
       if (!dust) continue;
       dust.geometry.dispose();
-      (dust.points.material as PointsMaterial).dispose();
+      const mat = dust.points.material as PointsMaterial;
+      mat.map = null;
+      mat.dispose();
     }
+    moonstoneDustSpriteTexture?.dispose();
+    moonstoneDustSpriteTexture = null;
   }
 }
