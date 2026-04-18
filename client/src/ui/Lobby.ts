@@ -119,7 +119,10 @@ export class Lobby {
     this.el.innerHTML = `
       <div class="lobby-overlay">
         <div class="lobby-header">
-          <h1 class="lobby-title">Tiny Skies</h1>
+          <div class="lobby-title-block">
+            <p class="lobby-tagline">A Cosy Exploration Game</p>
+            <h1 class="lobby-title">Tiny Skies</h1>
+          </div>
           <div class="lobby-username">
             <div class="lobby-greeting-row">
               <span class="lobby-greeting-hi">Hello, </span>
@@ -340,11 +343,31 @@ export class Lobby {
         opacity: 1;
         transform: translateY(0);
       }
+      /* Negative margin on the tagline shrinks this block's height; padding-bottom restores
+         space before .lobby-username so the greeting doesn't ride up with the title pair. */
+      .lobby-title-block {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0;
+        padding-bottom: clamp(0.28rem, 0.9vw, 0.5rem);
+      }
+      .lobby-tagline {
+        font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
+        font-size: clamp(1.05rem, 3.3vw, 1.32rem);
+        font-weight: 400;
+        margin: 0 0 -0.24em;
+        line-height: 1.1;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.88);
+        text-shadow: 0 0 18px rgba(255, 255, 255, 0.22);
+      }
       .lobby-title {
         font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
         font-size: clamp(3.5rem, 14vw, 8.4rem);
         font-weight: 800;
         margin: 0;
+        line-height: 1;
         color: white;
         text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
       }
