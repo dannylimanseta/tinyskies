@@ -28,6 +28,12 @@ import { addRimLight } from "./RimLight";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 export { BRAZIER_COUNT };
+
+export interface SavedBrazierState {
+  revealed: boolean;
+  burnEndsAtMs: (number | null)[];
+}
+
 const BURN_DURATION_SEC = BRAZIER_BURN_MS / 1000;
 const FADE_IN_DUR       = 0.50; // seconds for pop-in
 const FADE_OUT_DUR      = 3.50; // seconds for slow extinguish
@@ -614,6 +620,52 @@ export class Braziers {
   /** True once all braziers have fully risen into place and can be interacted with. */
   isRevealed(): boolean {
     return this.revealComplete;
+  }
+
+  /** Snapshot enough local-only state to restore braziers in future runs/worlds. */
+  capturePersistentState(now = Date.now()): SavedBrazierState {
+    const burnEndsAtMs = this.states.map((s) => {
+      const end = s.burnEndsAtMs;
+      return typeof end === "number" && Number.isFinite(end) && end > now ? end : null;
+    });
+    return {
+      revealed: this.revealStarted || this.revealComplete || burnEndsAtMs.some((end) => end != null),
+      burnEndsAtMs,
+    };
+  }
+
+  /** Restore a previously saved local-only brazier reveal/burn state instantly. */
+  restorePersistentState(saved: SavedBrazierState, now = Date.now()) {
+    const burnEndsAtMs = this.states.map((_s, i) => {
+      const end = saved.burnEndsAtMs[i];
+      return typeof end === "number" && Number.isFinite(end) && end > now ? end : null;
+    });
+    const revealed = !!saved.revealed || burnEndsAtMs.some((end) => end != null);
+    this.revealStarted = revealed;
+    this.revealComplete = revealed;
+    this.revealTimer = revealed
+      ? BRAZIER_REVEAL_SEC + BRAZIER_REVEAL_STAGGER_SEC * Math.max(0, this.states.length - 1)
+      : 0;
+    for (let i = 0; i < this.states.length; i++) {
+      const s = this.states[i]!;
+      const burnEnd = burnEndsAtMs[i];
+      this.applyRevealPose(s, revealed ? 1 : 0);
+      s.group.visible = revealed;
+      s.lit = burnEnd != null;
+      s.burnEndsAtMs = burnEnd;
+      s.fadeInT = burnEnd != null ? 1 : 0;
+      s.fadeOutT = burnEnd != null ? 0 : 1;
+    }
+  }
+
+  /** Read the current brazier progress bars without mutating the burn state. */
+  getBurnProgressSnapshot(now = Date.now()): number[] {
+    return this.states.map((s) => {
+      if (!this.revealComplete) return 0;
+      if (!s.lit || s.burnEndsAtMs == null || s.burnEndsAtMs <= now) return 0;
+      const remainSec = (s.burnEndsAtMs - now) / 1000;
+      return (remainSec / BURN_DURATION_SEC) * easeOutQuad(s.fadeInT);
+    });
   }
 
   /** Starts the cinematic "rise from the earth" reveal. Safe to call repeatedly. */

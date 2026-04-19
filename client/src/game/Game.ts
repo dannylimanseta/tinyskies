@@ -72,7 +72,7 @@ import { RainbowArch, RAINBOW_COUNT, RAINBOW_XP } from "./RainbowArch";
 import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingLanterns";
 import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
-import { Braziers, BRAZIER_COUNT } from "./Braziers";
+import { Braziers, BRAZIER_COUNT, type SavedBrazierState } from "./Braziers";
 import { SkyGremlins, SKY_GREMLIN_XP } from "./SkyGremlins";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
@@ -84,7 +84,7 @@ import { MeteorShower } from "./MeteorShower";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
 import { LevelUpCards } from "../ui/LevelUpCards";
-import { ProgressionManager } from "./ProgressionManager";
+import { ProgressionManager, type SavedPlayerWorldState } from "./ProgressionManager";
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 import { SkyJellyfish, JELLY_CAPTURE_XP } from "./SkyJellyfish";
@@ -1035,6 +1035,7 @@ export class Game {
     }
 
     this.ensureBraziersSpawned();
+    this.restorePlayerWorldState();
 
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
@@ -1576,6 +1577,7 @@ export class Game {
   /** All-five brazier shield: local-only world event for this player. */
   private applyBrazierMoonShield(remainingMs: number, announce = true) {
     this.braziers?.extinguishAll();
+    this.savePlayerWorldState();
     this.moonThreat?.beginApproachPause(remainingMs);
     if (!announce) return;
     this.shouldShowBrazierMoonResume = true;
@@ -2128,6 +2130,7 @@ export class Game {
       const { newlyLitIndices, burnProgress } = this.braziers.update(dt, playerWorldPos);
       if (newlyLitIndices.length > 0) {
         this.hud.showBrazierLit();
+        this.savePlayerWorldState();
       }
       const firstFlameFizzled =
         !this.showedBrazierFizzleHint &&
@@ -2135,6 +2138,7 @@ export class Game {
       if (firstFlameFizzled) {
         this.showedBrazierFizzleHint = true;
         this.hud.showBrazierFizzleHint();
+        this.savePlayerWorldState({ brazierFizzleHintShown: true });
       }
       this.hud.updateBrazierStatus(burnProgress);
       this.lastBrazierProgress = burnProgress;
@@ -2535,6 +2539,7 @@ export class Game {
 
   private startMoonstoneUnionCinematic() {
     if (String(this.gamePhase) === "moonstoneUnion" || String(this.gamePhase) === "moonImpact") return;
+    if (this.globe.isMoonstonePostUnionActive()) return;
     if (this.globe.getMoonstoneCount() < 2) return;
     this.ensureBraziersSpawned();
 
@@ -3235,6 +3240,7 @@ export class Game {
       this.moonstoneUnionMidNormal,
       this.moonstoneUnionTargetQuat,
     );
+    this.savePlayerWorldState({ moonstoneUnionComplete: true, braziersRevealed: true });
     this.globe.setMoonstoneCinematicActive(false);
     this.globe.setMoonstoneRimIntensity(this.globe.getMoonstoneRimIntensityBase());
 
@@ -3639,6 +3645,87 @@ export class Game {
     const pick =
       LEVELUP_SFX_IDS[Math.floor(Math.random() * LEVELUP_SFX_IDS.length)]!;
     this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
+  }
+
+  private restoreMoonstoneUnionFromSave() {
+    if (this.globe.isMoonstonePostUnionActive()) return;
+    const count = this.globe.getMoonstoneCount();
+    if (count < 2) return;
+
+    const n0 = new Vector3();
+    const n1 = new Vector3();
+    if (!this.globe.readMoonstoneNormal(0, n0) || !this.globe.readMoonstoneNormal(1, n1)) return;
+
+    const midNormal = n0.add(n1);
+    if (midNormal.lengthSq() < 1e-6) return;
+    midNormal.normalize();
+
+    const globeR = this.worldConfig?.globeRadius ?? 5;
+    const unionPoint = new Vector3()
+      .copy(midNormal)
+      .multiplyScalar(globeR * (1.0 + Game.MOONSTONE_UNION_ALTITUDE_FRAC));
+
+    const worldUp = new Vector3(0, 1, 0);
+    if (Math.abs(worldUp.dot(midNormal)) > 0.9) worldUp.set(1, 0, 0);
+    const camRight = new Vector3().copy(midNormal).cross(worldUp).normalize();
+    const xAx = new Vector3().copy(camRight);
+    const yAx = new Vector3().copy(midNormal);
+    xAx.addScaledVector(yAx, -xAx.dot(yAx)).normalize();
+    const zAx = new Vector3().crossVectors(xAx, yAx).normalize();
+    const basis = new Matrix4().makeBasis(xAx, yAx, zAx);
+    const sharedTarget = new Quaternion().setFromRotationMatrix(basis);
+    const quats = Array.from({ length: count }, () => sharedTarget.clone());
+
+    this.globe.activateMoonstonePostUnion(unionPoint, midNormal, quats);
+  }
+
+  private restorePlayerWorldState() {
+    const saved = ProgressionManager.loadPlayerWorldState();
+    if (saved.moonstoneUnionComplete) {
+      this.restoreMoonstoneUnionFromSave();
+    }
+
+    const savedBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {
+      const end = saved.brazierBurnEndsAtMs?.[i];
+      return typeof end === "number" && Number.isFinite(end) ? end : null;
+    });
+    const brazierState: SavedBrazierState = {
+      revealed:
+        !!saved.braziersRevealed ||
+        !!saved.moonstoneUnionComplete ||
+        savedBurnEndsAtMs.some((end) => end != null),
+      burnEndsAtMs: savedBurnEndsAtMs,
+    };
+    this.braziers?.restorePersistentState(brazierState);
+    this.showedBrazierFizzleHint = !!saved.brazierFizzleHintShown;
+    if (this.braziers) {
+      this.lastBrazierProgress = this.braziers.getBurnProgressSnapshot();
+      this.hud.updateBrazierStatus(this.lastBrazierProgress);
+      this.prevAllFiveBraziers =
+        this.lastBrazierProgress.length >= BRAZIER_COUNT &&
+        this.lastBrazierProgress.every((p) => p > 0);
+    }
+  }
+
+  private savePlayerWorldState(overrides: Partial<SavedPlayerWorldState> = {}) {
+    const prev = ProgressionManager.loadPlayerWorldState();
+    const brazierState = this.braziers?.capturePersistentState();
+    const next: SavedPlayerWorldState = {
+      moonstoneUnionComplete: this.globe.isMoonstonePostUnionActive() || !!prev.moonstoneUnionComplete,
+      braziersRevealed: brazierState?.revealed ?? prev.braziersRevealed ?? false,
+      brazierBurnEndsAtMs:
+        brazierState?.burnEndsAtMs ??
+        prev.brazierBurnEndsAtMs ??
+        Array.from({ length: BRAZIER_COUNT }, () => null),
+      brazierFizzleHintShown: this.showedBrazierFizzleHint || !!prev.brazierFizzleHintShown,
+      ...overrides,
+    };
+    next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {
+      const end = next.brazierBurnEndsAtMs?.[i];
+      return typeof end === "number" && Number.isFinite(end) ? end : null;
+    });
+    if (next.moonstoneUnionComplete) next.braziersRevealed = true;
+    ProgressionManager.savePlayerWorldState(next);
   }
 
   /** Places braziers in the world if they have not been created yet. */

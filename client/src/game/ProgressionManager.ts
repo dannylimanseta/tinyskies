@@ -4,6 +4,7 @@ import { UpgradeManager } from "./UpgradeManager";
 const STORAGE_KEY = "globefly_vehicle_progress";
 const NAME_KEY = "globefly_player_name";
 const UNLOCK_ACK_KEY = "globefly_unlocks_ack";
+const PLAYER_WORLD_STATE_KEY = "globefly_player_world_state_v1";
 /** Campsite bookmark; cleared with `clearAll` for a full local reset. */
 const CAMPSITE_KEY = "globefly_campsite_v2";
 const LEGACY_CAMPSITE_KEY = "globefly_campsite";
@@ -20,6 +21,17 @@ export interface SavedVehicleProgress {
   appliedUpgradeIds: string[];
   /** 0xRRGGBB hull / body color chosen for this vehicle. */
   vehicleColor?: number;
+}
+
+export interface SavedPlayerWorldState {
+  /** Once true, every world loads with the fused moonstone ring already active. */
+  moonstoneUnionComplete?: boolean;
+  /** Once true, braziers spawn already risen instead of hidden underground. */
+  braziersRevealed?: boolean;
+  /** Absolute wall-clock expiry per brazier slot; null means currently unlit. */
+  brazierBurnEndsAtMs?: (number | null)[];
+  /** Prevents replaying the first-burnout hint once the player has already seen it. */
+  brazierFizzleHintShown?: boolean;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;
@@ -194,6 +206,7 @@ export class ProgressionManager {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(NAME_KEY);
       localStorage.removeItem(UNLOCK_ACK_KEY);
+      localStorage.removeItem(PLAYER_WORLD_STATE_KEY);
       localStorage.removeItem(CAMPSITE_KEY);
       localStorage.removeItem(LEGACY_CAMPSITE_KEY);
     } catch {}
@@ -209,5 +222,17 @@ export class ProgressionManager {
 
   static savePlayerName(name: string) {
     try { localStorage.setItem(NAME_KEY, name); } catch {}
+  }
+
+  static loadPlayerWorldState(): SavedPlayerWorldState {
+    try {
+      const raw = localStorage.getItem(PLAYER_WORLD_STATE_KEY);
+      if (raw) return JSON.parse(raw) as SavedPlayerWorldState;
+    } catch {}
+    return {};
+  }
+
+  static savePlayerWorldState(state: SavedPlayerWorldState) {
+    try { localStorage.setItem(PLAYER_WORLD_STATE_KEY, JSON.stringify(state)); } catch {}
   }
 }
