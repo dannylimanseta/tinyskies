@@ -327,11 +327,6 @@ export class Game {
   private moonstoneUnionShotNormal = new Vector3();
   private moonstoneUnionShotSide = new Vector3();
   private moonstoneUnionShotForward = new Vector3();
-  private moonstoneUnionPairMid = new Vector3();
-  private moonstoneUnionPairSep = new Vector3();
-  private moonstoneUnionPairView = new Vector3();
-  private moonstoneUnionPairProj = new Vector3();
-  private moonstoneUnionPairUp = new Vector3();
   private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
@@ -2934,44 +2929,9 @@ export class Game {
           .addScaledVector(right, dist * Math.cos(angle))
           .addScaledVector(side, dist * Math.sin(angle));
         cam.position.copy(camPos);
-        const root0 = this.globe.getMoonstoneRoot(0);
-        const root1 = this.globe.getMoonstoneRoot(1);
-        if (root0 && root1) {
-          // Keep the two halves level on screen by deriving the camera up-vector
-          // from their actual separation in this beat. That makes the line
-          // between them read horizontally in the frame right before the join.
-          this.moonstoneUnionPairMid
-            .copy(root0.position)
-            .add(root1.position)
-            .multiplyScalar(0.5);
-          this.moonstoneUnionPairSep.copy(root0.position).sub(root1.position);
-          this.moonstoneUnionPairView
-            .copy(this.moonstoneUnionPairMid)
-            .sub(cam.position)
-            .normalize();
-          this.moonstoneUnionPairProj
-            .copy(this.moonstoneUnionPairSep)
-            .addScaledVector(
-              this.moonstoneUnionPairView,
-              -this.moonstoneUnionPairSep.dot(this.moonstoneUnionPairView),
-            );
-          if (this.moonstoneUnionPairProj.lengthSq() > 1e-6) {
-            this.moonstoneUnionPairUp
-              .crossVectors(this.moonstoneUnionPairProj, this.moonstoneUnionPairView)
-              .normalize();
-            cam.up.copy(this.moonstoneUnionPairUp);
-          } else {
-            cam.up.copy(midN);
-          }
-          this.moonstoneUnionShotLookAt
-            .copy(this.moonstoneUnionPairMid)
-            .lerp(unionPt, 0.14 + t * 0.12);
-          cam.lookAt(this.moonstoneUnionShotLookAt);
-        } else {
-          cam.up.copy(midN);
-          const lookT = new Vector3().lerpVectors(center, unionPt, 0.5 + t * 0.4);
-          cam.lookAt(lookT);
-        }
+        cam.up.copy(midN);
+        const lookT = new Vector3().lerpVectors(center, unionPt, 0.5 + t * 0.4);
+        cam.lookAt(lookT);
         cam.fov = 40 - 2 * t;
         cam.updateProjectionMatrix();
 
