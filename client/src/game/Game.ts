@@ -85,7 +85,7 @@ import { MeteorShower } from "./MeteorShower";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
 import { LevelUpCards } from "../ui/LevelUpCards";
-import { ProgressionManager, UNLOCK_BRAZIERS_MIN_MAX_LEVEL } from "./ProgressionManager";
+import { ProgressionManager } from "./ProgressionManager";
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 import { SkyJellyfish, JELLY_CAPTURE_XP } from "./SkyJellyfish";
@@ -286,7 +286,7 @@ export class Game {
   private prevAllFiveBraziers = false;
   /** Only show the moon-resumed banner after a locally-announced brazier pause. */
   private shouldShowBrazierMoonResume = false;
-  /** If braziers were locked at join, stash server sync until they unlock mid-run. */
+  /** Stash brazier sync until the brazier system has been constructed locally. */
   private pendingBrazierSync: BrazierSyncPayload | null = null;
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
@@ -302,6 +302,7 @@ export class Game {
     | "converge"
     | "join"
     | "release"
+    | "brazierMontage"
     | "fadeOut"
     | "done" = "done";
   private moonstoneUnionTimer = 0;
@@ -319,8 +320,14 @@ export class Game {
   private moonstoneUnionRestQuat: Quaternion[] = [];
   private moonstoneUnionNormals: Vector3[] = [];
   private moonstoneUnionTargetQuat: Quaternion[] = [];
+  private moonstoneUnionBrazierShotOrder: number[] = [];
   private moonstoneUnionGlow: Sprite | null = null;
   private moonstoneUnionCoreGlow: Sprite | null = null;
+  private moonstoneUnionShotTarget = new Vector3();
+  private moonstoneUnionShotLookAt = new Vector3();
+  private moonstoneUnionShotNormal = new Vector3();
+  private moonstoneUnionShotSide = new Vector3();
+  private moonstoneUnionShotForward = new Vector3();
   private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
@@ -2535,6 +2542,8 @@ export class Game {
   private static readonly MOONSTONE_UNION_CONVERGE_SEC = 3.4;
   private static readonly MOONSTONE_UNION_JOIN_SEC = 2.6;
   private static readonly MOONSTONE_UNION_RELEASE_SEC = 2.0;
+  /** Longer brazier cutaways so each shot still catches active rising motion. */
+  private static readonly MOONSTONE_UNION_BRAZIER_SHOT_SEC = 1.1;
   private static readonly MOONSTONE_UNION_FADEOUT_SEC = 0.9;
   private static readonly MOONSTONE_UNION_LETTERBOX_VH = 10.5;
   /** Extra altitude (world units) each half climbs during the ascent beat. */
@@ -2545,6 +2554,7 @@ export class Game {
   private startMoonstoneUnionCinematic() {
     if (String(this.gamePhase) === "moonstoneUnion" || String(this.gamePhase) === "moonImpact") return;
     if (this.globe.getMoonstoneCount() < 2) return;
+    this.ensureBraziersSpawned();
 
     this.gamePhase = "moonstoneUnion";
     this.moonstoneUnionStep = "inhale";
@@ -2561,6 +2571,9 @@ export class Game {
     this.moonstoneUnionRestQuat = [];
     this.moonstoneUnionNormals = [];
     this.moonstoneUnionTargetQuat = [];
+    this.moonstoneUnionBrazierShotOrder = [];
+    this.moonstoneUnionBrazierShotOrder = this.buildMoonstoneUnionBrazierShotOrder();
+    this.braziers?.setRevealSequence(this.moonstoneUnionBrazierShotOrder);
     const count = this.globe.getMoonstoneCount();
     for (let i = 0; i < count; i++) {
       const cur = new Vector3();
@@ -2723,6 +2736,20 @@ export class Game {
     return tex;
   }
 
+  /**
+   * Deterministic montage order for brazier reveal shots. We keep the locations
+   * varied per seed, but stable inside a given world so the sequence feels
+   * authored rather than random.
+   */
+  private buildMoonstoneUnionBrazierShotOrder(): number[] {
+    const count = this.braziers?.worldPositions.length ?? 0;
+    return Array.from({ length: count }, (_, i) => i).sort((a, b) => {
+      const ha = (((this.gameSeed ^ 0x9e3779b9) + a * 2654435761) >>> 0);
+      const hb = (((this.gameSeed ^ 0x9e3779b9) + b * 2654435761) >>> 0);
+      return ha - hb;
+    });
+  }
+
   private makeUnionBar(top: boolean): HTMLDivElement {
     const bar = document.createElement("div");
     bar.style.cssText =
@@ -2735,6 +2762,15 @@ export class Game {
   private tickMoonstoneUnionCinematic(dt: number) {
     this.moonstoneUnionTimer += dt;
     this.globe.update(dt);
+    this.localPlayer.group.updateMatrixWorld(true);
+    if (this.moonstoneUnionStep === "brazierMontage") {
+      this.braziers?.startReveal();
+    }
+    this.braziers?.update(
+      dt,
+      this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      false,
+    );
 
     const cam = this.moonstoneUnionCamera;
     if (!cam) {
@@ -3023,10 +3059,108 @@ export class Game {
         rimIntensity = rimBase + 1.8 + 0.2 * breath;
 
         if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_RELEASE_SEC) {
+          if (this.moonstoneUnionBrazierShotOrder.length > 0) {
+            this.moonstoneUnionStep = "brazierMontage";
+            this.moonstoneUnionTimer = 0;
+          } else {
+            this.moonstoneUnionStep = "fadeOut";
+            this.moonstoneUnionTimer = 0;
+            this.transitionOverlay?.fadeOut();
+            // Begin letterbox retraction.
+            if (this.moonstoneUnionLetterTop) this.moonstoneUnionLetterTop.style.height = "0vh";
+            if (this.moonstoneUnionLetterBot) this.moonstoneUnionLetterBot.style.height = "0vh";
+          }
+        }
+        break;
+      }
+
+      /* ── Beat 6: Brazier montage — cut across different locations as the
+         newly awakened braziers rise out of the earth. */
+      case "brazierMontage": {
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          root.position.copy(unionPt);
+          root.quaternion.copy(this.moonstoneUnionTargetQuat[i]!);
+        }
+
+        const order = this.moonstoneUnionBrazierShotOrder;
+        const shotDur = Game.MOONSTONE_UNION_BRAZIER_SHOT_SEC;
+        const totalDur = order.length * shotDur;
+        if (!this.braziers || order.length === 0) {
           this.moonstoneUnionStep = "fadeOut";
           this.moonstoneUnionTimer = 0;
           this.transitionOverlay?.fadeOut();
-          // Begin letterbox retraction.
+          if (this.moonstoneUnionLetterTop) this.moonstoneUnionLetterTop.style.height = "0vh";
+          if (this.moonstoneUnionLetterBot) this.moonstoneUnionLetterBot.style.height = "0vh";
+          break;
+        }
+
+        const shotIdx = Math.min(order.length - 1, Math.floor(this.moonstoneUnionTimer / shotDur));
+        const shotT = smooth((this.moonstoneUnionTimer - shotIdx * shotDur) / shotDur);
+        const brazierIdx = order[shotIdx]!;
+        this.braziers.readWorldPosition(brazierIdx, this.moonstoneUnionShotTarget);
+        this.moonstoneUnionShotNormal.copy(this.moonstoneUnionShotTarget).normalize();
+
+        // Build a local tangent frame so each brazier shot hugs the globe surface.
+        this.moonstoneUnionShotLookAt.set(0, 1, 0);
+        if (Math.abs(this.moonstoneUnionShotNormal.y) > 0.92) {
+          this.moonstoneUnionShotLookAt.set(1, 0, 0);
+        }
+        this.moonstoneUnionShotSide
+          .crossVectors(this.moonstoneUnionShotLookAt, this.moonstoneUnionShotNormal)
+          .normalize();
+        this.moonstoneUnionShotForward
+          .crossVectors(this.moonstoneUnionShotNormal, this.moonstoneUnionShotSide)
+          .normalize();
+
+        // Slow pan/orbit around the brazier with a fixed lift above the ground.
+        // The shot now arcs around the target instead of trucking inward/upward.
+        const orbitDir = shotIdx % 2 === 0 ? 1 : -1;
+        const orbitStart = -0.22 * orbitDir;
+        const orbitSweep = 0.44 * orbitDir;
+        const orbitAngle = orbitStart + orbitSweep * shotT;
+        const orbitRadius = globeR * 0.36;
+        const lift = globeR * 0.07;
+        cam.position
+          .copy(this.moonstoneUnionShotTarget)
+          .addScaledVector(this.moonstoneUnionShotNormal, lift)
+          .addScaledVector(this.moonstoneUnionShotSide, Math.cos(orbitAngle) * orbitRadius)
+          .addScaledVector(this.moonstoneUnionShotForward, Math.sin(orbitAngle) * orbitRadius);
+        // Ground-rumble shake that is strongest when a brazier first punches
+        // upward, then settles as the shot lands.
+        const shakeEase = 1 - shotT;
+        const shakeAmp = globeR * (0.003 * shakeEase + 0.0008);
+        const shakeT = this.moonstoneUnionTimer * 12.5 + brazierIdx * 1.73;
+        cam.position.addScaledVector(
+          this.moonstoneUnionShotSide,
+          Math.sin(shakeT * 2.7 + 0.2) * shakeAmp * 0.18,
+        );
+        cam.position.addScaledVector(
+          this.moonstoneUnionShotForward,
+          Math.cos(shakeT * 3.2 + 2.4) * shakeAmp * 0.28,
+        );
+        cam.up.copy(this.moonstoneUnionShotNormal);
+        cam.lookAt(
+          this.moonstoneUnionShotLookAt
+            .copy(this.moonstoneUnionShotTarget)
+            .addScaledVector(this.moonstoneUnionShotNormal, globeR * 0.03),
+        );
+        cam.fov = 30.5;
+        cam.updateProjectionMatrix();
+
+        // Keep a whisper of glow/rim alive off-screen so the union still feels
+        // active in the world while we cut across the brazier awakenings.
+        glowOpacity = 0.08;
+        coreOpacity = 0.04;
+        haloScale = globeR * 1.2;
+        coreScale = globeR * 0.6;
+        rimIntensity = rimBase + 0.9;
+
+        if (this.moonstoneUnionTimer >= totalDur) {
+          this.moonstoneUnionStep = "fadeOut";
+          this.moonstoneUnionTimer = 0;
+          this.transitionOverlay?.fadeOut();
           if (this.moonstoneUnionLetterTop) this.moonstoneUnionLetterTop.style.height = "0vh";
           if (this.moonstoneUnionLetterBot) this.moonstoneUnionLetterBot.style.height = "0vh";
         }
@@ -3517,10 +3651,9 @@ export class Game {
     this.audioManager.playSFX(pick, LEVELUP_SFX_VOLUME, 1, 0.2);
   }
 
-  /** Places braziers in the world once the current vehicle reaches the brazier unlock level. */
+  /** Places braziers in the world if they have not been created yet. */
   private ensureBraziersSpawned() {
     if (this.braziers) return;
-    if (this.progression.getLevel() < UNLOCK_BRAZIERS_MIN_MAX_LEVEL) return;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     const seed = this.gameSeed;
     const terrainType = this.gameTerrainType;
@@ -3805,7 +3938,7 @@ export class Game {
   }
 
   private updateBrazierWhispers(dt: number, playerWorld: Vector3) {
-    if (!this.braziers) return;
+    if (!this.braziers || !this.braziers.isRevealed()) return;
     for (let i = 0; i < this.brazierCooldown.length; i++) {
       this.brazierCooldown[i] = Math.max(0, this.brazierCooldown[i]! - dt);
     }

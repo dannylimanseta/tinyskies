@@ -12,9 +12,6 @@ const LEGACY_CAMPSITE_KEY = "globefly_campsite";
 export const UNLOCK_CARPET_MIN_MAX_LEVEL = 2;
 /** Boat unlocks when plane or carpet reaches this level (boat’s own level does not count). */
 export const UNLOCK_BOAT_PLANE_OR_CARPET_LEVEL = 4;
-/** A vehicle must reach at least this level before braziers appear during that vehicle's runs. */
-export const UNLOCK_BRAZIERS_MIN_MAX_LEVEL = 3;
-
 const LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5200, 6600, 8200];
 
 export interface SavedVehicleProgress {
@@ -167,33 +164,27 @@ export class ProgressionManager {
     return s != null ? s.level : null;
   }
 
-  /** True when max level across any vehicle slot is at least `UNLOCK_BRAZIERS_MIN_MAX_LEVEL`. */
-  static areBraziersUnlocked(all: AllVehicleProgress = ProgressionManager.loadAll()): boolean {
-    return ProgressionManager.maxLevelAcrossSlots(all) >= UNLOCK_BRAZIERS_MIN_MAX_LEVEL;
-  }
-
   // ── One-time unlock celebration (lobby popup) — shown in progression order ──
 
-  static getPendingUnlockCelebrations(): ("carpet" | "braziers" | "boat")[] {
+  static getPendingUnlockCelebrations(): ("carpet" | "boat")[] {
     const all = ProgressionManager.loadAll();
     const ack = ProgressionManager.loadUnlockAck();
-    const out: ("carpet" | "braziers" | "boat")[] = [];
+    const out: ("carpet" | "boat")[] = [];
     if (ProgressionManager.isVehicleUnlocked("carpet", all) && !ack.carpet) out.push("carpet");
-    if (ProgressionManager.areBraziersUnlocked(all) && !ack.braziers) out.push("braziers");
     if (ProgressionManager.isVehicleUnlocked("boat", all) && !ack.boat) out.push("boat");
     return out;
   }
 
-  static acknowledgeUnlockCelebration(kind: "carpet" | "boat" | "braziers") {
+  static acknowledgeUnlockCelebration(kind: "carpet" | "boat") {
     const ack = ProgressionManager.loadUnlockAck();
     ack[kind] = true;
     try { localStorage.setItem(UNLOCK_ACK_KEY, JSON.stringify(ack)); } catch {}
   }
 
-  static loadUnlockAck(): { carpet?: boolean; boat?: boolean; braziers?: boolean } {
+  static loadUnlockAck(): { carpet?: boolean; boat?: boolean } {
     try {
       const raw = localStorage.getItem(UNLOCK_ACK_KEY);
-      if (raw) return JSON.parse(raw) as { carpet?: boolean; boat?: boolean; braziers?: boolean };
+      if (raw) return JSON.parse(raw) as { carpet?: boolean; boat?: boolean };
     } catch {}
     return {};
   }

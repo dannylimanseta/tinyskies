@@ -47,6 +47,12 @@ const FLAME_LIGHT_Y = FLAME_Y - FLAME_H * 0.28;
 
 /** Sink brazier along surface normal so it sits slightly embedded in terrain */
 const BRAZIER_GROUND_SINK = 0.038;
+/** Start fully buried below the surface, then rise into place during the reveal cutscene. */
+const BRAZIER_REVEAL_DEPTH = 0.24;
+/** Further slowed so the brazier montage still catches the rise in progress. */
+const BRAZIER_REVEAL_SEC = 4.4;
+/** Keep the ripple between sites proportionally slower too. */
+const BRAZIER_REVEAL_STAGGER_SEC = 0.42;
 
 /* Inland placement: ring-sample radius (in unit-normal space) and max water ratio */
 const INLAND_CHECK_DIST  = 0.10;   // ≈ 0.5 world units on a radius-5 globe
@@ -206,6 +212,11 @@ void main() {
 
 interface BrazierState {
   group: Group;
+  normal: Vector3;
+  /** Final above-ground placement once the reveal is complete. */
+  restPosition: Vector3;
+  /** Delay before this brazier starts rising once reveal begins. */
+  revealDelay: number;
   flameMesh: Mesh;
   glowMesh: Mesh;
   flameMat: ShaderMaterial;
@@ -238,6 +249,10 @@ function easeOutQuad(t: number): number {
   return 1 - (1 - t) * (1 - t);
 }
 
+function clamp01(t: number): number {
+  return Math.max(0, Math.min(1, t));
+}
+
 /** Ease-out-back: overshoots ~1.15 at t≈0.55 then settles to 1.0. */
 function popScale(fadeInT: number): number {
   if (fadeInT <= 0) return 0;
@@ -245,11 +260,22 @@ function popScale(fadeInT: number): number {
   return 1.15 - ((fadeInT - 0.55) / 0.45) * 0.15;
 }
 
+/** Similar overshoot for the structural "rises out of the ground" reveal. */
+function easeOutBack(t: number): number {
+  const x = clamp01(t);
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+}
+
 /* ── Class ───────────────────────────────────────────────────────── */
 
 export class Braziers {
   private states: BrazierState[] = [];
   private scene: Scene;
+  private revealStarted = false;
+  private revealComplete = false;
+  private revealTimer = 0;
 
   /* shared geometry */
   private ironGeo!: BufferGeometry;
@@ -299,7 +325,8 @@ export class Braziers {
       const brazierQ = new Quaternion().setFromUnitVectors(REF_UP, normal);
 
       const group = this.buildBrazierGroup();
-      group.position.copy(normal.clone().multiplyScalar(surfaceR - BRAZIER_GROUND_SINK));
+      const restPosition = normal.clone().multiplyScalar(surfaceR - BRAZIER_GROUND_SINK);
+      group.position.copy(restPosition);
       group.quaternion.copy(brazierQ);
       group.rotateY(((worldSeed * 2654435761 + i * 1234567891) >>> 0) / 0xffffffff * Math.PI * 2);
       scene.add(group);
@@ -335,10 +362,16 @@ export class Braziers {
       const ember = this.createEmberPoints(worldSeed, i);
       group.add(ember.points);
 
-      const worldPos = group.position.clone().addScaledVector(normal, POLE_H + BOWL_H);
-
-      this.states.push({
-        group, flameMesh, glowMesh, flameMat, glowMat, light,
+      const state: BrazierState = {
+        group,
+        normal: normal.clone(),
+        restPosition,
+        revealDelay: i * BRAZIER_REVEAL_STAGGER_SEC,
+        flameMesh,
+        glowMesh,
+        flameMat,
+        glowMat,
+        light,
         emberPoints: ember.points,
         emberGeo: ember.geo,
         emberPos: ember.pos,
@@ -348,9 +381,12 @@ export class Braziers {
         emberPhase: ember.phase,
         emberCol: ember.col,
         emberOpacity: ember.opacity,
-        worldPos,
+        worldPos: new Vector3(),
         lit: false, burnEndsAtMs: null, time: 0, fadeInT: 0, fadeOutT: 1,
-      });
+      };
+      this.applyRevealPose(state, 0);
+      state.group.visible = false;
+      this.states.push(state);
     }
   }
 
@@ -575,6 +611,58 @@ export class Braziers {
     return this.states.map(s => s.worldPos);
   }
 
+  /** True once all braziers have fully risen into place and can be interacted with. */
+  isRevealed(): boolean {
+    return this.revealComplete;
+  }
+
+  /** Starts the cinematic "rise from the earth" reveal. Safe to call repeatedly. */
+  startReveal() {
+    if (this.revealStarted) return;
+    this.revealStarted = true;
+    this.revealComplete = false;
+    this.revealTimer = 0;
+    for (const s of this.states) {
+      s.group.visible = true;
+    }
+  }
+
+  /**
+   * Reorders the reveal stagger to follow a caller-provided shot sequence.
+   * Any omitted/invalid indices fall back to the end in their natural order.
+   */
+  setRevealSequence(order: readonly number[]) {
+    const seen = new Set<number>();
+    let seq = 0;
+    for (const idx of order) {
+      const s = this.states[idx];
+      if (!s || seen.has(idx)) continue;
+      s.revealDelay = seq * BRAZIER_REVEAL_STAGGER_SEC;
+      seen.add(idx);
+      seq++;
+    }
+    for (let i = 0; i < this.states.length; i++) {
+      const s = this.states[i]!;
+      if (seen.has(i)) continue;
+      s.revealDelay = seq * BRAZIER_REVEAL_STAGGER_SEC;
+      seq++;
+    }
+  }
+
+  /** Current brazier bowl-top world position, including reveal animation offset. */
+  readWorldPosition(index: number, target: Vector3): boolean {
+    const s = this.states[index];
+    if (!s) return false;
+    target.copy(s.worldPos);
+    return true;
+  }
+
+  private applyRevealPose(s: BrazierState, emerge: number) {
+    const offset = (emerge - 1) * BRAZIER_REVEAL_DEPTH;
+    s.group.position.copy(s.restPosition).addScaledVector(s.normal, offset);
+    s.worldPos.copy(s.group.position).addScaledVector(s.normal, POLE_H + BOWL_H);
+  }
+
   /** Hard-edged spark (no soft glow) — color comes from vertexColors (orange). */
   private buildEmberTexture(): CanvasTexture {
     const canvas = document.createElement("canvas");
@@ -708,12 +796,31 @@ export class Braziers {
     }
   }
 
-  update(dt: number, playerWorldPos: Vector3): { newlyLitIndices: number[]; burnProgress: number[] } {
+  update(
+    dt: number,
+    playerWorldPos: Vector3,
+    allowPlayerIgnite: boolean = true,
+  ): { newlyLitIndices: number[]; burnProgress: number[] } {
     const newlyLitIndices: number[] = [];
+    if (this.revealStarted && !this.revealComplete) {
+      this.revealTimer += dt;
+    }
+    let allRevealed = this.revealStarted;
 
     for (let i = 0; i < this.states.length; i++) {
       const s = this.states[i]!;
       s.time += dt;
+      let revealAlpha = 0;
+      if (this.revealStarted) {
+        const localT = clamp01((this.revealTimer - s.revealDelay) / BRAZIER_REVEAL_SEC);
+        revealAlpha = localT;
+        this.applyRevealPose(s, easeOutBack(localT));
+        s.group.visible = localT > 0.001 || this.revealComplete;
+        if (localT < 1) allRevealed = false;
+      } else {
+        this.applyRevealPose(s, 0);
+        s.group.visible = false;
+      }
 
       if (s.lit && s.burnEndsAtMs != null) {
         s.fadeInT = Math.min(1, s.fadeInT + dt / FADE_IN_DUR);
@@ -725,7 +832,7 @@ export class Braziers {
         }
       } else if (!s.lit && s.fadeOutT < 1) {
         s.fadeOutT = Math.min(1, s.fadeOutT + dt / FADE_OUT_DUR);
-      } else if (newlyLitIndices.length === 0) {
+      } else if (allowPlayerIgnite && this.revealComplete && newlyLitIndices.length === 0) {
         if (playerWorldPos.distanceTo(s.worldPos) < LIGHT_RADIUS) {
           s.lit = true;
           s.burnEndsAtMs = Date.now() + BRAZIER_BURN_MS;
@@ -737,8 +844,8 @@ export class Braziers {
 
       const fadeIn  = s.lit  ? easeOutQuad(s.fadeInT)  : 1;
       const fadeOut = !s.lit ? (1 - s.fadeOutT)        : 1;
-      const burn    = fadeIn * fadeOut;
-      const scale   = s.lit ? popScale(s.fadeInT) : (s.fadeOutT < 1 ? 1.0 : 0);
+      const burn    = fadeIn * fadeOut * revealAlpha;
+      const scale   = (s.lit ? popScale(s.fadeInT) : (s.fadeOutT < 1 ? 1.0 : 0)) * revealAlpha;
 
       s.flameMat.uniforms.uTime.value      = s.time;
       s.flameMat.uniforms.uBurn.value      = burn;
@@ -754,12 +861,17 @@ export class Braziers {
       this.updateEmberParticles(s, burn, dt);
     }
 
+    if (this.revealStarted && allRevealed) {
+      this.revealComplete = true;
+    }
+
     return {
       newlyLitIndices,
       // 1.0 = just lit / full burn, linearly decreasing to 0.0 = extinguished.
       // Includes smooth ramp-in during FADE_IN_DUR so the progress bar
       // doesn't jump straight to the full-width value.
       burnProgress: this.states.map((s) => {
+        if (!this.revealComplete) return 0;
         if (!s.lit || s.burnEndsAtMs == null) return 0;
         const remainSec = Math.max(0, (s.burnEndsAtMs - Date.now()) / 1000);
         return (remainSec / BURN_DURATION_SEC) * easeOutQuad(s.fadeInT);
