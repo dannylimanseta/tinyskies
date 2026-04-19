@@ -1,8 +1,5 @@
 import { io, Socket } from "socket.io-client";
 import type {
-  BrazierLitEvent,
-  BrazierMoonPausePayload,
-  BrazierSyncPayload,
   PaintballFiredEvent,
   PaintballHitEvent,
   PaintballUpgradeFlags,
@@ -49,10 +46,6 @@ export class SocketClient {
     this.socket.emit("player:move", state);
   }
 
-  emitBrazierIgnite(index: number) {
-    this.socket.emit("brazier:ignite", index);
-  }
-
   emitPaintballFire() {
     this.socket.emit("paintball:fire");
   }
@@ -87,18 +80,6 @@ export class SocketClient {
 
   onWorldFull(cb: (slug: string) => void) {
     this.socket.on("world:full", cb);
-  }
-
-  onBrazierSync(cb: (payload: BrazierSyncPayload) => void) {
-    this.socket.on("brazier:sync", cb);
-  }
-
-  onBrazierLit(cb: (event: BrazierLitEvent) => void) {
-    this.socket.on("brazier:lit", cb);
-  }
-
-  onBrazierMoonPause(cb: (payload: BrazierMoonPausePayload) => void) {
-    this.socket.on("brazier:moonPause", cb);
   }
 
   disconnect() {

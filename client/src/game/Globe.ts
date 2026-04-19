@@ -209,6 +209,11 @@ export class Globe {
   private moonstoneCinematicActive = false;
   /** Latches true once both ruins enter floating; resets when both return to idle. */
   private moonstoneUnionConsumed = false;
+  /** Persistent post-cutscene state: the completed moonstone ring hovers above the globe. */
+  private moonstonePostUnionActive = false;
+  private moonstonePostUnionPoint = new Vector3();
+  private moonstonePostUnionAxis = new Vector3(0, 1, 0);
+  private moonstonePostUnionQuats: Quaternion[] = [];
 
   private hotspringSteamInstanced: InstancedMesh | null = null;
   private shrineSparkleInstanced: InstancedMesh | null = null;
@@ -3259,6 +3264,7 @@ transformed.z += sway2;`,
    * at most one cinematic.
    */
   consumeMoonstoneUnionTrigger(now = Date.now()): boolean {
+    if (this.moonstonePostUnionActive) return false;
     if (this.moonstoneRuins.length < 2) return false;
     const a = this.moonstoneRuins[0]!;
     const b = this.moonstoneRuins[1]!;
@@ -3278,6 +3284,11 @@ transformed.z += sway2;`,
   /** When true, the normal per-frame moonstone transform/dust update is skipped. */
   setMoonstoneCinematicActive(active: boolean) {
     this.moonstoneCinematicActive = active;
+  }
+
+  /** True once the moonstone halves have permanently fused into the floating ring. */
+  isMoonstonePostUnionActive(): boolean {
+    return this.moonstonePostUnionActive;
   }
 
   /** Number of placed moonstone ruin halves (typically 2). */
@@ -3338,6 +3349,28 @@ transformed.z += sway2;`,
     return MOONSTONE_RIM_INTENSITY_BASE;
   }
 
+  /**
+   * Locks the moonstones into their post-cutscene hovering ring state. This
+   * disables future activations/triggers and lets normal `update()` keep the
+   * completed ring gently floating above the world.
+   */
+  activateMoonstonePostUnion(point: Vector3, axis: Vector3, quats: readonly Quaternion[]) {
+    this.moonstonePostUnionActive = true;
+    this.moonstoneUnionConsumed = true;
+    this.moonstonePostUnionPoint.copy(point);
+    this.moonstonePostUnionAxis.copy(axis).normalize();
+    this.moonstonePostUnionQuats = quats.map((q) => q.clone());
+    for (let i = 0; i < this.moonstoneRuins.length; i++) {
+      const s = this.moonstoneRuins[i]!;
+      s.cycleStartAt = null;
+      if (s.root) {
+        s.root.position.copy(this.moonstonePostUnionPoint);
+        const q = this.moonstonePostUnionQuats[i];
+        if (q) s.root.quaternion.copy(q);
+      }
+    }
+  }
+
   /** Hard reset of a moonstone cycle (used when ending the union cinematic). */
   resetMoonstoneCycle(i: number) {
     const s = this.moonstoneRuins[i];
@@ -3350,6 +3383,7 @@ transformed.z += sway2;`,
   }
 
   findNearestActivatableMoonstone(playerWorldPos: Vector3, maxDistance: number, now = Date.now()): number {
+    if (this.moonstonePostUnionActive) return -1;
     let bestIndex = -1;
     let bestDist = maxDistance;
     for (let i = 0; i < this.moonstoneRuins.length; i++) {
@@ -3365,6 +3399,7 @@ transformed.z += sway2;`,
   }
 
   getNearbyMoonstoneRaiseProgress(playerWorldPos: Vector3, maxDistance: number, now = Date.now()): number {
+    if (this.moonstonePostUnionActive) return 0;
     let bestDist = maxDistance;
     let progress = 0;
     for (const state of this.moonstoneRuins) {
@@ -3379,6 +3414,7 @@ transformed.z += sway2;`,
   }
 
   getMoonstoneShakeTrauma(playerWorldPos: Vector3, maxDistance = 1.58, now = Date.now()): number {
+    if (this.moonstonePostUnionActive) return 0;
     let trauma = 0;
     for (const state of this.moonstoneRuins) {
       if (this.getMoonstonePhase(state.cycleStartAt, now) !== "raising") continue;
@@ -4994,34 +5030,51 @@ transformed.z += sway2;`,
 
     const now = Date.now();
     if (!this.moonstoneCinematicActive) {
-    for (let mi = 0; mi < this.moonstoneRuins.length; mi++) {
-      const state = this.moonstoneRuins[mi]!;
-      const root = state.root;
-      if (!root) continue;
-      const phase = this.getMoonstonePhase(state.cycleStartAt, now);
-      if (phase === "idle") state.cycleStartAt = null;
-      const liftAlpha = this.getMoonstoneLiftAlpha(state.cycleStartAt, now);
-      const nrm = state.normal;
-      root.position.copy(state.basePosition).addScaledVector(nrm, liftAlpha * MOONSTONE_FLOAT_HEIGHT);
+      if (this.moonstonePostUnionActive) {
+        const t = now * 0.001;
+        const hover = Math.sin(t * 0.7) * 0.02;
+        const sharedSpin = new Quaternion().setFromAxisAngle(this.moonstonePostUnionAxis, t * 0.16);
+        for (let mi = 0; mi < this.moonstoneRuins.length; mi++) {
+          const state = this.moonstoneRuins[mi]!;
+          const root = state.root;
+          if (!root) continue;
+          root.position.copy(this.moonstonePostUnionPoint).addScaledVector(this.moonstonePostUnionAxis, hover);
+          const baseQ = this.moonstonePostUnionQuats[mi];
+          if (baseQ) {
+            root.quaternion.copy(baseQ);
+            root.quaternion.premultiply(sharedSpin);
+          }
+        }
+      } else {
+        for (let mi = 0; mi < this.moonstoneRuins.length; mi++) {
+          const state = this.moonstoneRuins[mi]!;
+          const root = state.root;
+          if (!root) continue;
+          const phase = this.getMoonstonePhase(state.cycleStartAt, now);
+          if (phase === "idle") state.cycleStartAt = null;
+          const liftAlpha = this.getMoonstoneLiftAlpha(state.cycleStartAt, now);
+          const nrm = state.normal;
+          root.position.copy(state.basePosition).addScaledVector(nrm, liftAlpha * MOONSTONE_FLOAT_HEIGHT);
 
-      let wobble = 0;
-      if (phase === "raising") {
-        wobble = 0.2 + 0.8 * liftAlpha;
-      } else if (phase === "floating") {
-        wobble = 0.1;
+          let wobble = 0;
+          if (phase === "raising") {
+            wobble = 0.2 + 0.8 * liftAlpha;
+          } else if (phase === "floating") {
+            wobble = 0.1;
+          }
+          const t = now * 0.001;
+          const posAmp = 0.012 * wobble;
+          const rotAmp = 0.032 * wobble;
+          const k = mi * 2.31 + this.seed * 0.01;
+          root.position.addScaledVector(state.tangent, Math.sin(t * 19.2 + k) * posAmp);
+          root.position.addScaledVector(state.bitangent, Math.cos(t * 16.7 + k * 1.3) * posAmp);
+          root.quaternion.copy(state.restQuaternion);
+          root.rotateOnWorldAxis(state.tangent, Math.sin(t * 21.4 + k) * rotAmp);
+          root.rotateOnWorldAxis(state.bitangent, Math.cos(t * 18.9 + k * 0.9) * rotAmp);
+
+          this.updateMoonstoneDust(state, dt, now);
+        }
       }
-      const t = now * 0.001;
-      const posAmp = 0.012 * wobble;
-      const rotAmp = 0.032 * wobble;
-      const k = mi * 2.31 + this.seed * 0.01;
-      root.position.addScaledVector(state.tangent, Math.sin(t * 19.2 + k) * posAmp);
-      root.position.addScaledVector(state.bitangent, Math.cos(t * 16.7 + k * 1.3) * posAmp);
-      root.quaternion.copy(state.restQuaternion);
-      root.rotateOnWorldAxis(state.tangent, Math.sin(t * 21.4 + k) * rotAmp);
-      root.rotateOnWorldAxis(state.bitangent, Math.cos(t * 18.9 + k * 0.9) * rotAmp);
-
-      this.updateMoonstoneDust(state, dt, now);
-    }
     }
 
     this.balloonTime += dt;

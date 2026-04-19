@@ -1,8 +1,5 @@
 import type { Socket } from "socket.io";
 import type {
-  BrazierLitEvent,
-  BrazierMoonPausePayload,
-  BrazierSyncPayload,
   PaintballFiredEvent,
   PaintballHitEvent,
   PaintballUpgradeFlags,
@@ -30,11 +27,6 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
-/** Must match `@globefly/shared` runtime constants. */
-const BRAZIER_COUNT = 5;
-const BRAZIER_BURN_MS = 45_000;
-const BRAZIER_MOON_PAUSE_MS = 60_000;
-
 interface ConnectedPlayer {
   socket: Socket<ClientToServerEvents, ServerToClientEvents>;
   state: PlayerState;
@@ -51,13 +43,6 @@ export class Room {
   private paintballShotHistory = new Map<string, number[]>();
   /** Client-reported paintball upgrade flags per socket (server validates / clamps). */
   private paintballUpgrades = new Map<string, PaintballUpgradeRecord>();
-  /** Per-index wall-clock burn end (ms), or null — shared by everyone in this world room. */
-  private brazierBurnEndsAt: (number | null)[] = Array.from(
-    { length: BRAZIER_COUNT },
-    () => null,
-  );
-  /** Wall-clock ms when shared moon-pause shield ends; null if not active. */
-  private brazierMoonPauseEndsAt: number | null = null;
 
   constructor(slug: string, globeRadius: number) {
     this.slug = slug;
@@ -196,72 +181,6 @@ export class Room {
       for (const [, p] of this.players) {
         p.socket.emit("paintball:hit", hitPayload);
       }
-    }
-  }
-
-  /** Current burn schedule for clients that just joined (expired slots → null). */
-  getBrazierSyncPayload(): BrazierSyncPayload {
-    const now = Date.now();
-    return {
-      expiries: this.brazierBurnEndsAt.map((t) =>
-        t != null && t > now ? t : null,
-      ),
-    };
-  }
-
-  /** Remaining shield pause for a client that just joined, or null if none / expired. */
-  getMoonPauseRemainingMsIfActive(): number | null {
-    const end = this.brazierMoonPauseEndsAt;
-    if (end == null) return null;
-    const now = Date.now();
-    if (end <= now) {
-      this.brazierMoonPauseEndsAt = null;
-      return null;
-    }
-    return end - now;
-  }
-
-  private allBraziersActive(now: number): boolean {
-    return this.brazierBurnEndsAt.every((t) => t != null && t > now);
-  }
-
-  /** A player lit a brazier (proximity) — broadcast to the whole room. */
-  igniteBrazier(socketId: string, index: number) {
-    if (!Number.isInteger(index) || index < 0 || index >= BRAZIER_COUNT) return;
-    const player = this.players.get(socketId);
-    if (!player) return;
-
-    const burnEndsAt = Date.now() + BRAZIER_BURN_MS;
-    this.brazierBurnEndsAt[index] = burnEndsAt;
-
-    const payload: BrazierLitEvent = {
-      index,
-      playerId: socketId,
-      playerName: player.state.name,
-      burnEndsAt,
-    };
-
-    for (const [, p] of this.players) {
-      p.socket.emit("brazier:lit", payload);
-    }
-
-    const now = Date.now();
-    if (!this.allBraziersActive(now)) return;
-
-    for (let i = 0; i < BRAZIER_COUNT; i++) {
-      this.brazierBurnEndsAt[i] = null;
-    }
-    this.brazierMoonPauseEndsAt = now + BRAZIER_MOON_PAUSE_MS;
-
-    const syncPayload = this.getBrazierSyncPayload();
-    const moonPausePayload: BrazierMoonPausePayload = {
-      remainingMs: BRAZIER_MOON_PAUSE_MS,
-      announce: true,
-    };
-
-    for (const [, p] of this.players) {
-      p.socket.emit("brazier:sync", syncPayload);
-      p.socket.emit("brazier:moonPause", moonPausePayload);
     }
   }
 

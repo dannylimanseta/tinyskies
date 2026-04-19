@@ -295,11 +295,6 @@ export class HUD {
     this.showCenteredToast("hud-brazier-celebration", "Brazier lit!", 2000);
   }
 
-  /** Floating banner when another player in this world lights a brazier. */
-  showBrazierRemoteLit(playerName: string) {
-    this.showCenteredToast("hud-brazier-remote-lit", `${playerName} lit a brazier`, 2200);
-  }
-
   /** All-five brazier shield: moon approach pauses locally for a short time. */
   showBrazierMoonSlowed() {
     this.showCenteredToast(
@@ -312,6 +307,24 @@ export class HUD {
   /** After shield pause ends — moon approach advances again. */
   showBrazierMoonResumed() {
     this.showCenteredToast("hud-brazier-moon-resumed", "The moon has resumed its movement.", 3200);
+  }
+
+  /** Post-moonstone-union world-state toast. */
+  showBrazierRiseQuest() {
+    this.showCenteredToast(
+      "hud-brazier-celebration",
+      "5 ancient braziers have risen around the world. Find them",
+      4200,
+    );
+  }
+
+  /** One-time hint after the player's first brazier flame burns out. */
+  showBrazierFizzleHint() {
+    this.showCenteredToast(
+      "hud-brazier-moon-resumed",
+      "The brazier flame has died out. There must be a way to keep it burning eternally.",
+      5200,
+    );
   }
 
   /** Create the persistent flame-progress tracker (call once after braziers are ready). */
@@ -980,60 +993,6 @@ export class HUD {
           transform: translate(-50%, calc(-50% - 58px));
         }
         .hud-brazier-celebration-animate {
-          transform: translate(-50%, calc(-50% - 78px));
-        }
-      }
-
-      .hud-brazier-remote-lit {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(180, 220, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45);
-        opacity: 0;
-        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
-        pointer-events: none;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        white-space: nowrap;
-        z-index: 14;
-        max-width: min(90vw, 520px);
-        text-align: center;
-        justify-content: center;
-      }
-      .hud-brazier-remote-lit::before,
-      .hud-brazier-remote-lit::after {
-        content: '';
-        display: block;
-        width: 36px;
-        height: 2px;
-        flex-shrink: 0;
-      }
-      .hud-brazier-remote-lit::before {
-        background: linear-gradient(90deg, transparent, rgba(160, 200, 255, 0.55));
-      }
-      .hud-brazier-remote-lit::after {
-        background: linear-gradient(90deg, rgba(160, 200, 255, 0.55), transparent);
-      }
-      .hud-brazier-remote-lit-animate {
-        opacity: 1;
-        transform: translate(-50%, calc(-50% - 92px));
-      }
-
-      @media (max-width: 768px) {
-        .hud-brazier-remote-lit {
-          transform: translate(-50%, calc(-50% - 58px));
-          font-size: 0.82rem;
-          gap: 8px;
-        }
-        .hud-brazier-remote-lit::before,
-        .hud-brazier-remote-lit::after { width: 24px; }
-        .hud-brazier-remote-lit-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }

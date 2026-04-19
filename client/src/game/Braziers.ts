@@ -234,7 +234,7 @@ interface BrazierState {
   /** Bowl-top world position — proximity trigger centre. */
   worldPos: Vector3;
   lit: boolean;
-  /** Wall-clock ms when burn ends; null when unlit — matches server + multiplayer sync. */
+  /** Wall-clock ms when burn ends; null when unlit. */
   burnEndsAtMs: number | null;
   time: number;
   /** 0 → 1 over FADE_IN_DUR on ignition; drives pop-in. */
@@ -735,26 +735,6 @@ export class Braziers {
 
   /* ── Per-frame update ────────────────────────────────────────── */
 
-  /**
-   * Apply authoritative burn end from the server (local + remote ignitions).
-   */
-  applyServerBurnState(index: number, burnEndsAt: number) {
-    const s = this.states[index];
-    if (!s) return;
-    const remainMs = burnEndsAt - Date.now();
-    if (remainMs <= 0) {
-      s.lit = false;
-      s.burnEndsAtMs = null;
-      s.fadeInT = 0;
-      s.fadeOutT = 1;
-    } else {
-      s.lit = true;
-      s.burnEndsAtMs = burnEndsAt;
-      s.fadeInT = 0;
-      s.fadeOutT = 0;
-    }
-  }
-
   /** Extinguish every brazier immediately (e.g. all-five shield). */
   extinguishAll() {
     for (const s of this.states) {
@@ -773,26 +753,6 @@ export class Braziers {
       s.burnEndsAtMs = end;
       s.fadeInT = 0;
       s.fadeOutT = 0;
-    }
-  }
-
-  /** Full snapshot when joining a world (server expiries are ms epoch). */
-  syncBrazierExpiries(expiries: (number | null)[]) {
-    const now = Date.now();
-    for (let i = 0; i < this.states.length; i++) {
-      const t = expiries[i];
-      const s = this.states[i]!;
-      if (t == null || t <= now) {
-        s.lit = false;
-        s.burnEndsAtMs = null;
-        s.fadeInT = 0;
-        s.fadeOutT = 1;
-      } else {
-        s.lit = true;
-        s.burnEndsAtMs = t;
-        s.fadeInT = 0;
-        s.fadeOutT = 0;
-      }
     }
   }
 

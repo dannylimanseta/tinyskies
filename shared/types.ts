@@ -45,26 +45,6 @@ export const BRAZIER_BURN_MS = 45_000;
 /** When all five braziers burn together, moon approach pauses for this long (per client). */
 export const BRAZIER_MOON_PAUSE_MS = 60_000;
 
-export interface BrazierSyncPayload {
-  /** ms epoch when burn ends, or null if unlit */
-  expiries: (number | null)[];
-}
-
-export interface BrazierLitEvent {
-  index: number;
-  playerId: string;
-  playerName: string;
-  /** ms epoch when this brazier's burn ends */
-  burnEndsAt: number;
-}
-
-/** Tells each client to pause its local moon approach for `remainingMs`. */
-export interface BrazierMoonPausePayload {
-  remainingMs: number;
-  /** False when syncing an already-active pause to a newly joined client. */
-  announce?: boolean;
-}
-
 /** Matches client `Globe` moonstone ruin placement count. */
 export const MOONSTONE_RUIN_COUNT = 2;
 /** Carpet-near activation raises a ruin over this many ms. */
@@ -138,9 +118,6 @@ export interface ServerToClientEvents {
   "world:state": (players: PlayerState[]) => void;
   "world:config": (config: WorldConfig) => void;
   "world:full": (slug: string) => void;
-  "brazier:sync": (payload: BrazierSyncPayload) => void;
-  "brazier:lit": (event: BrazierLitEvent) => void;
-  "brazier:moonPause": (payload: BrazierMoonPausePayload) => void;
   "paintball:fired": (event: PaintballFiredEvent) => void;
   "paintball:hit": (event: PaintballHitEvent) => void;
 }
@@ -153,7 +130,6 @@ export interface ClientToServerEvents {
     vehicle?: Vehicle,
     reservationId?: string,
   ) => void;
-  "brazier:ignite": (index: number) => void;
   "paintball:fire": () => void;
   "paintball:setUpgrades": (flags: PaintballUpgradeFlags) => void;
 }

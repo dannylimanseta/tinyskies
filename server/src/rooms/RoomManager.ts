@@ -75,21 +75,8 @@ export class RoomManager {
       return;
     }
 
-    socket.emit("brazier:sync", room.getBrazierSyncPayload());
-    const moonPauseRemain = room.getMoonPauseRemainingMsIfActive();
-    if (moonPauseRemain != null && moonPauseRemain > 0) {
-      socket.emit("brazier:moonPause", {
-        remainingMs: moonPauseRemain,
-        announce: false,
-      });
-    }
-
     socket.on("player:move", (moveState) => {
       room.updatePlayer(socket.id, moveState);
-    });
-
-    socket.on("brazier:ignite", (index: number) => {
-      room.igniteBrazier(socket.id, index);
     });
 
     socket.on("paintball:fire", () => {

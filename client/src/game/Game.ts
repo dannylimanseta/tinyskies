@@ -26,7 +26,6 @@ import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import {
   BRAZIER_MOON_PAUSE_MS,
   getVehicleFeatures,
-  type BrazierSyncPayload,
   type Vehicle,
   type VehicleGameFeatures,
   type WorldConfig,
@@ -282,12 +281,12 @@ export class Game {
   private brazierInRange: boolean[] = [];
   private brazierCooldown: number[] = [];
   private lastBrazierProgress: number[] = [];
+  /** One-time hint shown after the first brazier flame burns out. */
+  private showedBrazierFizzleHint = false;
   /** Offline-only edge detect for all-five shield (no server). */
   private prevAllFiveBraziers = false;
   /** Only show the moon-resumed banner after a locally-announced brazier pause. */
   private shouldShowBrazierMoonResume = false;
-  /** Stash brazier sync until the brazier system has been constructed locally. */
-  private pendingBrazierSync: BrazierSyncPayload | null = null;
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
@@ -328,6 +327,11 @@ export class Game {
   private moonstoneUnionShotNormal = new Vector3();
   private moonstoneUnionShotSide = new Vector3();
   private moonstoneUnionShotForward = new Vector3();
+  private moonstoneUnionPairMid = new Vector3();
+  private moonstoneUnionPairSep = new Vector3();
+  private moonstoneUnionPairView = new Vector3();
+  private moonstoneUnionPairProj = new Vector3();
+  private moonstoneUnionPairUp = new Vector3();
   private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
@@ -1244,7 +1248,6 @@ export class Game {
     this.fireflyClusters = [];
     this.braziers?.dispose();
     this.braziers = null;
-    this.pendingBrazierSync = null;
     this.portalInteractionSuppressTimer = 0;
     this.hud.disposeBrazierTracker();
     this.campsiteScene?.dispose();
@@ -1575,7 +1578,7 @@ export class Game {
   private worldFullRetries = 0;
   private static readonly MAX_WORLD_FULL_RETRIES = 3;
 
-  /** All-five brazier shield: shared room event or offline-only detection. */
+  /** All-five brazier shield: local-only world event for this player. */
   private applyBrazierMoonShield(remainingMs: number, announce = true) {
     this.braziers?.extinguishAll();
     this.moonThreat?.beginApproachPause(remainingMs);
@@ -1611,21 +1614,6 @@ export class Game {
 
     this.socketClient.onWorldFull(() => {
       this.handleWorldFull();
-    });
-
-    this.socketClient.onBrazierSync((payload) => {
-      if (this.braziers) this.braziers.syncBrazierExpiries(payload.expiries);
-      else this.pendingBrazierSync = payload;
-    });
-
-    this.socketClient.onBrazierLit((ev) => {
-      if (ev.playerId === this.socketClient?.id) return;
-      this.braziers?.applyServerBurnState(ev.index, ev.burnEndsAt);
-      this.hud.showBrazierRemoteLit(ev.playerName);
-    });
-
-    this.socketClient.onBrazierMoonPause((payload) => {
-      this.applyBrazierMoonShield(payload.remainingMs, payload.announce !== false);
     });
 
     this.socketClient.onPaintballFired((ev) => {
@@ -2145,21 +2133,23 @@ export class Game {
       const { newlyLitIndices, burnProgress } = this.braziers.update(dt, playerWorldPos);
       if (newlyLitIndices.length > 0) {
         this.hud.showBrazierLit();
-        for (const idx of newlyLitIndices) {
-          this.socketClient?.emitBrazierIgnite(idx);
-        }
+      }
+      const firstFlameFizzled =
+        !this.showedBrazierFizzleHint &&
+        burnProgress.some((p, i) => (this.lastBrazierProgress[i] ?? 0) > 0 && p <= 0);
+      if (firstFlameFizzled) {
+        this.showedBrazierFizzleHint = true;
+        this.hud.showBrazierFizzleHint();
       }
       this.hud.updateBrazierStatus(burnProgress);
       this.lastBrazierProgress = burnProgress;
-      if (!this.socketClient?.connected) {
-        const allFive =
-          burnProgress.length >= BRAZIER_COUNT &&
-          burnProgress.every((p) => p > 0);
-        if (allFive && !this.prevAllFiveBraziers) {
-          this.applyBrazierMoonShield(BRAZIER_MOON_PAUSE_MS);
-        }
-        this.prevAllFiveBraziers = allFive;
+      const allFive =
+        burnProgress.length >= BRAZIER_COUNT &&
+        burnProgress.every((p) => p > 0);
+      if (allFive && !this.prevAllFiveBraziers) {
+        this.applyBrazierMoonShield(BRAZIER_MOON_PAUSE_MS);
       }
+      this.prevAllFiveBraziers = allFive;
     }
 
     /* ── Campsite landing detection ─────────────────────── */
@@ -2375,9 +2365,6 @@ export class Game {
     if (e.key === "r" || e.key === "R") {
       if (!this.braziers) return;
       this.braziers.debugLightAll();
-      for (let i = 0; i < BRAZIER_COUNT; i++) {
-        this.socketClient?.emitBrazierIgnite(i);
-      }
     }
   };
 
@@ -2947,9 +2934,44 @@ export class Game {
           .addScaledVector(right, dist * Math.cos(angle))
           .addScaledVector(side, dist * Math.sin(angle));
         cam.position.copy(camPos);
-        cam.up.copy(midN);
-        const lookT = new Vector3().lerpVectors(center, unionPt, 0.5 + t * 0.4);
-        cam.lookAt(lookT);
+        const root0 = this.globe.getMoonstoneRoot(0);
+        const root1 = this.globe.getMoonstoneRoot(1);
+        if (root0 && root1) {
+          // Keep the two halves level on screen by deriving the camera up-vector
+          // from their actual separation in this beat. That makes the line
+          // between them read horizontally in the frame right before the join.
+          this.moonstoneUnionPairMid
+            .copy(root0.position)
+            .add(root1.position)
+            .multiplyScalar(0.5);
+          this.moonstoneUnionPairSep.copy(root0.position).sub(root1.position);
+          this.moonstoneUnionPairView
+            .copy(this.moonstoneUnionPairMid)
+            .sub(cam.position)
+            .normalize();
+          this.moonstoneUnionPairProj
+            .copy(this.moonstoneUnionPairSep)
+            .addScaledVector(
+              this.moonstoneUnionPairView,
+              -this.moonstoneUnionPairSep.dot(this.moonstoneUnionPairView),
+            );
+          if (this.moonstoneUnionPairProj.lengthSq() > 1e-6) {
+            this.moonstoneUnionPairUp
+              .crossVectors(this.moonstoneUnionPairProj, this.moonstoneUnionPairView)
+              .normalize();
+            cam.up.copy(this.moonstoneUnionPairUp);
+          } else {
+            cam.up.copy(midN);
+          }
+          this.moonstoneUnionShotLookAt
+            .copy(this.moonstoneUnionPairMid)
+            .lerp(unionPt, 0.14 + t * 0.12);
+          cam.lookAt(this.moonstoneUnionShotLookAt);
+        } else {
+          cam.up.copy(midN);
+          const lookT = new Vector3().lerpVectors(center, unionPt, 0.5 + t * 0.4);
+          cam.lookAt(lookT);
+        }
         cam.fov = 40 - 2 * t;
         cam.updateProjectionMatrix();
 
@@ -3246,12 +3268,13 @@ export class Game {
   }
 
   private endMoonstoneUnionCinematic() {
-    // Reset moonstones back to their buried rest state. Screen is fading to black
-    // during this teardown so the snap-back isn't visible.
-    const count = this.globe.getMoonstoneCount();
-    for (let i = 0; i < count; i++) {
-      this.globe.resetMoonstoneCycle(i);
-    }
+    // Commit the moonstones to their new persistent world state: a completed
+    // ring hovering above the globe after the ritual is done.
+    this.globe.activateMoonstonePostUnion(
+      this.moonstoneUnionUnionPoint,
+      this.moonstoneUnionMidNormal,
+      this.moonstoneUnionTargetQuat,
+    );
     this.globe.setMoonstoneCinematicActive(false);
     this.globe.setMoonstoneRimIntensity(this.globe.getMoonstoneRimIntensityBase());
 
@@ -3304,7 +3327,14 @@ export class Game {
     this.gamePhase = "flying";
     // Rumble loop volume will be re-evaluated next frame by the flying-phase update.
     this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, 0);
-    this.transitionOverlay?.fadeIn();
+    const fadeInPromise = this.transitionOverlay?.fadeIn();
+    if (fadeInPromise) {
+      void fadeInPromise.then(() => {
+        this.hud.showBrazierRiseQuest();
+      });
+    } else {
+      this.hud.showBrazierRiseQuest();
+    }
   }
 
   private createVhsOverlay(): HTMLDivElement {
@@ -3662,11 +3692,8 @@ export class Game {
     this.brazierInRange = new Array(BRAZIER_COUNT).fill(false);
     this.brazierCooldown = new Array(BRAZIER_COUNT).fill(0);
     this.lastBrazierProgress = new Array(BRAZIER_COUNT).fill(0);
+    this.showedBrazierFizzleHint = false;
     this.prevAllFiveBraziers = false;
-    if (this.pendingBrazierSync) {
-      this.braziers.syncBrazierExpiries(this.pendingBrazierSync.expiries);
-      this.pendingBrazierSync = null;
-    }
   }
 
   private handleLevelUp(level: number) {
