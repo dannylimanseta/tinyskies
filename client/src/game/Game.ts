@@ -16,7 +16,11 @@ import {
   CanvasTexture,
   SRGBColorSpace,
   Quaternion,
+  Matrix4,
   MathUtils,
+  Sprite,
+  SpriteMaterial,
+  AdditiveBlending,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
 import {
@@ -287,9 +291,36 @@ export class Game {
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
 
-  private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" = "flying";
+  private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" | "moonstoneUnion" = "flying";
   private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
   private moonCinematicTimer = 0;
+
+  /** Moonstone union cinematic state (triggered when both halves float at once). */
+  private moonstoneUnionStep:
+    | "inhale"
+    | "ascent"
+    | "converge"
+    | "join"
+    | "release"
+    | "fadeOut"
+    | "done" = "done";
+  private moonstoneUnionTimer = 0;
+  private moonstoneUnionCamera: PerspectiveCamera | null = null;
+  private moonstoneUnionLetterTop: HTMLDivElement | null = null;
+  private moonstoneUnionLetterBot: HTMLDivElement | null = null;
+  private moonstoneUnionFlashEl: HTMLDivElement | null = null;
+  private moonstoneUnionVignetteEl: HTMLDivElement | null = null;
+  private moonstoneUnionMidNormal = new Vector3();
+  private moonstoneUnionSideAxis = new Vector3();
+  private moonstoneUnionUnionPoint = new Vector3();
+  private moonstoneUnionCenterSite = new Vector3();
+  private moonstoneUnionCamRight = new Vector3();
+  private moonstoneUnionRestPos: Vector3[] = [];
+  private moonstoneUnionRestQuat: Quaternion[] = [];
+  private moonstoneUnionNormals: Vector3[] = [];
+  private moonstoneUnionTargetQuat: Quaternion[] = [];
+  private moonstoneUnionGlow: Sprite | null = null;
+  private moonstoneUnionCoreGlow: Sprite | null = null;
   private returningToMenuAfterMoon = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
@@ -1243,6 +1274,26 @@ export class Game {
     this.vhsOverlay?.remove();
     this.vhsOverlay = null;
 
+    this.moonstoneUnionLetterTop?.remove();
+    this.moonstoneUnionLetterBot?.remove();
+    this.moonstoneUnionFlashEl?.remove();
+    this.moonstoneUnionVignetteEl?.remove();
+    this.moonstoneUnionLetterTop = null;
+    this.moonstoneUnionLetterBot = null;
+    this.moonstoneUnionFlashEl = null;
+    this.moonstoneUnionVignetteEl = null;
+    this.moonstoneUnionCamera = null;
+    if (this.moonstoneUnionGlow) {
+      this.scene.remove(this.moonstoneUnionGlow);
+      (this.moonstoneUnionGlow.material as SpriteMaterial).dispose();
+      this.moonstoneUnionGlow = null;
+    }
+    if (this.moonstoneUnionCoreGlow) {
+      this.scene.remove(this.moonstoneUnionCoreGlow);
+      (this.moonstoneUnionCoreGlow.material as SpriteMaterial).dispose();
+      this.moonstoneUnionCoreGlow = null;
+    }
+
     window.removeEventListener("resize", this.onResize);
   }
 
@@ -1881,6 +1932,13 @@ export class Game {
       return;
     }
 
+    /* ── Moonstone union cinematic phase ────────────────── */
+    if (String(this.gamePhase) === "moonstoneUnion") {
+      this.skyGremlins?.setSuspended(true);
+      this.tickMoonstoneUnionCinematic(dt);
+      return;
+    }
+
     if (this.portalInteractionSuppressTimer > 0) {
       this.portalInteractionSuppressTimer = Math.max(0, this.portalInteractionSuppressTimer - dt);
     }
@@ -2210,6 +2268,12 @@ export class Game {
         : 0;
     this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, moonstoneRumbleVol);
 
+    /* If both moonstones are lifted at once, enter the union cinematic. */
+    if (this.globe.consumeMoonstoneUnionTrigger(Date.now())) {
+      this.startMoonstoneUnionCinematic();
+      return;
+    }
+
     if (this.skyJellyfish) {
       this.localPlayer.group.updateMatrixWorld(true);
       const selfieActive = this.selfieProgressCached > 0;
@@ -2294,6 +2358,11 @@ export class Game {
 
   private onDebugKey = (e: KeyboardEvent) => {
     if (e.key === "q" || e.key === "Q") {
+      if (this.gamePhase === "flying") {
+        this.startMoonstoneUnionCinematic();
+      }
+    }
+    if (e.key === "m" || e.key === "M") {
       this.moonThreat?.jumpTo(0.83);
     }
     if (e.key === "r" || e.key === "R") {
@@ -2453,6 +2522,655 @@ export class Game {
 
     /* fadeOutLoop / stopWhenSilent only advance in update(); flying tick skips this during moonImpact. */
     this.audioManager.update(dt);
+  }
+
+  /* ── Moonstone union cinematic ────────────────────────────────
+     Triggered when both moonstone halves are floating simultaneously.
+     Directed in five beats: establish → ascent → wide convergence →
+     close push-in on the mating halves → beauty hold. A screen-filling
+     white flash marks the moment of contact. */
+
+  private static readonly MOONSTONE_UNION_INHALE_SEC = 1.3;
+  private static readonly MOONSTONE_UNION_ASCENT_SEC = 2.6;
+  private static readonly MOONSTONE_UNION_CONVERGE_SEC = 3.4;
+  private static readonly MOONSTONE_UNION_JOIN_SEC = 2.6;
+  private static readonly MOONSTONE_UNION_RELEASE_SEC = 2.0;
+  private static readonly MOONSTONE_UNION_FADEOUT_SEC = 0.9;
+  private static readonly MOONSTONE_UNION_LETTERBOX_VH = 10.5;
+  /** Extra altitude (world units) each half climbs during the ascent beat. */
+  private static readonly MOONSTONE_UNION_ASCENT_RISE = 0.9;
+  /** How far past the surface (in globe radii) the halves meet. */
+  private static readonly MOONSTONE_UNION_ALTITUDE_FRAC = 0.55;
+
+  private startMoonstoneUnionCinematic() {
+    if (String(this.gamePhase) === "moonstoneUnion" || String(this.gamePhase) === "moonImpact") return;
+    if (this.globe.getMoonstoneCount() < 2) return;
+
+    this.gamePhase = "moonstoneUnion";
+    this.moonstoneUnionStep = "inhale";
+    this.moonstoneUnionTimer = 0;
+
+    this.controls.enabled = false;
+    if (this.touchControls) this.touchControls.enabled = false;
+    this.hud.root.style.display = "none";
+    this.levelUpCards.dispose();
+    this.packageQuestHUD.hideBubble();
+
+    // Cache per-ruin cinematic frames: start pos (current floating), normal, rest quat.
+    this.moonstoneUnionRestPos = [];
+    this.moonstoneUnionRestQuat = [];
+    this.moonstoneUnionNormals = [];
+    this.moonstoneUnionTargetQuat = [];
+    const count = this.globe.getMoonstoneCount();
+    for (let i = 0; i < count; i++) {
+      const cur = new Vector3();
+      const nrm = new Vector3();
+      const rq = new Quaternion();
+      this.globe.readMoonstoneCurrentPosition(i, cur);
+      this.globe.readMoonstoneNormal(i, nrm);
+      this.globe.readMoonstoneRestQuaternion(i, rq);
+      this.moonstoneUnionRestPos.push(cur);
+      this.moonstoneUnionNormals.push(nrm);
+      this.moonstoneUnionRestQuat.push(rq);
+    }
+
+    // Midpoint normal (upward direction at the union site) and tangential side axis.
+    const n0 = this.moonstoneUnionNormals[0]!;
+    const n1 = this.moonstoneUnionNormals[1]!;
+    this.moonstoneUnionMidNormal.copy(n0).add(n1).normalize();
+    // Side axis: component of (n0 - n1) perpendicular to midNormal.
+    const diff = new Vector3().copy(n0).sub(n1);
+    const along = new Vector3().copy(this.moonstoneUnionMidNormal).multiplyScalar(diff.dot(this.moonstoneUnionMidNormal));
+    this.moonstoneUnionSideAxis.copy(diff).sub(along).normalize();
+    if (this.moonstoneUnionSideAxis.lengthSq() < 1e-4) {
+      // Fallback when both sites are nearly antipodal along the same axis.
+      const fallback = new Vector3(1, 0, 0);
+      if (Math.abs(fallback.dot(this.moonstoneUnionMidNormal)) > 0.95) fallback.set(0, 1, 0);
+      const tmp = new Vector3().copy(fallback).cross(this.moonstoneUnionMidNormal).normalize();
+      this.moonstoneUnionSideAxis.copy(tmp);
+    }
+
+    // Midpoint of the two surface anchor positions — anchors the camera lookAt during ascent.
+    const base0 = new Vector3();
+    const base1 = new Vector3();
+    this.globe.readMoonstoneBasePosition(0, base0);
+    this.globe.readMoonstoneBasePosition(1, base1);
+    this.moonstoneUnionCenterSite.copy(base0).add(base1).multiplyScalar(0.5);
+
+    // Union point: far out along midNormal, above the globe.
+    const globeR = this.worldConfig?.globeRadius ?? 5;
+    const unionDist = globeR * (1.0 + Game.MOONSTONE_UNION_ALTITUDE_FRAC);
+    this.moonstoneUnionUnionPoint.copy(this.moonstoneUnionMidNormal).multiplyScalar(unionDist);
+
+    // Camera "right" for side framing — perpendicular to midNormal, stable.
+    const worldUp = new Vector3(0, 1, 0);
+    if (Math.abs(worldUp.dot(this.moonstoneUnionMidNormal)) > 0.9) worldUp.set(1, 0, 0);
+    this.moonstoneUnionCamRight.copy(this.moonstoneUnionMidNormal).cross(worldUp).normalize();
+
+    /* Both halves are authored in the same local frame (left-half + right-half
+       geometry that tiles into a full ring when placed at a shared origin in a
+       shared orientation). Build a single canonical target basis where:
+         local +Y → midNormal  (ring axis points away from the globe)
+         local +X → a stable world direction (camera-right) so the ring opening
+                    faces the camera during the close-up
+       and apply the SAME target quaternion to both halves so their
+       complementary geometry forms the circle. */
+    const xAx = new Vector3().copy(this.moonstoneUnionCamRight);
+    const yAx = new Vector3().copy(this.moonstoneUnionMidNormal);
+    xAx.addScaledVector(yAx, -xAx.dot(yAx)).normalize();
+    const zAx = new Vector3().crossVectors(xAx, yAx).normalize();
+    const basis = new Matrix4().makeBasis(xAx, yAx, zAx);
+    const sharedTarget = new Quaternion().setFromRotationMatrix(basis);
+    for (let i = 0; i < count; i++) {
+      this.moonstoneUnionTargetQuat.push(sharedTarget.clone());
+    }
+
+    // Dedicated cinematic camera — drives its own FOV independent of the chase rig.
+    const aspect = this.container.clientWidth / this.container.clientHeight;
+    this.moonstoneUnionCamera = new PerspectiveCamera(42, aspect, 0.05, 400);
+
+    // Letterbox bars + flash overlay.
+    this.moonstoneUnionLetterTop = this.makeUnionBar(true);
+    this.moonstoneUnionLetterBot = this.makeUnionBar(false);
+    this.container.appendChild(this.moonstoneUnionLetterTop);
+    this.container.appendChild(this.moonstoneUnionLetterBot);
+
+    this.moonstoneUnionFlashEl = document.createElement("div");
+    this.moonstoneUnionFlashEl.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;z-index:7;" +
+      "background:#ffffff;opacity:0;transition:none;";
+    this.container.appendChild(this.moonstoneUnionFlashEl);
+
+    // Bright white bloom behind the halves that builds through convergence,
+    // blinds at the join, and lingers during release. Two layered sprites:
+    // a wide soft halo + a tight core for the hot center.
+    const glowTex = Game.getMoonstoneUnionGlowTexture();
+    const haloMat = new SpriteMaterial({
+      map: glowTex,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: true,
+      blending: AdditiveBlending,
+      fog: false,
+    });
+    this.moonstoneUnionGlow = new Sprite(haloMat);
+    this.moonstoneUnionGlow.position.copy(this.moonstoneUnionUnionPoint);
+    this.moonstoneUnionGlow.scale.setScalar(0.0001);
+    this.moonstoneUnionGlow.renderOrder = 9999;
+    this.scene.add(this.moonstoneUnionGlow);
+
+    const coreMat = new SpriteMaterial({
+      map: glowTex,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      // Respect depth so the moonstone halves occlude the glow; combined with
+      // the per-frame "push behind camera" below, this keeps the bloom as
+      // backlight rather than a screen-filling overlay.
+      depthTest: true,
+      blending: AdditiveBlending,
+      fog: false,
+    });
+    this.moonstoneUnionCoreGlow = new Sprite(coreMat);
+    this.moonstoneUnionCoreGlow.position.copy(this.moonstoneUnionUnionPoint);
+    this.moonstoneUnionCoreGlow.scale.setScalar(0.0001);
+    this.moonstoneUnionCoreGlow.renderOrder = 10000;
+    this.scene.add(this.moonstoneUnionCoreGlow);
+
+    this.moonstoneUnionVignetteEl = document.createElement("div");
+    this.moonstoneUnionVignetteEl.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;z-index:6;" +
+      "background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);" +
+      "opacity:0;transition:opacity 1.3s ease;";
+    this.container.appendChild(this.moonstoneUnionVignetteEl);
+    requestAnimationFrame(() => {
+      if (this.moonstoneUnionVignetteEl) this.moonstoneUnionVignetteEl.style.opacity = "1";
+    });
+
+    // Globe stops authoring moonstone transforms for the duration.
+    this.globe.setMoonstoneCinematicActive(true);
+    // Hide player for a clean cinematic frame.
+    this.localPlayer.group.visible = false;
+    // Ensure rumble loop is audible through the cinematic.
+    this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, MOONSTONE_RUMBLE_MAX_VOL);
+  }
+
+  /** Lazily-built radial-gradient texture used for the union glow sprites. */
+  private static moonstoneUnionGlowTex: CanvasTexture | null = null;
+  private static getMoonstoneUnionGlowTexture(): CanvasTexture {
+    if (Game.moonstoneUnionGlowTex) return Game.moonstoneUnionGlowTex;
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    const cx = size / 2;
+    const cy = size / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
+    grad.addColorStop(0.0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.22, "rgba(255,255,255,0.85)");
+    grad.addColorStop(0.55, "rgba(255,250,220,0.32)");
+    grad.addColorStop(0.85, "rgba(255,250,220,0.05)");
+    grad.addColorStop(1.0, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    Game.moonstoneUnionGlowTex = tex;
+    return tex;
+  }
+
+  private makeUnionBar(top: boolean): HTMLDivElement {
+    const bar = document.createElement("div");
+    bar.style.cssText =
+      `position:absolute;left:0;right:0;${top ? "top:0" : "bottom:0"};` +
+      "height:0vh;background:#000;z-index:8;pointer-events:none;" +
+      "transition:height 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);";
+    return bar;
+  }
+
+  private tickMoonstoneUnionCinematic(dt: number) {
+    this.moonstoneUnionTimer += dt;
+    this.globe.update(dt);
+
+    const cam = this.moonstoneUnionCamera;
+    if (!cam) {
+      this.endMoonstoneUnionCinematic();
+      return;
+    }
+
+    const globeR = this.worldConfig?.globeRadius ?? 5;
+    const midN = this.moonstoneUnionMidNormal;
+    const side = this.moonstoneUnionSideAxis;
+    const right = this.moonstoneUnionCamRight;
+    const center = this.moonstoneUnionCenterSite;
+    const unionPt = this.moonstoneUnionUnionPoint;
+
+    // Per-phase normalized progress (0..1) with smoothstep easing.
+    const smooth = (x: number) => {
+      const t = Math.max(0, Math.min(1, x));
+      return t * t * (3 - 2 * t);
+    };
+
+    // ── Stone positions per phase ─────────────────────────
+    // rest: current floating position (at cinematic start)
+    // ascend: rest + normal * ASCENT_RISE (still anchored to each site's normal)
+    // stage: midway between ascend and unionPt, offset along +/- side so pair is visible
+    // join: unionPt (halves overlap at center)
+    const count = this.globe.getMoonstoneCount();
+    const ascendOffsets: Vector3[] = [];
+    const stagePositions: Vector3[] = [];
+    for (let i = 0; i < count; i++) {
+      const rest = this.moonstoneUnionRestPos[i]!;
+      const n = this.moonstoneUnionNormals[i]!;
+      const ascend = new Vector3().copy(rest).addScaledVector(n, Game.MOONSTONE_UNION_ASCENT_RISE);
+      ascendOffsets.push(ascend);
+      // Stage closer to union point but still separated along side axis.
+      const sign = i === 0 ? +1 : -1;
+      const stage = new Vector3().copy(unionPt).addScaledVector(side, sign * globeR * 0.38);
+      stagePositions.push(stage);
+    }
+
+    let flashAlpha = 0;
+    // Glow intensity & scale are driven per beat below. Initial defaults (off).
+    let glowOpacity = 0;
+    let coreOpacity = 0;
+    let haloScale = 0;
+    let coreScale = 0;
+    // Rim light intensity boost applied each frame. Starts at baseline.
+    const rimBase = this.globe.getMoonstoneRimIntensityBase();
+    let rimIntensity = rimBase;
+
+    switch (this.moonstoneUnionStep) {
+      /* ── Beat 1: Inhale — frame the globe from a high wide angle. */
+      case "inhale": {
+        const t = smooth(this.moonstoneUnionTimer / Game.MOONSTONE_UNION_INHALE_SEC);
+        if (this.moonstoneUnionLetterTop)
+          this.moonstoneUnionLetterTop.style.height = `${t * Game.MOONSTONE_UNION_LETTERBOX_VH}vh`;
+        if (this.moonstoneUnionLetterBot)
+          this.moonstoneUnionLetterBot.style.height = `${t * Game.MOONSTONE_UNION_LETTERBOX_VH}vh`;
+
+        // Stones stay at their floating position; apply a subtle wobble.
+        const wobT = this.moonstoneUnionTimer;
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          const rest = this.moonstoneUnionRestPos[i]!;
+          const n = this.moonstoneUnionNormals[i]!;
+          root.position.copy(rest).addScaledVector(n, Math.sin(wobT * 2.2 + i) * 0.01);
+          root.quaternion.copy(this.moonstoneUnionRestQuat[i]!);
+        }
+
+        // Camera: slight push-in on the establishing shot.
+        const camPos = new Vector3()
+          .copy(midN)
+          .multiplyScalar(globeR * (2.6 - 0.35 * t))
+          .addScaledVector(right, globeR * (1.6 - 0.3 * t))
+          .addScaledVector(side, globeR * 0.3);
+        cam.position.copy(camPos);
+        cam.up.copy(midN);
+        cam.lookAt(center);
+        cam.fov = 46 - 4 * t;
+        cam.updateProjectionMatrix();
+
+        if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_INHALE_SEC) {
+          this.moonstoneUnionStep = "ascent";
+          this.moonstoneUnionTimer = 0;
+        }
+        break;
+      }
+
+      /* ── Beat 2: Ascent — both halves rise dramatically from the surface. */
+      case "ascent": {
+        const t = smooth(this.moonstoneUnionTimer / Game.MOONSTONE_UNION_ASCENT_SEC);
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          const rest = this.moonstoneUnionRestPos[i]!;
+          const ascend = ascendOffsets[i]!;
+          root.position.lerpVectors(rest, ascend, t);
+          // Tiny floaty wobble on top of the rise.
+          const wob = Math.sin(this.moonstoneUnionTimer * 3.6 + i * 1.7) * 0.012 * (1 - t * 0.4);
+          root.position.addScaledVector(this.moonstoneUnionNormals[i]!, wob);
+          // Begin the slerp toward the shared target while the halves are still
+          // anchored to their own sites (only 25% toward target — subtle).
+          const qStart = this.moonstoneUnionRestQuat[i]!;
+          const qEnd = this.moonstoneUnionTargetQuat[i]!;
+          root.quaternion.slerpQuaternions(qStart, qEnd, t * 0.25);
+          // Subtle spin around own normal for a "wakeup" feel — decays at end of ascent.
+          const decay = 1 - t;
+          const spin = new Quaternion().setFromAxisAngle(
+            this.moonstoneUnionNormals[i]!,
+            t * 0.6 * decay,
+          );
+          root.quaternion.premultiply(spin);
+        }
+
+        // Camera: slow truck sideways + upward lift, maintaining the full vista.
+        const dist = globeR * (3.0 - 0.2 * t);
+        const up = globeR * (1.4 + 0.4 * t);
+        const lateral = globeR * (1.2 - 0.25 * t);
+        const camPos = new Vector3()
+          .copy(midN).multiplyScalar(up)
+          .addScaledVector(right, dist * Math.cos(t * 0.5))
+          .addScaledVector(side, lateral);
+        cam.position.copy(camPos);
+        cam.up.copy(midN);
+        const lookT = new Vector3().lerpVectors(center, unionPt, t * 0.45);
+        cam.lookAt(lookT);
+        cam.fov = 42 - 2 * t;
+        cam.updateProjectionMatrix();
+
+        if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_ASCENT_SEC) {
+          this.moonstoneUnionStep = "converge";
+          this.moonstoneUnionTimer = 0;
+        }
+        break;
+      }
+
+      /* ── Beat 3: Wide convergence — halves arc toward the meeting point. */
+      case "converge": {
+        const t = smooth(this.moonstoneUnionTimer / Game.MOONSTONE_UNION_CONVERGE_SEC);
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          const ascend = ascendOffsets[i]!;
+          const stage = stagePositions[i]!;
+          // Quadratic arc: interpolate with a slight outward bulge for drama.
+          const straight = new Vector3().lerpVectors(ascend, stage, t);
+          const bulgeAxis = this.moonstoneUnionNormals[i]!;
+          const bulge = Math.sin(Math.PI * t) * globeR * 0.22;
+          root.position.copy(straight).addScaledVector(bulgeAxis, bulge);
+
+          // Main alignment beat: slerp from 25% (where ascent left us) to ~95%
+          // so the final click into place happens in "join".
+          const mixRot = 0.25 + smooth(t) * 0.7;
+          const qStart = this.moonstoneUnionRestQuat[i]!;
+          const qEnd = this.moonstoneUnionTargetQuat[i]!;
+          root.quaternion.slerpQuaternions(qStart, qEnd, mixRot);
+          // Slow spin around midNormal for momentum — decays to ~0 by end of converge
+          // so the halves settle with no rogue rotation into the join.
+          const decay = 1 - smooth(t);
+          const spinAngle = this.moonstoneUnionTimer * 0.55 * (i === 0 ? 1 : -1) * decay;
+          const spin = new Quaternion().setFromAxisAngle(
+            this.moonstoneUnionMidNormal,
+            spinAngle,
+          );
+          root.quaternion.premultiply(spin);
+        }
+
+        // Camera: big pullback for the wide shot, slight orbit.
+        const angle = 0.15 + t * 0.5;
+        const dist = globeR * (3.2 + 0.6 * t);
+        const up = globeR * (1.6 + 0.2 * t);
+        const camPos = new Vector3()
+          .copy(midN).multiplyScalar(up)
+          .addScaledVector(right, dist * Math.cos(angle))
+          .addScaledVector(side, dist * Math.sin(angle));
+        cam.position.copy(camPos);
+        cam.up.copy(midN);
+        const lookT = new Vector3().lerpVectors(center, unionPt, 0.5 + t * 0.4);
+        cam.lookAt(lookT);
+        cam.fov = 40 - 2 * t;
+        cam.updateProjectionMatrix();
+
+        // Glow stays fully off during converge — the bloom is reserved for
+        // the post-combine moment so the halves read clearly as they approach.
+        // Rim brightens as the halves close to foreshadow the union.
+        rimIntensity = rimBase + smooth(t) * 0.6;
+
+        if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_CONVERGE_SEC) {
+          this.moonstoneUnionStep = "join";
+          this.moonstoneUnionTimer = 0;
+        }
+        break;
+      }
+
+      /* ── Beat 4: Join — camera zooms in; halves slowly form a circle; white flash on contact. */
+      case "join": {
+        const t = smooth(this.moonstoneUnionTimer / Game.MOONSTONE_UNION_JOIN_SEC);
+        // Ease the final closing so the touch feels earned.
+        const close = Math.pow(t, 1.35);
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          const stage = stagePositions[i]!;
+          root.position.lerpVectors(stage, unionPt, close);
+          // Rotation locks to target alignment — hits exactly qEnd by the end of
+          // the beat so both halves share the canonical ring orientation.
+          const qStart = this.moonstoneUnionRestQuat[i]!;
+          const qEnd = this.moonstoneUnionTargetQuat[i]!;
+          root.quaternion.slerpQuaternions(qStart, qEnd, 0.95 + 0.05 * close);
+        }
+
+        // Camera: smooth push-in toward the union point, narrowing FOV.
+        const dist = globeR * (2.6 - 1.4 * t);
+        const up = globeR * (0.85 - 0.25 * t);
+        const side1 = globeR * (0.9 - 0.7 * t);
+        const camPos = new Vector3()
+          .copy(unionPt)
+          .addScaledVector(right, dist)
+          .addScaledVector(midN, up)
+          .addScaledVector(side, side1);
+        cam.position.copy(camPos);
+        cam.up.copy(midN);
+        cam.lookAt(unionPt);
+        cam.fov = 36 - 10 * t;
+        cam.updateProjectionMatrix();
+
+        // White flash ramps up over the last 20% of the join, peaks at contact.
+        if (t > 0.78) {
+          const fx = Math.min(1, (t - 0.78) / 0.22);
+          flashAlpha = fx * fx;
+        }
+
+        // Glow stays off during join. The screen flash carries the contact
+        // moment; the backlight bloom is introduced in `release`.
+        // Rim climbs further and peaks at contact — a Fresnel halo around the
+        // halves as they kiss.
+        rimIntensity = rimBase + 0.6 + smooth(t) * 1.4;
+
+        if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_JOIN_SEC) {
+          this.moonstoneUnionStep = "release";
+          this.moonstoneUnionTimer = 0;
+        }
+        break;
+      }
+
+      /* ── Beat 5: Release — hold on the completed ring, slow orbit. */
+      case "release": {
+        const t = smooth(this.moonstoneUnionTimer / Game.MOONSTONE_UNION_RELEASE_SEC);
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          root.position.copy(unionPt);
+          root.quaternion.copy(this.moonstoneUnionTargetQuat[i]!);
+          // A whisper of shared rotation keeps the ring from feeling frozen.
+          const spin = new Quaternion().setFromAxisAngle(this.moonstoneUnionMidNormal, this.moonstoneUnionTimer * 0.18);
+          root.quaternion.premultiply(spin);
+        }
+
+        // Slow orbit around the completed ring.
+        const orbit = this.moonstoneUnionTimer * 0.22;
+        const dist = globeR * 1.25;
+        const camPos = new Vector3()
+          .copy(unionPt)
+          .addScaledVector(right, dist * Math.cos(orbit))
+          .addScaledVector(side, dist * Math.sin(orbit))
+          .addScaledVector(midN, globeR * 0.18);
+        cam.position.copy(camPos);
+        cam.up.copy(midN);
+        cam.lookAt(unionPt);
+        cam.fov = 26 + 2 * t;
+        cam.updateProjectionMatrix();
+
+        // Fade out lingering flash.
+        flashAlpha = Math.max(0, 0.3 - this.moonstoneUnionTimer * 0.8);
+
+        // Glow introduction: the backlight halo *emerges* right after the
+        // halves combine. A quick bloom in the first ~25% of the beat, then a
+        // steady breathing hold.
+        const emerge = smooth(Math.min(1, this.moonstoneUnionTimer / 0.5));
+        const breath = 0.5 + 0.5 * Math.sin(this.moonstoneUnionTimer * 1.6);
+        glowOpacity = emerge * (0.55 + 0.08 * breath);
+        coreOpacity = emerge * (0.38 + 0.08 * breath);
+        haloScale = globeR * (0.8 + emerge * (2.8 + 0.25 * breath));
+        coreScale = globeR * (0.4 + emerge * (1.0 + 0.15 * breath));
+        // Rim holds bright with a breathing pulse so the completed ring glows.
+        rimIntensity = rimBase + 1.8 + 0.2 * breath;
+
+        if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_RELEASE_SEC) {
+          this.moonstoneUnionStep = "fadeOut";
+          this.moonstoneUnionTimer = 0;
+          this.transitionOverlay?.fadeOut();
+          // Begin letterbox retraction.
+          if (this.moonstoneUnionLetterTop) this.moonstoneUnionLetterTop.style.height = "0vh";
+          if (this.moonstoneUnionLetterBot) this.moonstoneUnionLetterBot.style.height = "0vh";
+        }
+        break;
+      }
+
+      /* ── Fade to black, then restore gameplay. */
+      case "fadeOut": {
+        // Hold camera on the ring while the overlay fades.
+        const dist = globeR * 1.2;
+        const orbit = 0.22 * (Game.MOONSTONE_UNION_RELEASE_SEC + this.moonstoneUnionTimer);
+        const camPos = new Vector3()
+          .copy(unionPt)
+          .addScaledVector(right, dist * Math.cos(orbit))
+          .addScaledVector(side, dist * Math.sin(orbit))
+          .addScaledVector(midN, globeR * 0.2);
+        cam.position.copy(camPos);
+        cam.up.copy(midN);
+        cam.lookAt(unionPt);
+        for (let i = 0; i < count; i++) {
+          const root = this.globe.getMoonstoneRoot(i);
+          if (!root) continue;
+          root.position.copy(unionPt);
+          root.quaternion.copy(this.moonstoneUnionTargetQuat[i]!);
+        }
+        // Glow fades with the screen.
+        const fadeT = Math.min(1, this.moonstoneUnionTimer / Game.MOONSTONE_UNION_FADEOUT_SEC);
+        const gSettle = 1 - fadeT;
+        glowOpacity = 0.5 * gSettle;
+        coreOpacity = 0.35 * gSettle;
+        haloScale = globeR * (3.6 + 0.8 * fadeT);
+        coreScale = globeR * (1.4 + 0.4 * fadeT);
+        rimIntensity = rimBase + 1.8 * gSettle;
+        if (this.moonstoneUnionTimer >= Game.MOONSTONE_UNION_FADEOUT_SEC) {
+          this.endMoonstoneUnionCinematic();
+          return;
+        }
+        break;
+      }
+
+      case "done":
+        break;
+    }
+
+    if (this.moonstoneUnionFlashEl) {
+      this.moonstoneUnionFlashEl.style.opacity = flashAlpha.toFixed(3);
+    }
+
+    // Drive rim light intensity live through the cinematic.
+    this.globe.setMoonstoneRimIntensity(rimIntensity);
+
+    // Push the glow sprites *behind* the moonstones along the camera view
+    // direction so the halves always read clearly in front. Sprites auto-face
+    // the camera regardless of this offset, and depthTest takes care of
+    // occlusion on their periphery.
+    const camToUnion = new Vector3().subVectors(unionPt, cam.position).normalize();
+    const BEHIND_OFFSET = globeR * 0.55;
+
+    if (this.moonstoneUnionGlow) {
+      const mat = this.moonstoneUnionGlow.material as SpriteMaterial;
+      mat.opacity = glowOpacity;
+      const s = Math.max(0.0001, haloScale);
+      this.moonstoneUnionGlow.scale.setScalar(s);
+      this.moonstoneUnionGlow.position
+        .copy(unionPt)
+        .addScaledVector(camToUnion, BEHIND_OFFSET);
+      this.moonstoneUnionGlow.visible = glowOpacity > 0.001;
+    }
+    if (this.moonstoneUnionCoreGlow) {
+      const mat = this.moonstoneUnionCoreGlow.material as SpriteMaterial;
+      mat.opacity = coreOpacity;
+      const s = Math.max(0.0001, coreScale);
+      this.moonstoneUnionCoreGlow.scale.setScalar(s);
+      // Core sits slightly closer than the halo for a layered backlight.
+      this.moonstoneUnionCoreGlow.position
+        .copy(unionPt)
+        .addScaledVector(camToUnion, BEHIND_OFFSET * 0.6);
+      this.moonstoneUnionCoreGlow.visible = coreOpacity > 0.001;
+    }
+
+    this.renderer.render(this.scene, cam);
+    this.audioManager.update(dt);
+  }
+
+  private endMoonstoneUnionCinematic() {
+    // Reset moonstones back to their buried rest state. Screen is fading to black
+    // during this teardown so the snap-back isn't visible.
+    const count = this.globe.getMoonstoneCount();
+    for (let i = 0; i < count; i++) {
+      this.globe.resetMoonstoneCycle(i);
+    }
+    this.globe.setMoonstoneCinematicActive(false);
+    this.globe.setMoonstoneRimIntensity(this.globe.getMoonstoneRimIntensityBase());
+
+    // Tear down overlays.
+    this.moonstoneUnionLetterTop?.remove();
+    this.moonstoneUnionLetterBot?.remove();
+    this.moonstoneUnionFlashEl?.remove();
+    this.moonstoneUnionVignetteEl?.remove();
+    this.moonstoneUnionLetterTop = null;
+    this.moonstoneUnionLetterBot = null;
+    this.moonstoneUnionFlashEl = null;
+    this.moonstoneUnionVignetteEl = null;
+    this.moonstoneUnionCamera = null;
+
+    // Remove glow sprites from the scene and dispose their materials. The
+    // shared canvas texture is cached on the class and reused.
+    if (this.moonstoneUnionGlow) {
+      this.scene.remove(this.moonstoneUnionGlow);
+      (this.moonstoneUnionGlow.material as SpriteMaterial).dispose();
+      this.moonstoneUnionGlow = null;
+    }
+    if (this.moonstoneUnionCoreGlow) {
+      this.scene.remove(this.moonstoneUnionCoreGlow);
+      (this.moonstoneUnionCoreGlow.material as SpriteMaterial).dispose();
+      this.moonstoneUnionCoreGlow = null;
+    }
+    this.moonstoneUnionRestPos = [];
+    this.moonstoneUnionRestQuat = [];
+    this.moonstoneUnionNormals = [];
+    this.moonstoneUnionTargetQuat = [];
+
+    // Restore UI + gameplay.
+    this.hud.root.style.display = "";
+    this.localPlayer.group.visible = true;
+    this.controls.enabled = true;
+    if (this.touchControls) this.touchControls.enabled = true;
+
+    // Reseat the chase camera exactly where the player is so the fade-in lands gracefully.
+    const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    this.cameraRig.snapTo(
+      this.localPlayer.qPosition,
+      this.localPlayer.heading,
+      this.localPlayer.altitude,
+      globeRadius,
+      this.vehicleFeatures.cameraFollowDistance,
+      this.vehicleFeatures.cameraFollowHeight,
+    );
+
+    this.moonstoneUnionStep = "done";
+    this.gamePhase = "flying";
+    // Rumble loop volume will be re-evaluated next frame by the flying-phase update.
+    this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, 0);
+    this.transitionOverlay?.fadeIn();
   }
 
   private createVhsOverlay(): HTMLDivElement {
@@ -2674,6 +3392,10 @@ export class Game {
     this.cameraRig.resize(w / h);
     this.campsiteScene?.resize(w / h);
     this.oceanFish?.setFishingLineResolution(w, h);
+    if (this.moonstoneUnionCamera) {
+      this.moonstoneUnionCamera.aspect = w / h;
+      this.moonstoneUnionCamera.updateProjectionMatrix();
+    }
   };
 
   /* ── Helpers ─────────────────────────────────────────────────────── */

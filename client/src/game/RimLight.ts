@@ -16,10 +16,13 @@ export function addRimLight(
   _color: Color | number = 0xffffff,
   intensity: number = 0.6,
   power: number = 2.5,
-) {
+): { value: number } {
+  // Share a single uniform object across compile cycles so callers can update
+  // `.value` live (e.g. cinematic rim boosting) without re-patching the shader.
+  const rimIntensityUniform = { value: intensity };
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.rimColor = { value: globalRimColor };
-    shader.uniforms.rimIntensity = { value: intensity };
+    shader.uniforms.rimIntensity = rimIntensityUniform;
     shader.uniforms.rimPower = { value: power };
 
     shader.fragmentShader = shader.fragmentShader.replace(
@@ -42,4 +45,5 @@ gl_FragColor.rgb += rim;
   };
 
   mat.needsUpdate = true;
+  return rimIntensityUniform;
 }

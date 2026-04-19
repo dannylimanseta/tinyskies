@@ -154,7 +154,15 @@ interface MoonstoneRuinState {
   cycleStartAt: number | null;
   restQuaternion: Quaternion;
   dust: MoonstoneDustState | null;
+  /** Rim-lit phong materials on the moonstone halves. Collected so the
+   * cinematic can boost `rimIntensity` during the combine beat. */
+  rimMaterials: MeshPhongMaterial[];
+  /** Shared uniform references so the cinematic can drive rim intensity live. */
+  rimIntensityUniforms: { value: number }[];
 }
+
+/** Baseline rim intensity for the moonstone halves in normal gameplay. */
+const MOONSTONE_RIM_INTENSITY_BASE = 0.7;
 
 export class Globe {
   readonly group = new Group();
@@ -197,6 +205,10 @@ export class Globe {
   /** Buried moonstone ring halves — giant ruin props; two sites, far apart. */
   readonly moonstoneRuinCenters: { normal: Vector3 }[] = [];
   private moonstoneRuins: MoonstoneRuinState[] = [];
+  /** While true, `update()` skips per-ruin positioning so the cinematic can author it. */
+  private moonstoneCinematicActive = false;
+  /** Latches true once both ruins enter floating; resets when both return to idle. */
+  private moonstoneUnionConsumed = false;
 
   private hotspringSteamInstanced: InstancedMesh | null = null;
   private shrineSparkleInstanced: InstancedMesh | null = null;
@@ -3094,6 +3106,8 @@ transformed.z += sway2;`,
         cycleStartAt: null,
         restQuaternion: new Quaternion(),
         dust: null,
+        rimMaterials: [],
+        rimIntensityUniforms: [],
       });
     }
 
@@ -3150,10 +3164,25 @@ transformed.z += sway2;`,
       model.position.addScaledVector(normal, -BURY_DEPTH_RATIO * TARGET_MAX_DIM);
 
       model.traverse((child) => {
-        if ((child as Mesh).isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
+        if (!(child as Mesh).isMesh) return;
+        const mesh = child as Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        /* Convert GLB's PBR material to MeshPhongMaterial with a Fresnel rim glow.
+           Matches the style used by Carpet/Boat/Plane props so the moonstone
+           halves read crisply against the sky during the union cinematic and
+           pick up ambient warm tinting during the day. */
+        const oldMat = mesh.material as { color?: Color; map?: unknown };
+        const newMat = new MeshPhongMaterial({
+          color: oldMat.color ?? new Color(0xffffff),
+          map: (oldMat.map as MeshPhongMaterial["map"]) ?? null,
+          flatShading: false,
+          shininess: 28,
+        });
+        const rimU = addRimLight(newMat, 0xfff1c0, MOONSTONE_RIM_INTENSITY_BASE, 2.6);
+        mesh.material = newMat;
+        state.rimMaterials.push(newMat);
+        state.rimIntensityUniforms.push(rimU);
       });
       state.basePosition.copy(model.position);
       state.tangent.copy(tangent);
@@ -3222,6 +3251,102 @@ transformed.z += sway2;`,
     const state = this.moonstoneRuins[index];
     if (!state) return;
     state.cycleStartAt = cycleStartAt;
+  }
+
+  /**
+   * Returns true the first frame both moonstones are in `floating` simultaneously.
+   * Re-arms only when both have returned to `idle`, so a single pair-lift triggers
+   * at most one cinematic.
+   */
+  consumeMoonstoneUnionTrigger(now = Date.now()): boolean {
+    if (this.moonstoneRuins.length < 2) return false;
+    const a = this.moonstoneRuins[0]!;
+    const b = this.moonstoneRuins[1]!;
+    const phaseA = this.getMoonstonePhase(a.cycleStartAt, now);
+    const phaseB = this.getMoonstonePhase(b.cycleStartAt, now);
+    const bothFloating = phaseA === "floating" && phaseB === "floating";
+    if (bothFloating && !this.moonstoneUnionConsumed) {
+      this.moonstoneUnionConsumed = true;
+      return true;
+    }
+    if (phaseA === "idle" && phaseB === "idle") {
+      this.moonstoneUnionConsumed = false;
+    }
+    return false;
+  }
+
+  /** When true, the normal per-frame moonstone transform/dust update is skipped. */
+  setMoonstoneCinematicActive(active: boolean) {
+    this.moonstoneCinematicActive = active;
+  }
+
+  /** Number of placed moonstone ruin halves (typically 2). */
+  getMoonstoneCount(): number {
+    return this.moonstoneRuins.length;
+  }
+
+  getMoonstoneRoot(i: number): Object3D | null {
+    return this.moonstoneRuins[i]?.root ?? null;
+  }
+
+  /** Writes the moonstone's surface anchor (world) into `target`. */
+  readMoonstoneBasePosition(i: number, target: Vector3): boolean {
+    const s = this.moonstoneRuins[i];
+    if (!s) return false;
+    target.copy(s.basePosition);
+    return true;
+  }
+
+  /** Writes the moonstone's surface normal into `target`. */
+  readMoonstoneNormal(i: number, target: Vector3): boolean {
+    const s = this.moonstoneRuins[i];
+    if (!s) return false;
+    target.copy(s.normal);
+    return true;
+  }
+
+  /** Writes the moonstone's at-rest (buried) quaternion into `target`. */
+  readMoonstoneRestQuaternion(i: number, target: Quaternion): boolean {
+    const s = this.moonstoneRuins[i];
+    if (!s) return false;
+    target.copy(s.restQuaternion);
+    return true;
+  }
+
+  /** Current world position of the moonstone root (or basePosition if not loaded). */
+  readMoonstoneCurrentPosition(i: number, target: Vector3): boolean {
+    const s = this.moonstoneRuins[i];
+    if (!s) return false;
+    target.copy(s.root?.position ?? s.basePosition);
+    return true;
+  }
+
+  /**
+   * Sets the rim light intensity for every moonstone half. Pass 0 (or the
+   * baseline) to restore normal-gameplay rim. The cinematic uses a higher
+   * value during the combine beat so the completed ring is crowned with a
+   * warm Fresnel glow.
+   */
+  setMoonstoneRimIntensity(intensity: number) {
+    for (const s of this.moonstoneRuins) {
+      for (const u of s.rimIntensityUniforms) u.value = intensity;
+    }
+  }
+
+  /** Baseline rim intensity used outside the cinematic. */
+  getMoonstoneRimIntensityBase(): number {
+    return MOONSTONE_RIM_INTENSITY_BASE;
+  }
+
+  /** Hard reset of a moonstone cycle (used when ending the union cinematic). */
+  resetMoonstoneCycle(i: number) {
+    const s = this.moonstoneRuins[i];
+    if (!s) return;
+    s.cycleStartAt = null;
+    if (s.root) {
+      s.root.position.copy(s.basePosition);
+      s.root.quaternion.copy(s.restQuaternion);
+    }
   }
 
   findNearestActivatableMoonstone(playerWorldPos: Vector3, maxDistance: number, now = Date.now()): number {
@@ -4868,6 +4993,7 @@ transformed.z += sway2;`,
     }
 
     const now = Date.now();
+    if (!this.moonstoneCinematicActive) {
     for (let mi = 0; mi < this.moonstoneRuins.length; mi++) {
       const state = this.moonstoneRuins[mi]!;
       const root = state.root;
@@ -4895,6 +5021,7 @@ transformed.z += sway2;`,
       root.rotateOnWorldAxis(state.bitangent, Math.cos(t * 18.9 + k * 0.9) * rotAmp);
 
       this.updateMoonstoneDust(state, dt, now);
+    }
     }
 
     this.balloonTime += dt;
