@@ -29,6 +29,9 @@ const STYLE_ID = "eternal-flame-ui-styles";
 const HOLD_MS = 2800;
 const FLY_MS = 820;
 const DOCK_PX = 72;
+/** Per-flame width when multiple eternal flames are in the dock (horizontal strip). */
+const DOCK_SLOT_W = 58;
+const DOCK_GAP_PX = 5;
 const PREVIEW_PX = 280;
 
 function ensureStyles() {
@@ -106,7 +109,6 @@ function ensureStyles() {
       position: fixed;
       left: max(12px, env(safe-area-inset-left));
       bottom: max(72px, calc(64px + env(safe-area-inset-bottom)));
-      width: ${DOCK_PX}px;
       height: ${DOCK_PX}px;
       z-index: 25;
       pointer-events: none;
@@ -193,6 +195,35 @@ function applyEternalFlameGlow(root: Object3D) {
   });
 }
 
+function dockWidthForCount(n: number): number {
+  if (n <= 0) return DOCK_PX;
+  return n * DOCK_SLOT_W + Math.max(0, n - 1) * DOCK_GAP_PX;
+}
+
+/** Dispose materials only — GLTF geometry is shared with `flameTemplate` and must stay valid. */
+function disposeCloneMaterials(obj: Object3D) {
+  obj.traverse((o) => {
+    const m = o as Mesh;
+    if (m.isMesh) {
+      const mat = m.material;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else (mat as MeshPhongMaterial | undefined)?.dispose?.();
+    }
+  });
+}
+
+function disposeObject3DFull(obj: Object3D) {
+  obj.traverse((o) => {
+    const m = o as Mesh;
+    if (m.isMesh) {
+      m.geometry?.dispose?.();
+      const mat = m.material;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else (mat as MeshPhongMaterial | undefined)?.dispose?.();
+    }
+  });
+}
+
 /**
  * Gremlin King loot: full-screen 3D eternal flame + starburst, then flies to a HUD dock.
  * Dock shows while the player has unused eternal flames in inventory.
@@ -204,6 +235,9 @@ export class EternalFlameUI {
   private camera: PerspectiveCamera | null = null;
   private renderer: WebGLRenderer | null = null;
   private modelRoot: Group | null = null;
+  /** Loaded once; clones fill the dock when count &gt; 1. */
+  private flameTemplate: Object3D | null = null;
+  private dockFlameCount = 0;
   private readonly clock = new Clock();
   private raf = 0;
   private loopRunning = false;
@@ -224,18 +258,39 @@ export class EternalFlameUI {
   syncFromSave() {
     const n = ProgressionManager.loadPlayerWorldState().eternalFlameCount ?? 0;
     this.setDockVisible(n > 0);
-    if (n > 0) {
-      void this.ensureSceneReady().then(() => {
-        if (
-          this.renderer &&
-          this.dock &&
-          !this.busy &&
-          !this.dock.contains(this.renderer.domElement)
-        ) {
+    void this.ensureSceneReady().then(() => {
+      if (this.busy) return;
+      this.rebuildDockFlames(n);
+      const w = dockWidthForCount(n);
+      if (n > 0 && this.renderer && this.dock) {
+        this.dock.style.width = `${w}px`;
+        if (!this.dock.contains(this.renderer.domElement)) {
           this.dock.appendChild(this.renderer.domElement);
-          this.resizeRenderer(DOCK_PX, DOCK_PX);
         }
-      });
+        this.resizeRenderer(w, DOCK_PX);
+      } else if (this.dock) {
+        this.dock.style.width = "";
+      }
+    });
+  }
+
+  private rebuildDockFlames(count: number) {
+    if (!this.modelRoot || !this.flameTemplate) return;
+    while (this.modelRoot.children.length > 0) {
+      const c = this.modelRoot.children[0]!;
+      disposeCloneMaterials(c);
+      this.modelRoot.remove(c);
+    }
+    this.dockFlameCount = count;
+    if (count <= 0) return;
+    const fitT = count > 2 ? 0.32 : count > 1 ? 0.36 : 0.42;
+    const spacing = 0.5;
+    for (let i = 0; i < count; i++) {
+      const node = this.flameTemplate.clone(true);
+      applyEternalFlameGlow(node);
+      fitModel(node, fitT);
+      node.position.x = (i - (count - 1) * 0.5) * spacing;
+      this.modelRoot.add(node);
     }
   }
 
@@ -252,11 +307,15 @@ export class EternalFlameUI {
 
   private async runLootSequence() {
     await this.ensureSceneReady();
-    if (!this.renderer || !this.scene || !this.camera || !this.modelRoot) {
+    if (!this.renderer || !this.scene || !this.camera || !this.modelRoot || !this.flameTemplate) {
       this.busy = false;
       this.syncFromSave();
       return;
     }
+
+    const total =
+      ProgressionManager.loadPlayerWorldState().eternalFlameCount ?? 0;
+    this.rebuildDockFlames(1);
 
     this.setDockVisible(false);
 
@@ -302,6 +361,9 @@ export class EternalFlameUI {
 
     msg.classList.add("eternal-flame-loot-message--out");
 
+    this.dock.style.width = `${dockWidthForCount(total)}px`;
+    this.dock.style.height = `${DOCK_PX}px`;
+
     const from = stack.getBoundingClientRect();
     const to = this.dock.getBoundingClientRect();
     const dx = to.left - from.left + (to.width - from.width) * 0.5;
@@ -319,8 +381,10 @@ export class EternalFlameUI {
 
     this.renderer!.domElement.remove();
     overlay.remove();
+    this.rebuildDockFlames(total);
+    this.dock.style.width = `${dockWidthForCount(total)}px`;
     this.dock.appendChild(this.renderer.domElement);
-    this.resizeRenderer(DOCK_PX, DOCK_PX);
+    this.resizeRenderer(dockWidthForCount(total), DOCK_PX);
     this.setDockVisible(true);
     this.busy = false;
   }
@@ -329,6 +393,8 @@ export class EternalFlameUI {
     if (!this.renderer || !this.camera) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
+    const n = this.dockFlameCount;
+    this.camera.position.z = 1.12 + Math.max(0, n - 1) * 0.095;
     this.camera.updateProjectionMatrix();
   }
 
@@ -371,15 +437,13 @@ export class EternalFlameUI {
         loader.load(
           GLB_URL,
           (gltf) => {
-            const root = gltf.scene;
-            applyEternalFlameGlow(root);
-            this.modelRoot!.add(root);
-            fitModel(root);
+            this.flameTemplate = gltf.scene;
             this.modelLoaded = true;
             resolve();
           },
           undefined,
           () => {
+            const g = new Group();
             const geo = new IcosahedronGeometry(0.22, 1);
             const mat = new MeshPhongMaterial({
               color: 0x4488cc,
@@ -387,8 +451,8 @@ export class EternalFlameUI {
               emissiveIntensity: 1.85,
               flatShading: true,
             });
-            const mesh = new Mesh(geo, mat);
-            this.modelRoot!.add(mesh);
+            g.add(new Mesh(geo, mat));
+            this.flameTemplate = g;
             this.modelLoaded = true;
             resolve();
           },
@@ -419,16 +483,18 @@ export class EternalFlameUI {
     this.loopRunning = false;
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
-    this.dock.remove();
-    this.scene?.traverse((o) => {
-      const m = o as Mesh;
-      if (m.isMesh) {
-        m.geometry?.dispose?.();
-        const mat = m.material;
-        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-        else (mat as MeshPhongMaterial | undefined)?.dispose?.();
+    if (this.modelRoot) {
+      while (this.modelRoot.children.length > 0) {
+        const c = this.modelRoot.children[0]!;
+        disposeCloneMaterials(c);
+        this.modelRoot.remove(c);
       }
-    });
+    }
+    if (this.flameTemplate) {
+      disposeObject3DFull(this.flameTemplate);
+      this.flameTemplate = null;
+    }
+    this.dock.remove();
     this.scene = null;
     this.camera = null;
     this.renderer = null;

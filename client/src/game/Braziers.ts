@@ -99,8 +99,11 @@ const billboardVert = /* glsl */ `
 varying vec2 vUv;
 uniform float uBurnScale;
 uniform float uTime;
+uniform float uEternal;
 void main() {
   vUv = uv;
+  float eternalBoost = 1.0 + uEternal * 0.38;
+  float scale = uBurnScale * eternalBoost;
   vec3 upAxis     = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
   vec3 worldCenter = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
   vec3 toCamera   = normalize(cameraPosition - worldCenter);
@@ -111,8 +114,8 @@ void main() {
   float sway2  = sin(uTime * 15.2 - h * 22.0) * 0.008 * h * h;
   float flutter = sin(uTime * 21.0 + position.x * 38.0) * 0.005 * h;
   vec3 vertPos = worldCenter
-    + right  * (position.x * uBurnScale + sway + sway2 + flutter)
-    + upAxis * (position.y * uBurnScale);
+    + right  * (position.x * scale + sway + sway2 + flutter)
+    + upAxis * (position.y * scale);
   gl_Position = projectionMatrix * viewMatrix * vec4(vertPos, 1.0);
 }
 `;
@@ -120,6 +123,7 @@ void main() {
 const flameFrag = /* glsl */ `
 uniform float uTime;
 uniform float uBurn;
+uniform float uEternal;
 varying vec2 vUv;
 
 void main() {
@@ -154,22 +158,34 @@ void main() {
   vec3 orange = vec3(1.00, 0.42, 0.02);
   vec3 yellow = vec3(1.00, 0.90, 0.18);
 
-  vec3 col = mix(orange, red,    smoothstep(0.4, 1.0, cy));
-  col      = mix(col,    yellow, core * (1.0 - cy * 0.8));
-  col     += vec3(0.38, 0.14, 0.02) * flicker * core;
-  col     += vec3(0.12, 0.05, 0.0) * sin(uTime * 31.0 + cy * 40.0) * core;
+  vec3 colWarm = mix(orange, red,    smoothstep(0.4, 1.0, cy));
+  colWarm      = mix(colWarm, yellow, core * (1.0 - cy * 0.8));
+  colWarm     += vec3(0.38, 0.14, 0.02) * flicker * core;
+  colWarm     += vec3(0.12, 0.05, 0.0) * sin(uTime * 31.0 + cy * 40.0) * core;
+
+  vec3 blueDeep = vec3(0.04, 0.18, 0.92);
+  vec3 blueMid  = vec3(0.12, 0.52, 1.0);
+  vec3 cyanTip  = vec3(0.72, 0.96, 1.0);
+  vec3 colEternal = mix(blueMid, blueDeep, smoothstep(0.35, 1.0, cy));
+  colEternal      = mix(colEternal, cyanTip, core * (1.0 - cy * 0.78));
+  colEternal     += vec3(0.15, 0.42, 0.62) * flicker * core;
+  colEternal     += vec3(0.08, 0.22, 0.45) * sin(uTime * 31.0 + cy * 40.0) * core;
+
+  vec3 col = mix(colWarm, colEternal, uEternal);
 
   float alpha = (core * 0.92 + halo * 0.18) * heightFade * baseFade;
   alpha *= 0.78 + flicker * 0.22;
+  alpha *= mix(1.0, 1.14, uEternal);
   alpha *= uBurn;
 
-  gl_FragColor = vec4(col * 2.85, alpha);
+  gl_FragColor = vec4(col * mix(2.85, 3.15, uEternal), alpha);
 }
 `;
 
 const glowFrag = /* glsl */ `
 uniform float uTime;
 uniform float uBurn;
+uniform float uEternal;
 varying vec2 vUv;
 
 void main() {
@@ -178,10 +194,13 @@ void main() {
   float d = length(gc) * 2.2;
   float glow = 1.0 - smoothstep(0.0, 1.0, d);
   float pulse = 0.72 + 0.28 * sin(uTime * 3.1) + 0.08 * sin(uTime * 11.0);
-  vec3 col = vec3(1.0, 0.14, 0.12);
+  vec3 colWarm = vec3(1.0, 0.14, 0.12);
+  vec3 colEternal = vec3(0.32, 0.58, 1.0);
+  vec3 col = mix(colWarm, colEternal, uEternal);
   float glowBase = smoothstep(0.0, 0.34, vUv.y + 0.045 * sin(vUv.x * 15.0 + uTime * 4.2));
   float alpha = glow * glow * pulse * uBurn * 0.52 * glowBase;
-  gl_FragColor = vec4(col * 2.0, alpha);
+  alpha *= mix(1.0, 1.22, uEternal);
+  gl_FragColor = vec4(col * mix(2.0, 2.35, uEternal), alpha);
 }
 `;
 
@@ -344,14 +363,24 @@ export class Braziers {
       const flameMat = new ShaderMaterial({
         vertexShader:   billboardVert,
         fragmentShader: flameFrag,
-        uniforms: { uTime: { value: 0 }, uBurn: { value: 0 }, uBurnScale: { value: 0 } },
+        uniforms: {
+          uTime: { value: 0 },
+          uBurn: { value: 0 },
+          uBurnScale: { value: 0 },
+          uEternal: { value: 0 },
+        },
         transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending,
       });
 
       const glowMat = new ShaderMaterial({
         vertexShader:   billboardVert,
         fragmentShader: glowFrag,
-        uniforms: { uTime: { value: 0 }, uBurn: { value: 0 }, uBurnScale: { value: 0 } },
+        uniforms: {
+          uTime: { value: 0 },
+          uBurn: { value: 0 },
+          uBurnScale: { value: 0 },
+          uEternal: { value: 0 },
+        },
         transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending,
       });
 
@@ -915,15 +944,23 @@ export class Braziers {
       const burn    = fadeIn * fadeOut * revealAlpha;
       const scale   = (s.lit ? popScale(s.fadeInT) : (s.fadeOutT < 1 ? 1.0 : 0)) * revealAlpha;
 
+      const eternalOn = s.eternal && s.lit ? 1 : 0;
       s.flameMat.uniforms.uTime.value      = s.time;
       s.flameMat.uniforms.uBurn.value      = burn;
       s.flameMat.uniforms.uBurnScale.value = scale;
+      s.flameMat.uniforms.uEternal.value  = eternalOn;
       s.glowMat.uniforms.uTime.value       = s.time;
       s.glowMat.uniforms.uBurn.value       = burn;
       s.glowMat.uniforms.uBurnScale.value  = scale;
+      s.glowMat.uniforms.uEternal.value   = eternalOn;
 
+      if (eternalOn > 0.5) {
+        s.light.color.setHex(0x77b0ff);
+      } else {
+        s.light.color.setHex(0xff3a32);
+      }
       s.light.intensity = burn > 0.01
-        ? 2.2 * burn * (0.85 + 0.15 * Math.sin(s.time * 6.3))
+        ? (s.eternal && s.lit ? 2.75 : 2.2) * burn * (0.85 + 0.15 * Math.sin(s.time * 6.3))
         : 0;
 
       this.updateEmberParticles(s, burn, dt);
