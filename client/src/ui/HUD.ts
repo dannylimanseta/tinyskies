@@ -304,6 +304,15 @@ export class HUD {
     this.showCenteredToast("hud-brazier-celebration", "Brazier lit!", 2000);
   }
 
+  /** Brazier ignited with an eternal flame (permanent burn). */
+  showBrazierEternalFlameLit() {
+    this.showCenteredToast(
+      "hud-brazier-eternal-celebration",
+      "Eternal flame — this brazier never goes out.",
+      2600,
+    );
+  }
+
   /** All-five brazier shield: moon approach pauses locally for a short time. */
   showBrazierMoonSlowed() {
     this.showCenteredToast(
@@ -1038,6 +1047,43 @@ export class HUD {
         .hud-brazier-celebration-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
+      }
+
+      .hud-brazier-eternal-celebration {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        font-size: 0.92rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        line-height: 1.35;
+        color: rgba(255, 252, 245, 0.98);
+        text-shadow: 0 0 16px rgba(255, 160, 60, 0.75), 0 0 28px rgba(255, 90, 20, 0.45), 0 2px 8px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: normal;
+        max-width: min(92vw, 380px);
+        text-align: center;
+        justify-content: center;
+        z-index: 14;
+      }
+      .hud-brazier-eternal-celebration::before,
+      .hud-brazier-eternal-celebration::after {
+        content: '';
+        display: block;
+        width: 28px;
+        height: 2px;
+        flex-shrink: 0;
+      }
+      .hud-brazier-eternal-celebration::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 170, 80, 0.75));
+      }
+      .hud-brazier-eternal-celebration::after {
+        background: linear-gradient(90deg, rgba(255, 170, 80, 0.75), transparent);
       }
 
       .hud-brazier-moon-slowed {

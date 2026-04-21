@@ -87,6 +87,7 @@ import { LevelUpCards } from "../ui/LevelUpCards";
 import { ProgressionManager, type SavedPlayerWorldState } from "./ProgressionManager";
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
+import { EternalFlameUI } from "../ui/EternalFlameUI";
 import { SkyJellyfish, JELLY_CAPTURE_XP } from "./SkyJellyfish";
 import { OceanFish, FISH_CATCH_XP } from "./OceanFish";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
@@ -257,6 +258,7 @@ export class Game {
   private packageQuestHUD!: PackageQuestHUD;
   private carpetLandmarkSelfieQuest: CarpetLandmarkSelfieQuest | null = null;
   private carpetSelfiePhotoUI: HotspringPhotoUI | null = null;
+  private eternalFlameUI: EternalFlameUI | null = null;
   private birdFlocks: BirdFlock[] = [];
   private rainbowArches: RainbowArch[] = [];
   private lanternClusters: FloatingLanterns[] = [];
@@ -1019,6 +1021,11 @@ export class Game {
           this.awardXP("gremlin", SKY_GREMLIN_KING_XP);
           this.cameraRig.shake(0.065, 0.32);
           this.vehicleFlashTimer = 0.16;
+          const prev = ProgressionManager.loadPlayerWorldState();
+          this.savePlayerWorldState({
+            eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
+          });
+          this.eternalFlameUI?.playKingLootSequence();
         },
       );
     } else {
@@ -1044,6 +1051,8 @@ export class Game {
 
     this.ensureBraziersSpawned();
     this.restorePlayerWorldState();
+    this.eternalFlameUI = new EternalFlameUI(this.container, this.hud.root);
+    this.eternalFlameUI.syncFromSave();
 
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
@@ -1241,6 +1250,8 @@ export class Game {
     this.packageQuestHUD.dispose();
     this.carpetSelfiePhotoUI?.dispose();
     this.carpetSelfiePhotoUI = null;
+    this.eternalFlameUI?.dispose();
+    this.eternalFlameUI = null;
     this.carpetLandmarkSelfieQuest = null;
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
@@ -2135,9 +2146,31 @@ export class Game {
 
     if (!portalInteractionSuppressed && this.braziers) {
       const playerWorldPos = new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld);
-      const { newlyLitIndices, burnProgress } = this.braziers.update(dt, playerWorldPos);
+      const eternalFlameAvailable =
+        (ProgressionManager.loadPlayerWorldState().eternalFlameCount ?? 0) > 0;
+      const { newlyLitIndices, newlyLitUsedEternalFlame, burnProgress } =
+        this.braziers.update(
+        dt,
+        playerWorldPos,
+        true,
+        eternalFlameAvailable
+          ? {
+              eternalFlameAvailable: true,
+              onConsumeEternal: () => {
+                const p = ProgressionManager.loadPlayerWorldState();
+                const next = Math.max(0, (p.eternalFlameCount ?? 0) - 1);
+                this.savePlayerWorldState({ eternalFlameCount: next });
+                this.eternalFlameUI?.syncFromSave();
+              },
+            }
+          : undefined,
+      );
       if (newlyLitIndices.length > 0) {
-        this.hud.showBrazierLit();
+        if (newlyLitUsedEternalFlame) {
+          this.hud.showBrazierEternalFlameLit();
+        } else {
+          this.hud.showBrazierLit();
+        }
         this.savePlayerWorldState();
       }
       const firstFlameFizzled =
@@ -3697,12 +3730,17 @@ export class Game {
       const end = saved.brazierBurnEndsAtMs?.[i];
       return typeof end === "number" && Number.isFinite(end) ? end : null;
     });
+    const savedEternal = Array.from({ length: BRAZIER_COUNT }, (_u, i) =>
+      !!(saved.brazierEternal?.[i]),
+    );
     const brazierState: SavedBrazierState = {
       revealed:
         !!saved.braziersRevealed ||
         !!saved.moonstoneUnionComplete ||
-        savedBurnEndsAtMs.some((end) => end != null),
+        savedBurnEndsAtMs.some((end) => end != null) ||
+        savedEternal.some((e) => e),
       burnEndsAtMs: savedBurnEndsAtMs,
+      burnEternal: savedEternal,
     };
     this.braziers?.restorePersistentState(brazierState);
     this.showedBrazierFizzleHint = !!saved.brazierFizzleHintShown;
@@ -3725,13 +3763,21 @@ export class Game {
         brazierState?.burnEndsAtMs ??
         prev.brazierBurnEndsAtMs ??
         Array.from({ length: BRAZIER_COUNT }, () => null),
+      brazierEternal:
+        brazierState?.burnEternal ??
+        prev.brazierEternal ??
+        Array.from({ length: BRAZIER_COUNT }, () => false),
       brazierFizzleHintShown: this.showedBrazierFizzleHint || !!prev.brazierFizzleHintShown,
+      eternalFlameCount: prev.eternalFlameCount ?? 0,
       ...overrides,
     };
     next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {
       const end = next.brazierBurnEndsAtMs?.[i];
       return typeof end === "number" && Number.isFinite(end) ? end : null;
     });
+    next.brazierEternal = Array.from({ length: BRAZIER_COUNT }, (_unused, i) =>
+      !!(next.brazierEternal?.[i]),
+    );
     if (next.moonstoneUnionComplete) next.braziersRevealed = true;
     ProgressionManager.savePlayerWorldState(next);
   }
@@ -4118,6 +4164,8 @@ export class Game {
     this.packageQuest?.dispose();
     this.packageQuestHUD.dispose();
     this.carpetSelfiePhotoUI?.dispose();
+    this.eternalFlameUI?.dispose();
+    this.eternalFlameUI = null;
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
     for (const r of this.rainbowArches) r.dispose();

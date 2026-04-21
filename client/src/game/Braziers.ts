@@ -32,6 +32,8 @@ export { BRAZIER_COUNT };
 export interface SavedBrazierState {
   revealed: boolean;
   burnEndsAtMs: (number | null)[];
+  /** True = that slot burns forever (eternal flame). */
+  burnEternal?: boolean[];
 }
 
 const BURN_DURATION_SEC = BRAZIER_BURN_MS / 1000;
@@ -240,8 +242,10 @@ interface BrazierState {
   /** Bowl-top world position — proximity trigger centre. */
   worldPos: Vector3;
   lit: boolean;
-  /** Wall-clock ms when burn ends; null when unlit. */
+  /** Wall-clock ms when burn ends; null when unlit or eternal. */
   burnEndsAtMs: number | null;
+  /** Gremlin King eternal flame — never expires. */
+  eternal: boolean;
   time: number;
   /** 0 → 1 over FADE_IN_DUR on ignition; drives pop-in. */
   fadeInT: number;
@@ -388,7 +392,12 @@ export class Braziers {
         emberCol: ember.col,
         emberOpacity: ember.opacity,
         worldPos: new Vector3(),
-        lit: false, burnEndsAtMs: null, time: 0, fadeInT: 0, fadeOutT: 1,
+        lit: false,
+        burnEndsAtMs: null,
+        eternal: false,
+        time: 0,
+        fadeInT: 0,
+        fadeOutT: 1,
       };
       this.applyRevealPose(state, 0);
       state.group.visible = false;
@@ -625,22 +634,34 @@ export class Braziers {
   /** Snapshot enough local-only state to restore braziers in future runs/worlds. */
   capturePersistentState(now = Date.now()): SavedBrazierState {
     const burnEndsAtMs = this.states.map((s) => {
+      if (s.eternal) return null;
       const end = s.burnEndsAtMs;
       return typeof end === "number" && Number.isFinite(end) && end > now ? end : null;
     });
+    const burnEternal = this.states.map((s) => s.eternal);
     return {
-      revealed: this.revealStarted || this.revealComplete || burnEndsAtMs.some((end) => end != null),
+      revealed:
+        this.revealStarted ||
+        this.revealComplete ||
+        burnEndsAtMs.some((end) => end != null) ||
+        burnEternal.some((e) => e),
       burnEndsAtMs,
+      burnEternal,
     };
   }
 
   /** Restore a previously saved local-only brazier reveal/burn state instantly. */
   restorePersistentState(saved: SavedBrazierState, now = Date.now()) {
+    const burnEternal = saved.burnEternal ?? this.states.map(() => false);
     const burnEndsAtMs = this.states.map((_s, i) => {
+      if (burnEternal[i]) return null;
       const end = saved.burnEndsAtMs[i];
       return typeof end === "number" && Number.isFinite(end) && end > now ? end : null;
     });
-    const revealed = !!saved.revealed || burnEndsAtMs.some((end) => end != null);
+    const revealed =
+      !!saved.revealed ||
+      burnEndsAtMs.some((end) => end != null) ||
+      burnEternal.some((e) => e);
     this.revealStarted = revealed;
     this.revealComplete = revealed;
     this.revealTimer = revealed
@@ -648,13 +669,23 @@ export class Braziers {
       : 0;
     for (let i = 0; i < this.states.length; i++) {
       const s = this.states[i]!;
-      const burnEnd = burnEndsAtMs[i];
+      const eternal = burnEternal[i] === true;
       this.applyRevealPose(s, revealed ? 1 : 0);
       s.group.visible = revealed;
-      s.lit = burnEnd != null;
-      s.burnEndsAtMs = burnEnd;
-      s.fadeInT = burnEnd != null ? 1 : 0;
-      s.fadeOutT = burnEnd != null ? 0 : 1;
+      if (eternal) {
+        s.eternal = true;
+        s.lit = true;
+        s.burnEndsAtMs = null;
+        s.fadeInT = 1;
+        s.fadeOutT = 0;
+      } else {
+        s.eternal = false;
+        const burnEnd = burnEndsAtMs[i];
+        s.lit = burnEnd != null;
+        s.burnEndsAtMs = burnEnd;
+        s.fadeInT = burnEnd != null ? 1 : 0;
+        s.fadeOutT = burnEnd != null ? 0 : 1;
+      }
     }
   }
 
@@ -662,6 +693,7 @@ export class Braziers {
   getBurnProgressSnapshot(now = Date.now()): number[] {
     return this.states.map((s) => {
       if (!this.revealComplete) return 0;
+      if (s.eternal && s.lit) return 1;
       if (!s.lit || s.burnEndsAtMs == null || s.burnEndsAtMs <= now) return 0;
       const remainSec = (s.burnEndsAtMs - now) / 1000;
       return (remainSec / BURN_DURATION_SEC) * easeOutQuad(s.fadeInT);
@@ -790,6 +822,7 @@ export class Braziers {
   /** Extinguish every brazier immediately (e.g. all-five shield). */
   extinguishAll() {
     for (const s of this.states) {
+      if (s.eternal) continue;
       s.lit = false;
       s.burnEndsAtMs = null;
       s.fadeInT = 0;
@@ -812,8 +845,18 @@ export class Braziers {
     dt: number,
     playerWorldPos: Vector3,
     allowPlayerIgnite: boolean = true,
-  ): { newlyLitIndices: number[]; burnProgress: number[] } {
+    igniteOptions?: {
+      eternalFlameAvailable: boolean;
+      onConsumeEternal?: (index: number) => void;
+    },
+  ): {
+    newlyLitIndices: number[];
+    /** True when the ignition consumed an eternal flame (distinct HUD message). */
+    newlyLitUsedEternalFlame: boolean;
+    burnProgress: number[];
+  } {
     const newlyLitIndices: number[] = [];
+    let newlyLitUsedEternalFlame = false;
     if (this.revealStarted && !this.revealComplete) {
       this.revealTimer += dt;
     }
@@ -834,7 +877,7 @@ export class Braziers {
         s.group.visible = false;
       }
 
-      if (s.lit && s.burnEndsAtMs != null) {
+      if (s.lit && s.burnEndsAtMs != null && !s.eternal) {
         s.fadeInT = Math.min(1, s.fadeInT + dt / FADE_IN_DUR);
         const remainSec = (s.burnEndsAtMs - Date.now()) / 1000;
         if (remainSec <= 0) {
@@ -842,12 +885,25 @@ export class Braziers {
           s.burnEndsAtMs = null;
           s.fadeOutT = 0;
         }
+      } else if (s.lit && s.eternal) {
+        s.fadeInT = Math.min(1, s.fadeInT + dt / FADE_IN_DUR);
       } else if (!s.lit && s.fadeOutT < 1) {
         s.fadeOutT = Math.min(1, s.fadeOutT + dt / FADE_OUT_DUR);
       } else if (allowPlayerIgnite && this.revealComplete && newlyLitIndices.length === 0) {
         if (playerWorldPos.distanceTo(s.worldPos) < LIGHT_RADIUS) {
-          s.lit = true;
-          s.burnEndsAtMs = Date.now() + BRAZIER_BURN_MS;
+          const useEternal =
+            igniteOptions?.eternalFlameAvailable === true &&
+            igniteOptions?.onConsumeEternal != null;
+          if (useEternal) {
+            igniteOptions!.onConsumeEternal!(i);
+            s.eternal = true;
+            s.lit = true;
+            s.burnEndsAtMs = null;
+            newlyLitUsedEternalFlame = true;
+          } else {
+            s.lit = true;
+            s.burnEndsAtMs = Date.now() + BRAZIER_BURN_MS;
+          }
           s.fadeInT = 0;
           s.fadeOutT = 0;
           newlyLitIndices.push(i);
@@ -879,11 +935,13 @@ export class Braziers {
 
     return {
       newlyLitIndices,
+      newlyLitUsedEternalFlame,
       // 1.0 = just lit / full burn, linearly decreasing to 0.0 = extinguished.
       // Includes smooth ramp-in during FADE_IN_DUR so the progress bar
       // doesn't jump straight to the full-width value.
       burnProgress: this.states.map((s) => {
         if (!this.revealComplete) return 0;
+        if (s.eternal && s.lit) return 1;
         if (!s.lit || s.burnEndsAtMs == null) return 0;
         const remainSec = Math.max(0, (s.burnEndsAtMs - Date.now()) / 1000);
         return (remainSec / BURN_DURATION_SEC) * easeOutQuad(s.fadeInT);

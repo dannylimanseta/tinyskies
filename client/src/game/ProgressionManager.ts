@@ -32,6 +32,10 @@ export interface SavedPlayerWorldState {
   brazierBurnEndsAtMs?: (number | null)[];
   /** Prevents replaying the first-burnout hint once the player has already seen it. */
   brazierFizzleHintShown?: boolean;
+  /** Per-slot eternal flame: stays lit forever (Gremlin King reward). */
+  brazierEternal?: boolean[];
+  /** Inventory of unused eternal flames (from Gremlin King); consumed when lighting a brazier. */
+  eternalFlameCount?: number;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;
