@@ -8,16 +8,16 @@ const VEHICLE_ORDER: Vehicle[] = ["plane", "carpet", "boat"];
 const LOCK_SVG = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
 
 const SHORT_LABELS: Record<Vehicle, string> = {
-  plane: "Plane",
+  plane: "Biplane",
   boat: "Boat",
   carpet: "Carpet",
 };
 
-/** Lucide-style vehicle icons (historical lobby). */
-const VEHICLE_SVGS: Record<Vehicle, string> = {
-  plane: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`,
-  boat: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 2v3"/></svg>`,
-  carpet: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 14c-3-3-6-3-9 0s-6 3-9 0l-1 2c3 3 6 3 9 0s6-3 9 0l1-2z"/><path d="M3 16v3"/><path d="M21 16v3"/><path d="M4 14v2"/><path d="M22 14v2"/><path d="M12 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M18 8l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/><path d="M7 9l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/></svg>`,
+/** Vehicle silhouettes from `client/public/2D/` (black art → inverted to match lobby `currentColor`). */
+const VEHICLE_ICON_SRC: Record<Vehicle, string> = {
+  plane: "/2D/icon_biplane.svg",
+  carpet: "/2D/icon_carpet.svg",
+  boat: "/2D/icon_boat.svg",
 };
 
 const LOBBY_DISPLAY_TITLE = "Tiny Skies";
@@ -126,7 +126,7 @@ export class Lobby {
           role="radio"
           aria-checked="${isSel ? "true" : "false"}"
           aria-disabled="false">
-          <span class="lobby-vicon" aria-hidden="true">${VEHICLE_SVGS[v]}</span>
+          <span class="lobby-vicon" aria-hidden="true"><img class="lobby-vicon-asset" src="${VEHICLE_ICON_SRC[v]}" alt="" width="24" height="24" decoding="async" /></span>
           <span class="lobby-vlabel">${SHORT_LABELS[v]}</span>
           <span class="lobby-vmeta">${this.levelLine(level)}</span>
         </button>`;
@@ -567,7 +567,16 @@ export class Lobby {
         justify-content: center;
         line-height: 0;
       }
-      .lobby-vicon svg { width: 24px; height: 24px; flex-shrink: 0; }
+      .lobby-vicon-asset {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
+        display: block;
+        filter: brightness(0) invert(1);
+      }
+      .lobby-vbtn.active .lobby-vicon-asset {
+        filter: none;
+      }
       .lobby-vicon--lock svg { width: 28px; height: 28px; }
       .lobby-vlabel {
         font-size: 0.8rem;
@@ -714,7 +723,7 @@ export class Lobby {
           gap: 6px;
         }
         .lobby-vbtn { padding: 8px 4px 10px; min-height: 80px; }
-        .lobby-vicon svg { width: 22px; height: 22px; }
+        .lobby-vicon-asset { width: 22px; height: 22px; }
         .lobby-vicon--lock svg { width: 26px; height: 26px; }
         .lobby-vlabel { font-size: 0.75rem; }
         .lobby-vmeta { font-size: 0.58rem; }
