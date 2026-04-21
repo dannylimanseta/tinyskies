@@ -24,6 +24,10 @@ const MAX_SPEED = 0.78;
 /** Diamond / ring collect burst — matches biplane `BOOST_DURATION_SEC`. */
 const DIAMOND_BOOST_SPEED = 1.22;
 const DIAMOND_BOOST_DURATION_SEC = 1.7;
+/** Full barrel rolls (around forward) during one diamond boost. */
+const CARPET_BOOST_BARREL_ROLL_TURNS = 1.0;
+/** Roll completes in this fraction of boost duration (<1 = faster spin than spreading across full boost). */
+const CARPET_BOOST_ROLL_DURATION_FRAC = 0.5;
 const ABSOLUTE_MAX_SPEED = 1.45;
 const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
@@ -61,6 +65,7 @@ export class Carpet {
   altitude = 0;
   speed = 0;
   bankAngle = 0;
+  /** Barrel-roll stunt angle during diamond boost; synced like the biplane. */
   rollAngle = 0;
   isRolling = false;
   /** Network fade 0–1 (moon cutscene); read by StateSync. */
@@ -146,12 +151,24 @@ export class Carpet {
 
     if (this.boostTimer > 0) {
       this.speed = effBoostSpeed;
-    } else if (forward) {
-      this.speed = Math.min(effMaxSpeed, this.speed + ACCEL * dt);
-    } else if (brake) {
-      this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
+      const boostDur = DIAMOND_BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
+      const rollSpan = Math.max(
+        boostDur * CARPET_BOOST_ROLL_DURATION_FRAC,
+        0.08,
+      );
+      const rollTarget = Math.PI * 2 * CARPET_BOOST_BARREL_ROLL_TURNS;
+      const next =
+        this.rollAngle + ((Math.PI * 2 * CARPET_BOOST_BARREL_ROLL_TURNS) / rollSpan) * dt;
+      this.rollAngle = Math.min(next, rollTarget);
     } else {
-      this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
+      this.rollAngle = 0;
+      if (forward) {
+        this.speed = Math.min(effMaxSpeed, this.speed + ACCEL * dt);
+      } else if (brake) {
+        this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
+      } else {
+        this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
+      }
     }
 
     this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
@@ -223,6 +240,7 @@ export class Carpet {
       ABSOLUTE_MAX_SPEED,
     );
     this.speed = effBoostSpeed;
+    this.rollAngle = 0;
   }
 
   teleportTo(qPosition: Quaternion, heading: number, altitude: number, speed = this.speed) {
@@ -242,7 +260,7 @@ export class Carpet {
       this.qPosition,
       this.heading,
       this.pitch,
-      this.bankAngle,
+      this.bankAngle + this.rollAngle,
       this.altitude,
       this.globeRadius,
     );

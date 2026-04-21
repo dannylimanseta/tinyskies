@@ -25,12 +25,17 @@ export interface RingManagerOptions {
   terrainType?: string;
 }
 
-const DIAMOND_COUNT = 15;
+const DIAMOND_COUNT_PLANE = 15;
+/** Boat has a larger ocean play area — a few more pickups than air/land. */
+const DIAMOND_COUNT_BOAT = 24;
+const DIAMOND_COUNT_CARPET = 15;
 const DIAMOND_SIZE = 0.09;
 /** Boat diamonds use a smaller mesh than planes (same shape). */
 const BOAT_DIAMOND_SCALE = 0.55;
 const DIAMOND_XP = 10;
 const COLLECTION_RADIUS = 0.3;
+/** Carpet diamonds felt too easy to snag — tighter pickup than plane/boat. */
+const CARPET_COLLECTION_RADIUS = 0.19;
 const LOW_ALTITUDE = 0.55;
 const HIGH_ALTITUDE_MIN = 0.9;
 const HIGH_ALTITUDE_MAX = 1.35;
@@ -175,7 +180,13 @@ export class RingManager {
     this.geometry = new OctahedronGeometry(baseSize, 0);
     this.geometry.scale(1, 1.5, 1);
 
-    for (let i = 0; i < DIAMOND_COUNT; i++) {
+    const initialCount =
+      this.mode === "boat"
+        ? DIAMOND_COUNT_BOAT
+        : this.mode === "carpet"
+          ? DIAMOND_COUNT_CARPET
+          : DIAMOND_COUNT_PLANE;
+    for (let i = 0; i < initialCount; i++) {
       this.diamonds.push(this.createDiamond());
     }
   }
@@ -392,7 +403,9 @@ export class RingManager {
 
       if (spawnProgress >= 1.0) {
         const dist = planePos.distanceTo(worldPos);
-        const effRadius = COLLECTION_RADIUS * this.upgrades.magnetMult;
+        const baseRadius =
+          this.mode === "carpet" ? CARPET_COLLECTION_RADIUS : COLLECTION_RADIUS;
+        const effRadius = baseRadius * this.upgrades.magnetMult;
 
         if (dist < effRadius) {
           this.collectDiamond(d, worldPos);
