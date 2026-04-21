@@ -86,6 +86,12 @@ export class MoonThreat {
   private impactTime = 0;
   /** Seconds left in brazier-shield approach pause (local only; does not sync moon phase). */
   private approachPauseRemaining = 0;
+  /** All-five eternal flames — moon approach and spin frozen until reset. */
+  private permanentlyFrozen = false;
+
+  get isPermanentlyFrozen(): boolean {
+    return this.permanentlyFrozen;
+  }
 
   get progress() {
     return Math.min(this.elapsed / MOON_CYCLE_DURATION, 1);
@@ -118,11 +124,30 @@ export class MoonThreat {
     this.elapsed = MOON_CYCLE_DURATION * Math.min(pct, 0.999);
   }
 
+  /** Current approach time (seconds) for save/restore when indefinitely frozen. */
+  get approachElapsedSeconds(): number {
+    return this.elapsed;
+  }
+
+  /**
+   * Stop approach, spin, and ember motion completely (all-five eternal braziers).
+   * Optional `elapsedSec` restores a saved position after {@link reset}.
+   */
+  freezeApproachForever(elapsedSec?: number) {
+    if (this.impacted) return;
+    this.permanentlyFrozen = true;
+    this.approachPauseRemaining = 0;
+    if (elapsedSec != null && Number.isFinite(elapsedSec)) {
+      this.elapsed = Math.max(0, Math.min(elapsedSec, MOON_CYCLE_DURATION * 0.999));
+    }
+    this.applyPreImpactApproach(0, false);
+  }
+
   /**
    * Pause moon approach (freeze `elapsed`) while keeping spin; stacks by max remaining time.
    */
   beginApproachPause(remainingMs: number) {
-    if (this.impacted) return;
+    if (this.impacted || this.permanentlyFrozen) return;
     const sec = remainingMs / 1000;
     this.approachPauseRemaining = Math.max(this.approachPauseRemaining, sec);
   }
@@ -552,7 +577,9 @@ if (uMolten > 0.01) {
   /* ── Per-frame update ───────────────────────────────────── */
 
   private applyPreImpactApproach(dt: number, advanceElapsed: boolean) {
-    if (advanceElapsed) {
+    const freeze = this.permanentlyFrozen;
+    const effectiveAdvance = advanceElapsed && !freeze;
+    if (effectiveAdvance) {
       this.elapsed += dt;
     }
     const t = this.progress;
@@ -560,8 +587,12 @@ if (uMolten > 0.01) {
     const dist = MOON_START_DISTANCE + (MOON_END_DISTANCE - MOON_START_DISTANCE) * t;
     this.group.position.copy(MOON_APPROACH_DIR).multiplyScalar(dist);
 
-    if (this.loaded) {
+    if (this.loaded && !freeze) {
       this.group.rotation.y += MOON_ROTATION_SPEED * dt;
+      const s = this.baseScale * (MOON_SCALE_START + (MOON_SCALE_END - MOON_SCALE_START) * t);
+      const model = this.group.children[0];
+      if (model) model.scale.setScalar(s);
+    } else if (this.loaded && freeze) {
       const s = this.baseScale * (MOON_SCALE_START + (MOON_SCALE_END - MOON_SCALE_START) * t);
       const model = this.group.children[0];
       if (model) model.scale.setScalar(s);
@@ -571,7 +602,7 @@ if (uMolten > 0.01) {
     for (const sh of this.moltenShaders) {
       sh.uniforms.uMolten!.value = molten;
     }
-    this.updateEmbers(dt, molten);
+    this.updateEmbers(freeze ? 0 : dt, molten);
 
     if (t >= 1.0 && !this.impacted) {
       this.triggerImpact();
@@ -579,6 +610,11 @@ if (uMolten > 0.01) {
   }
 
   update(dt: number) {
+    if (this.permanentlyFrozen && !this.impacted) {
+      this.applyPreImpactApproach(0, false);
+      return;
+    }
+
     if (this.impacted) {
       this.group.position.addScaledVector(
         _negApproach,
@@ -865,6 +901,7 @@ if (uMolten > 0.01) {
     this.impacted = false;
     this.impactTime = 0;
     this.approachPauseRemaining = 0;
+    this.permanentlyFrozen = false;
     this.group.position.copy(MOON_APPROACH_DIR).multiplyScalar(MOON_START_DISTANCE);
     this.group.rotation.y = 0;
     for (const w of this.shockwaveWaves) {

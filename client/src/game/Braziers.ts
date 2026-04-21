@@ -860,6 +860,12 @@ export class Braziers {
     }
   }
 
+  /** True when every slot is lit with a Gremlin-King eternal flame (not temporary burn). */
+  allFiveEternalAndLit(): boolean {
+    if (!this.revealComplete || this.states.length < BRAZIER_COUNT) return false;
+    return this.states.every((s) => s.lit && s.eternal);
+  }
+
   /** Debug: force every brazier lit with a full burn (visual + progress). */
   debugLightAll() {
     const end = Date.now() + BRAZIER_BURN_MS;

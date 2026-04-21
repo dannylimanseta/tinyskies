@@ -1669,12 +1669,26 @@ export class Game {
 
   /** All-five brazier shield: local-only world event for this player. */
   private applyBrazierMoonShield(remainingMs: number, announce = true) {
+    if (this.moonThreat?.isPermanentlyFrozen) return;
     this.braziers?.extinguishAll();
     this.savePlayerWorldState();
     this.moonThreat?.beginApproachPause(remainingMs);
     if (!announce) return;
     this.shouldShowBrazierMoonResume = true;
     this.hud.showBrazierMoonSlowed();
+  }
+
+  /** All five braziers lit with eternal flames — moon stopped for good (saved). */
+  private applyEternalFlamesMoonSave() {
+    this.braziers?.extinguishAll();
+    const elapsed = this.moonThreat?.approachElapsedSeconds ?? 0;
+    this.savePlayerWorldState({
+      moonFrozenByEternalFlames: true,
+      moonFrozenElapsedSec: elapsed,
+    });
+    this.moonThreat?.freezeApproachForever();
+    this.shouldShowBrazierMoonResume = false;
+    this.hud.showEternalFlamesMoonSaved();
   }
 
   private initNetworking(slug: string) {
@@ -2261,7 +2275,12 @@ export class Game {
         burnProgress.length >= BRAZIER_COUNT &&
         burnProgress.every((p) => p > 0);
       if (allFive && !this.prevAllFiveBraziers) {
-        this.applyBrazierMoonShield(BRAZIER_MOON_PAUSE_MS);
+        const allFiveEternal = this.braziers?.allFiveEternalAndLit() ?? false;
+        if (newlyLitUsedEternalFlame && allFiveEternal) {
+          this.applyEternalFlamesMoonSave();
+        } else {
+          this.applyBrazierMoonShield(BRAZIER_MOON_PAUSE_MS);
+        }
       }
       this.prevAllFiveBraziers = allFive;
     }
@@ -3825,6 +3844,9 @@ export class Game {
         this.lastBrazierProgress.length >= BRAZIER_COUNT &&
         this.lastBrazierProgress.every((p) => p > 0);
     }
+    if (saved.moonFrozenByEternalFlames && this.moonThreat) {
+      this.moonThreat.freezeApproachForever(saved.moonFrozenElapsedSec);
+    }
   }
 
   private savePlayerWorldState(overrides: Partial<SavedPlayerWorldState> = {}) {
@@ -3844,6 +3866,9 @@ export class Game {
       brazierFizzleHintShown: this.showedBrazierFizzleHint || !!prev.brazierFizzleHintShown,
       eternalFlameCount: prev.eternalFlameCount ?? 0,
       gremlinKingEternalFlameClaimed: !!prev.gremlinKingEternalFlameClaimed,
+      moonFrozenByEternalFlames:
+        overrides.moonFrozenByEternalFlames ?? prev.moonFrozenByEternalFlames ?? false,
+      moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
       ...overrides,
     };
     next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {

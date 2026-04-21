@@ -38,6 +38,10 @@ export interface SavedPlayerWorldState {
   eternalFlameCount?: number;
   /** After the first Gremlin King kill, further kills never award another eternal flame. */
   gremlinKingEternalFlameClaimed?: boolean;
+  /** All five braziers lit with eternal flames — moon approach frozen indefinitely. */
+  moonFrozenByEternalFlames?: boolean;
+  /** Saved moon `elapsed` seconds when frozen (restored each run). */
+  moonFrozenElapsedSec?: number;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;

@@ -322,6 +322,15 @@ export class HUD {
     );
   }
 
+  /** All five braziers lit with eternal flames — moon stopped for good. */
+  showEternalFlamesMoonSaved() {
+    this.showCenteredToast(
+      "hud-brazier-moon-saved-eternal",
+      "The eternal flames have stopped the moon indefinitely. The world is saved.",
+      4200,
+    );
+  }
+
   /** After shield pause ends — moon approach advances again. */
   showBrazierMoonResumed() {
     this.showCenteredToast("hud-brazier-moon-resumed", "The moon has resumed its movement.", 3200);
