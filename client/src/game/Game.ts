@@ -4181,7 +4181,13 @@ export class Game {
         if (!this.brazierInRange[i]) {
           if (this.brazierCooldown[i]! <= 0) {
             const isLit  = (this.lastBrazierProgress[i] ?? 0) > 0;
-            const whisper = pickBrazierWhisper(isLit, litCount);
+            const ws = ProgressionManager.loadPlayerWorldState();
+            const whisper = pickBrazierWhisper(isLit, litCount, {
+              eternalFlameInInventory: (ws.eternalFlameCount ?? 0) > 0,
+              allFiveEternalLit: this.braziers?.allFiveEternalAndLit() ?? false,
+              moonFrozenForever: !!ws.moonFrozenByEternalFlames,
+              gremlinKingDefeated: !!ws.gremlinKingEternalFlameClaimed,
+            });
             this.packageQuestHUD.showWhisper(whisper);
             this.brazierCooldown[i] = BRAZIER_WHISPER_COOLDOWN;
           }

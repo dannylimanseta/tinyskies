@@ -275,6 +275,16 @@ export function generateQuestDialogue(
 }
 
 /** Cosy hot-air-balloon NPC greetings (reuse same NPC names + portraits as package quest). */
+/** Straight talk: gremlins, sky pests (mixed in sometimes with balloon greetings). */
+const BALLOON_GREETINGS_GREMLINS = [
+  "Watch the clouds — gremlins love to nip at wings. Paintball helps!",
+  "If something small and rude buzzes your plane, that's a gremlin. Harmless. Usually.",
+  "They say a big gremlin — a Gremlin King — hides in the highest flock. Probably a tall tale.",
+  "Gremlins again last week. Stole my sandwich from the basket. Little thieves!",
+  "You look like you've met gremlins before. The scuff marks on your wings tell the story.",
+  "Eternal flames? Old pilots swear the Gremlin King drops one if you best him. Could be true!",
+];
+
 const BALLOON_GREETINGS = [
   "Oh hello up there! Fancy meeting you in the tiny skies!",
   "Lovely day for a wander, isn't it? The clouds are extra fluffy today.",
@@ -342,6 +352,12 @@ const BALLOON_GREETINGS_PANIC = [
   "If this is our last flight... it was nice meeting you.",
 ];
 
+const PANIC_LINES_GREMLINS = [
+  "Gremlins everywhere — as if the moon wasn't enough!",
+  "The gremlins are laughing at us! I can hear them!",
+  "I'd take a gremlin over that moon any day — at least gremlins are small!",
+];
+
 const PANIC_LINES = [
   "Did you see the size of that thing?! It's ENORMOUS!",
   "The moon! THE MOON! It's going to crush us all!",
@@ -373,6 +389,13 @@ export function pickBalloonGreeting(
   isDay: boolean,
 ): { npcName: string; line: string } {
   const npcName = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)]!;
+  if (moonProgress < 0.75 && Math.random() < 0.14) {
+    const line =
+      BALLOON_GREETINGS_GREMLINS[
+        Math.floor(Math.random() * BALLOON_GREETINGS_GREMLINS.length)
+      ]!;
+    return { npcName, line };
+  }
   let pool: string[];
   if (moonProgress >= 0.75) {
     pool = BALLOON_GREETINGS_PANIC;
@@ -387,7 +410,9 @@ export function pickBalloonGreeting(
 
 export function pickPanicLine(): { npcName: string; line: string } {
   const npcName = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)]!;
-  const line = PANIC_LINES[Math.floor(Math.random() * PANIC_LINES.length)]!;
+  const line = Math.random() < 0.22
+    ? PANIC_LINES_GREMLINS[Math.floor(Math.random() * PANIC_LINES_GREMLINS.length)]!
+    : PANIC_LINES[Math.floor(Math.random() * PANIC_LINES.length)]!;
   return { npcName, line };
 }
 
@@ -436,6 +461,16 @@ const ASTRO_PANIC = [
   "Look at the sky. That isn't the moon anymore. It's the end.",
 ];
 
+/** Plain-spoken hints: moonstones (two halves), gremlins — mixed in by chance. */
+const ASTRO_MOONSTONE_GREMLIN = [
+  "The old moonstone sites — two pieces of one ring, buried on opposite sides of the world — show up weird on long exposures.",
+  "Gremlins aren't myth. I've tracked fast-moving dots that match pilot reports. Stay sharp up there.",
+  "If you ever fuse the moonstones, the readings go wild — then the braziers wake up. That's documented.",
+  "The Gremlin King is the biggest gremlin in the sky flock. Astronomers don't put it in the journals, but pilots do.",
+  "Gremlins steal lift and scratch paint. The Gremlin King is the one that drops an eternal flame — if you can beat it.",
+  "Moonstone ruins: one half hums, the other answers. When both float, something bigger stirs.",
+];
+
 /**
  * Pick an observatory astronomer greeting based on moon progress.
  * @param observatoryIndex Which observatory (0–2) — determines the resident NPC.
@@ -445,6 +480,13 @@ export function pickObservatoryGreeting(
   moonProgress: number,
 ): { npcName: string; line: string } {
   const npcName = ASTRONOMER_NAMES[observatoryIndex % ASTRONOMER_NAMES.length]!;
+  if (moonProgress < 0.75 && Math.random() < 0.18) {
+    const line =
+      ASTRO_MOONSTONE_GREMLIN[
+        Math.floor(Math.random() * ASTRO_MOONSTONE_GREMLIN.length)
+      ]!;
+    return { npcName, line };
+  }
   let pool: readonly string[];
   if (moonProgress >= 0.75) pool = ASTRO_PANIC;
   else if (moonProgress >= 0.50) pool = ASTRO_DREAD;
@@ -462,6 +504,8 @@ const STONEHENGE_CALM = [
   "Something is carved into the stone circle: \"When the moon swells, keep your eyes on the horizon.\"",
   "The stone circle resonates. You hear a whisper... \"They built this circle to watch the sky. They stopped watching.\"",
   "The shadows cast by the stone circle always point toward the moon, no matter the hour.",
+  "A clear carving names the moonstones: two halves of one ring, split across the world until someone joins them again.",
+  "Someone scratched into the stone: gremlins in the clouds — small trouble. The moon is the big trouble.",
 ];
 
 const STONEHENGE_UNEASY = [
@@ -470,6 +514,8 @@ const STONEHENGE_UNEASY = [
   "The ground around the stone circle vibrates faintly. An inscription reads: \"The circle holds as long as the sky does.\"",
   "A vision ripples through the stone circle... a constellation rearranging itself. One star missing.",
   "You hear a whisper from the stones... \"Do not mistake warning for rescue.\"",
+  "Words appear in the dust: light the five braziers with eternal flame — real eternal flame — and the moon can be stopped for good.",
+  "The stone remembers gremlins swarming like gnats. The Gremlin King, it says, was always a cousin to the moon's fall.",
 ];
 
 const STONEHENGE_DREAD = [
@@ -478,6 +524,8 @@ const STONEHENGE_DREAD = [
   "The air inside the stone circle is wrong. An inscription reads: \"Do not look up. Do not look up.\"",
   "You hear a whisper from the stones... \"Run. There is nowhere to run. Fly then. Fly as far as you can.\"",
   "A vision stirs inside the stone circle... prayers rising into the dark. The moon keeps coming.",
+  "The carving shouts: find five braziers, keep the eternal flames burning — not the cheap kind. The Gremlin King kind.",
+  "The stones say: moonstone first, braziers second. The world is a machine with missing instructions.",
 ];
 
 const STONEHENGE_PANIC = [
@@ -485,6 +533,7 @@ const STONEHENGE_PANIC = [
   "The stone circle is cracking. An inscription reads: \"We tried. We are sorry.\"",
   "A vision tears open inside the stone circle... the moon above the globe, close enough to touch. Then nothing.",
   "You hear a whisper from the stones... \"Fly. Just fly. Don't stop.\"",
+  "Even the gremlins have gone quiet. And the moonstone halves feel hot through the ground.",
 ];
 
 /* ── Brazier whisper lines ───────────────────────────────────────── */
@@ -496,6 +545,8 @@ const BRAZIER_UNLIT = [
   "Lichen covers the metal. Beneath it: \"Five flames, one shield. Against what comes from beyond the stars.\"",
   "A voice, not quite heard: \"We placed these five across the world. We did not tell anyone why. We should have.\"",
   "The brazier has not burned in a very long time. The air around it smells faintly of something that has no name.",
+  "A newer plaque, in plain letters: \"Gremlins in the sky are a nuisance. The moon is the war. Light these five.\"",
+  "Someone scratched: eternal flame — the blue kind from the Gremlin King — never goes out. Use it here.",
 ];
 
 /** Approaching a lit brazier when only 1–2 total are burning — the network stirs. */
@@ -505,6 +556,8 @@ const BRAZIER_LIT_FEW = [
   "You hear something in the crackling... \"They are watching. Whatever built the veil watches you light it back.\"",
   "The flame burns upward even when the wind says otherwise. The other four are out there, cold and waiting.",
   "Standing near the fire, you feel a warmth that isn't entirely from the flame. The brazier hums.",
+  "This fire is ordinary — it will go out. An eternal flame from a Gremlin King would stay forever.",
+  "Gremlins hate the cold braziers. Good luck getting gremlins to help, though.",
 ];
 
 /** Approaching any brazier when 3–4 are burning — urgency rises. */
@@ -514,6 +567,8 @@ const BRAZIER_LIT_MANY = [
   "The brazier flickers faster as you approach. You hear, barely: \"Almost. Almost. Do not stop now.\"",
   "You sense the other fires from here — a thread of heat connecting them across the world. One gap remains.",
   "Half-buried inscription: \"The ancients lit all five in one hour. They are not here to say what happened next.\"",
+  "Three or four lit — keep going. If you have eternal flame left, save it for the last braziers.",
+  "The moon feels closer when most braziers burn. Gremlins get louder too. Coincidence.",
 ];
 
 /** Approaching any brazier when all 5 are burning — the shield holds. */
@@ -523,14 +578,56 @@ const BRAZIER_ALL_LIT = [
   "A hum runs through the ground — faint, global, old. The veil holds. For now.",
   "\"The shield is not a wall — it is a warning. Whatever it keeps out knows it is there.\"",
   "The flame burns cold. An inscription glows: \"Five fires, one breath. Hold it.\"",
+  "All five braziers are lit — the moon should slow down. If you used eternal flame on each, it lasts forever.",
 ];
+
+/** All five burning with eternal flame — moon stopped for good. */
+const BRAZIER_ALL_ETERNAL_VICTORY = [
+  "Every flame is an eternal flame. The moon has stopped — the inscription says: the world is saved.",
+  "Five blue eternal flames. The Gremlin King would be proud. The moon hangs frozen in the sky.",
+  "You did it. Eternal flame on all five braziers. The moon won't fall again.",
+];
+
+/** Context from Game (save + runtime brazier state). */
+export interface BrazierWhisperContext {
+  eternalFlameInInventory: boolean;
+  allFiveEternalLit: boolean;
+  moonFrozenForever: boolean;
+  gremlinKingDefeated: boolean;
+}
 
 /**
  * Pick a brazier ambient whisper.
  * @param isLit   Whether the brazier being approached is currently burning.
  * @param litCount How many of the 5 braziers are currently burning.
  */
-export function pickBrazierWhisper(isLit: boolean, litCount: number): string {
+export function pickBrazierWhisper(
+  isLit: boolean,
+  litCount: number,
+  context?: BrazierWhisperContext,
+): string {
+  if (context?.moonFrozenForever && litCount >= 5 && Math.random() < 0.38) {
+    return BRAZIER_ALL_ETERNAL_VICTORY[
+      Math.floor(Math.random() * BRAZIER_ALL_ETERNAL_VICTORY.length)
+    ]!;
+  }
+  if (context?.allFiveEternalLit && litCount >= 5 && Math.random() < 0.32) {
+    return BRAZIER_ALL_ETERNAL_VICTORY[
+      Math.floor(Math.random() * BRAZIER_ALL_ETERNAL_VICTORY.length)
+    ]!;
+  }
+  if (
+    context?.gremlinKingDefeated &&
+    context.eternalFlameInInventory &&
+    litCount < 5 &&
+    Math.random() < 0.22
+  ) {
+    return "You carry an eternal flame from the Gremlin King. Light a brazier with it — it never burns out.";
+  }
+  if (context?.eternalFlameInInventory && litCount < 5 && Math.random() < 0.18) {
+    return "You have an eternal flame in your pack. Use it at a brazier — the flame stays forever.";
+  }
+
   let pool: readonly string[];
   if (litCount >= 5)       pool = BRAZIER_ALL_LIT;
   else if (litCount >= 3)  pool = BRAZIER_LIT_MANY;
