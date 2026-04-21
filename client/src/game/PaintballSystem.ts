@@ -109,6 +109,8 @@ type Projectile = {
   speed: number;
   color: number;
   trail: Trail;
+  /** Multiplier for decal + splash size when this shot hits the local player. */
+  splatterScale: number;
 };
 
 type SplatterFade = {
@@ -123,6 +125,8 @@ export type ProjectileStepInfo = {
   previousPosition: Vector3;
   currentPosition: Vector3;
   consume: () => void;
+  /** When this gremlin shot hits the local player, scale HUD/wing splatter (e.g. Gremlin King = 2). */
+  splatterScale?: number;
 };
 
 type ProjectileStepListener = (info: ProjectileStepInfo) => void;
@@ -280,6 +284,10 @@ export class PaintballSystem {
     color?: number;
     speed?: number;
     playShootSfx?: boolean;
+    /** World-space sphere radius (default 0.038). */
+    ballRadius?: number;
+    /** Splatter decal + burst scale when this shot hits the local player. */
+    splatterScale?: number;
   }): boolean {
     const color =
       options.color ??
@@ -296,6 +304,8 @@ export class PaintballSystem {
       dy: options.direction.y,
       dz: options.direction.z,
       speed: options.speed ?? PAINTBALL_SPEED,
+      ballRadius: options.ballRadius,
+      splatterScale: options.splatterScale,
     });
     if (didSpawn && options.playShootSfx) {
       this.onPaintballShoot?.();
@@ -407,6 +417,8 @@ export class PaintballSystem {
     speed: number;
     /** Optional Sharpshooter range multiplier. Remote echoes carry this via `PaintballFiredEvent`. */
     rangeMult?: number;
+    ballRadius?: number;
+    splatterScale?: number;
   }): boolean {
     const o = new Vector3(ev.ox, ev.oy, ev.oz);
     const r0 = Math.max(1e-4, o.length());
@@ -418,10 +430,14 @@ export class PaintballSystem {
 
     const rangeMult = ev.rangeMult && ev.rangeMult > 0 ? ev.rangeMult : 1;
     const maxRange = this.globeRadius * PAINTBALL_RANGE_FACTOR * rangeMult;
-    const geo = new SphereGeometry(0.038, 10, 10);
+    const ballR = ev.ballRadius ?? 0.038;
+    const splatterScale = ev.splatterScale && ev.splatterScale > 0 ? ev.splatterScale : 1;
+    const geo = new SphereGeometry(ballR, 10, 10);
     const mat = createPaintballMaterial(ev.color);
     const mesh = new Mesh(geo, mat);
-    const trail = new Trail(12, 0.012, ev.color);
+    const trailWide = 0.012 * (ballR / 0.038);
+    const trailLen = ballR > 0.055 ? 16 : 12;
+    const trail = new Trail(trailLen, trailWide, ev.color);
     mesh.position.copy(o);
     this.scene.add(mesh);
     this.scene.add(trail.mesh);
@@ -437,6 +453,7 @@ export class PaintballSystem {
       speed: ev.speed,
       color: ev.color,
       trail,
+      splatterScale,
     });
     return true;
   }
@@ -474,11 +491,13 @@ export class PaintballSystem {
     localPlaneGroup: Group | null,
     colorHex: number,
     splatSeed = (Math.random() * 0xffffffff) >>> 0,
+    options?: { splatterScale?: number },
   ) {
     if (!localPlaneGroup) return;
+    const splatterScale = options?.splatterScale && options.splatterScale > 0 ? options.splatterScale : 1;
     this.onLocalPlayerPaintballHit?.(colorHex);
     this.onPaintballVictimWobble?.(this.getSocketId() ?? "local");
-    this.applyImpactAtGroup(localPlaneGroup, colorHex, splatSeed);
+    this.applyImpactAtGroup(localPlaneGroup, colorHex, splatSeed, splatterScale);
     this.onPaintballImpact?.(splatSeed, false);
   }
 
@@ -487,8 +506,9 @@ export class PaintballSystem {
     colorHex: number,
     distant = false,
     splatSeed = (Math.random() * 0xffffffff) >>> 0,
+    splatterScale = 1,
   ) {
-    this.applyImpactAtGroup(victimRoot, colorHex, splatSeed);
+    this.applyImpactAtGroup(victimRoot, colorHex, splatSeed, splatterScale);
     this.onPaintballImpact?.(splatSeed, distant);
   }
 
@@ -500,6 +520,7 @@ export class PaintballSystem {
     victimRoot: Group,
     colorHex: number,
     splatSeed: number,
+    splatterScale = 1,
   ): Vector3 | null {
     if (!this.textureLoaded || !this.texture) return null;
 
@@ -546,8 +567,8 @@ export class PaintballSystem {
       const zBias = 0.005 + rnd() * 0.014;
       const posW = hit.point.clone().addScaledVector(nWorld, zBias);
 
-      const sizesXZ = 0.12 + rnd() * 0.1;
-      const depth = 0.34 + rnd() * 0.16;
+      const sizesXZ = (0.12 + rnd() * 0.1) * splatterScale;
+      const depth = (0.34 + rnd() * 0.16) * splatterScale;
       const orientHelper = new Object3D();
       orientHelper.position.copy(posW);
       orientHelper.lookAt(posW.clone().add(nWorld));
@@ -615,8 +636,9 @@ export class PaintballSystem {
     victimRoot: Group,
     colorHex: number,
     splatSeed: number,
+    splatterScale = 1,
   ) {
-    let splatWorld = this.addSplatterDecal(victimRoot, colorHex, splatSeed);
+    let splatWorld = this.addSplatterDecal(victimRoot, colorHex, splatSeed, splatterScale);
     if (!splatWorld) {
       victimRoot.updateMatrixWorld(true);
       splatWorld = victimRoot.getWorldPosition(new Vector3());
@@ -626,6 +648,7 @@ export class PaintballSystem {
       splatWorld,
       decalTintColor(colorHex).getHex(),
       splatSeed,
+      splatterScale,
     );
   }
 
@@ -720,6 +743,7 @@ export class PaintballSystem {
           consume: () => {
             consumedByListener = true;
           },
+          splatterScale: p.splatterScale,
         };
         for (const listener of this.projectileStepListeners.values()) {
           listener(stepInfo);

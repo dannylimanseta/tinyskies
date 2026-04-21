@@ -236,6 +236,15 @@ export class HUD {
     this.showCenteredToast("hud-rainbow-celebration", "You went through the rainbow", 1600);
   }
 
+  /** Gremlin King spawns after 7 sky gremlin takedowns in a session. */
+  showGremlinKingWarning() {
+    this.showCenteredToast(
+      "hud-gremlin-king-warning",
+      "Your actions have angered the Gremlin King. He seeks vengeance.",
+      5200,
+    );
+  }
+
   showLanternCelebrate(_count: number) {
     this.showCenteredToast(
       "hud-lantern-celebration",
@@ -733,6 +742,40 @@ export class HUD {
           transform: translate(-50%, calc(-50% - 58px));
         }
         .hud-rainbow-celebration-animate {
+          transform: translate(-50%, calc(-50% - 78px));
+        }
+      }
+
+      .hud-gremlin-king-warning {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, calc(-50% - 72px));
+        max-width: min(22rem, calc(100% - 32px));
+        padding: 0 8px;
+        font-size: 0.92rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.4;
+        text-align: center;
+        color: rgba(255, 245, 230, 0.98);
+        text-shadow: 0 0 18px rgba(255, 120, 40, 0.55), 0 2px 10px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.4s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        z-index: 14;
+      }
+      .hud-gremlin-king-warning-animate {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 92px));
+      }
+
+      @media (max-width: 768px) {
+        .hud-gremlin-king-warning {
+          transform: translate(-50%, calc(-50% - 58px));
+          font-size: 0.85rem;
+        }
+        .hud-gremlin-king-warning-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
       }

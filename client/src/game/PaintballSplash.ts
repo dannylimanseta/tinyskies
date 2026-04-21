@@ -106,7 +106,7 @@ export class PaintballSplashBurst {
     this.points.renderOrder = 475;
   }
 
-  play(scene: Scene, worldOrigin: Vector3, colorHex: number, seed: number) {
+  play(scene: Scene, worldOrigin: Vector3, colorHex: number, seed: number, scale = 1) {
     const rnd = seededRandom(seed >>> 0);
     const c = new Color(colorHex);
     this.mat.uniforms.uColor!.value.copy(c);
@@ -120,25 +120,27 @@ export class PaintballSplashBurst {
         : tmp.set(1, 0, 0).cross(rad).normalize();
     const ay = new Vector3().crossVectors(rad, ax).normalize();
 
+    const o = 0.035 * scale;
+
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const p = this.pool[i]!;
       p.alive = true;
       p.t = 0;
       p.life = LIFE_MIN + rnd() * (LIFE_MAX - LIFE_MIN);
-      p.px = worldOrigin.x + (rnd() - 0.5) * 0.035;
-      p.py = worldOrigin.y + (rnd() - 0.5) * 0.035;
-      p.pz = worldOrigin.z + (rnd() - 0.5) * 0.035;
+      p.px = worldOrigin.x + (rnd() - 0.5) * o;
+      p.py = worldOrigin.y + (rnd() - 0.5) * o;
+      p.pz = worldOrigin.z + (rnd() - 0.5) * o;
 
-      const spread = 0.45 + rnd() * 0.85;
-      const u = (rnd() - 0.5) * 2.2;
-      const v = (rnd() - 0.5) * 2.2;
-      const w = 0.35 + rnd() * 0.95;
+      const spread = (0.45 + rnd() * 0.85) * scale;
+      const u = (rnd() - 0.5) * 2.2 * scale;
+      const v = (rnd() - 0.5) * 2.2 * scale;
+      const w = (0.35 + rnd() * 0.95) * scale;
       p.vx = rad.x * w * spread + ax.x * u + ay.x * v;
       p.vy = rad.y * w * spread + ax.y * u + ay.y * v;
       p.vz = rad.z * w * spread + ax.z * u + ay.z * v;
 
       const base = 0.35 + rnd() * 0.75;
-      const sz = base * (0.4 + rnd() * 0.8);
+      const sz = base * (0.4 + rnd() * 0.8) * scale;
       this.sizeAttr.setX(i, sz);
     }
 
@@ -216,10 +218,10 @@ export class PaintballSplashPool {
     }
   }
 
-  play(scene: Scene, worldOrigin: Vector3, colorHex: number, seed: number) {
+  play(scene: Scene, worldOrigin: Vector3, colorHex: number, seed: number, scale = 1) {
     const b = this.bursts[this.next]!;
     this.next = (this.next + 1) % POOL;
-    b.play(scene, worldOrigin, colorHex, seed);
+    b.play(scene, worldOrigin, colorHex, seed, scale);
   }
 
   update(scene: Scene, dt: number) {

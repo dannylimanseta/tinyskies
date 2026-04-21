@@ -73,7 +73,7 @@ import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingL
 import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { Braziers, BRAZIER_COUNT, type SavedBrazierState } from "./Braziers";
-import { SkyGremlins, SKY_GREMLIN_XP } from "./SkyGremlins";
+import { SkyGremlins, SKY_GREMLIN_KING_XP, SKY_GREMLIN_XP } from "./SkyGremlins";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper, pickBrazierWhisper } from "./PackageDialogue";
@@ -1011,6 +1011,14 @@ export class Game {
           this.awardXP("gremlin", SKY_GREMLIN_XP);
           this.cameraRig.shake(0.045, 0.25);
           this.vehicleFlashTimer = 0.14;
+        },
+        () => {
+          this.hud.showGremlinKingWarning();
+        },
+        () => {
+          this.awardXP("gremlin", SKY_GREMLIN_KING_XP);
+          this.cameraRig.shake(0.065, 0.32);
+          this.vehicleFlashTimer = 0.16;
         },
       );
     } else {

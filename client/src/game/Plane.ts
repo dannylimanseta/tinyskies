@@ -20,6 +20,8 @@ const BOOST_DURATION_SEC = 1.7;
 const ABSOLUTE_MAX_SPEED = 2.0;
 const GREMLIN_SLOW_DURATION_SEC = 1.6;
 const GREMLIN_SLOW_MULT = 0.45;
+const GREMLIN_KING_SLOW_DURATION_SEC = 2.5;
+const GREMLIN_KING_SLOW_MULT = 0.28;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 /** Minimum clearance above terrain when descending. */
@@ -52,6 +54,8 @@ export class Plane {
   private boostTimer = 0;
   /** Brief movement penalty after getting splatted by a sky gremlin. */
   private gremlinSlowTimer = 0;
+  /** Stronger slow from the Gremlin King's paintballs (does not stack with gremlin slow — king takes priority). */
+  private gremlinKingSlowTimer = 0;
   /** Network fade 0–1 (moon cutscene); read by StateSync. */
   visibility?: number;
 
@@ -107,7 +111,15 @@ export class Plane {
     if (this.gremlinSlowTimer > 0) {
       this.gremlinSlowTimer = Math.max(0, this.gremlinSlowTimer - dt);
     }
-    const gremlinSlowMult = this.gremlinSlowTimer > 0 ? GREMLIN_SLOW_MULT : 1;
+    if (this.gremlinKingSlowTimer > 0) {
+      this.gremlinKingSlowTimer = Math.max(0, this.gremlinKingSlowTimer - dt);
+    }
+    const gremlinSlowMult =
+      this.gremlinKingSlowTimer > 0
+        ? GREMLIN_KING_SLOW_MULT
+        : this.gremlinSlowTimer > 0
+          ? GREMLIN_SLOW_MULT
+          : 1;
     const effMaxSpeed = MAX_SPEED * this.upgrades.maxSpeedMult * gremlinSlowMult;
     const effBoostSpeed = Math.min(
       BOOST_SPEED * this.upgrades.boostSpeedMult * gremlinSlowMult,
@@ -207,7 +219,13 @@ export class Plane {
 
   applyGremlinSlow() {
     this.gremlinSlowTimer = GREMLIN_SLOW_DURATION_SEC;
-    this.speed = Math.max(MIN_SPEED, this.speed * 0.45);
+    this.speed = Math.max(MIN_SPEED, this.speed * GREMLIN_SLOW_MULT);
+  }
+
+  applyGremlinKingSlow() {
+    this.gremlinKingSlowTimer = GREMLIN_KING_SLOW_DURATION_SEC;
+    this.gremlinSlowTimer = 0;
+    this.speed = Math.max(MIN_SPEED, this.speed * GREMLIN_KING_SLOW_MULT);
   }
 
   speedBoost() {

@@ -32,8 +32,12 @@ import { Trail } from "./Trail";
 const GREMLIN_BASE_COUNT = 6;
 const GREMLIN_MAX_COUNT = 9;
 export const SKY_GREMLIN_XP = 30;
+/** XP when the Gremlin King is defeated (10 hits). */
+export const SKY_GREMLIN_KING_XP = 120;
 
 const GREMLIN_SHOOTER_PREFIX = "gremlin:";
+const GREMLIN_KING_SHOOTER_ID = "gremlin:king";
+const GREMLINS_KILLED_BEFORE_KING = 7;
 const GREMLIN_SURFACE_CLEARANCE = 0.2;
 const GREMLIN_ALTITUDE_MIN = 0.52;
 const GREMLIN_ALTITUDE_MAX = 0.65;
@@ -69,6 +73,9 @@ type GremlinMode = "alive" | "falling" | "respawning" | "dormant";
 type GremlinState = {
   readonly index: number;
   readonly id: string;
+  /** World rig scale (0.7 normal, 1.4 king = 2× size). */
+  baseRigScale: number;
+  readonly isKing?: boolean;
   readonly root: Group;
   readonly rig: Group;
   readonly leftWingPivot: Group;
@@ -132,6 +139,27 @@ export class SkyGremlins {
     emissive: 0x444444,
     flatShading: true,
   });
+  private readonly kingBodyMaterial = new MeshPhongMaterial({
+    color: 0xe85a1a,
+    emissive: 0x5a1808,
+    flatShading: true,
+  });
+  private readonly kingBellyMaterial = new MeshPhongMaterial({
+    color: 0xff9540,
+    emissive: 0x7a2a08,
+    flatShading: true,
+  });
+  private readonly kingWingMaterial = new MeshPhongMaterial({
+    color: 0xd44810,
+    emissive: 0x4a1204,
+    flatShading: true,
+    side: DoubleSide,
+  });
+  private readonly crownMaterial = new MeshPhongMaterial({
+    color: 0xffcc33,
+    emissive: 0x664400,
+    flatShading: true,
+  });
 
   private readonly bodyGeo = new SphereGeometry(0.06, 8, 8);
   private readonly headGeo = new SphereGeometry(0.045, 8, 8);
@@ -152,6 +180,9 @@ export class SkyGremlins {
   private readonly outerRightWingGeo: BufferGeometry;
 
   private readonly gremlins: GremlinState[] = [];
+  private gremlinKing: GremlinState | null = null;
+  private sessionGremlinKills = 0;
+  private kingSpawned = false;
   private readonly worldPosScratch = new Vector3();
   private readonly toPlayerScratch = new Vector3();
   private readonly tangentScratch = new Vector3();
@@ -177,6 +208,8 @@ export class SkyGremlins {
     private readonly getLocalShooterId: () => string | undefined,
     private readonly onHit: (worldPosition: Vector3) => void,
     private readonly onShotDown: (worldPosition: Vector3) => void,
+    private readonly onGremlinKingSpawn?: () => void,
+    private readonly onKingDefeated?: (worldPosition: Vector3) => void,
   ) {
     this.group.visible = false;
     this.scene.add(this.group);
@@ -186,6 +219,10 @@ export class SkyGremlins {
     addRimLight(this.wingMaterial, 0xe2a0ff, 0.35, 3.2);
     addRimLight(this.gearMaterial, 0x888888, 0.4, 3.0);
     addRimLight(this.toothMaterial, 0xffffff, 0.5, 2.5);
+    addRimLight(this.kingBodyMaterial, 0xffaa66, 0.5, 2.8);
+    addRimLight(this.kingBellyMaterial, 0xffcc88, 0.48, 2.8);
+    addRimLight(this.kingWingMaterial, 0xff8844, 0.42, 3.0);
+    addRimLight(this.crownMaterial, 0xffee88, 0.55, 2.6);
 
     const ilVerts = new Float32Array([
       0, 0, 0.02,
@@ -303,6 +340,23 @@ export class SkyGremlins {
       }
       this.updateAliveGremlin(gremlin, dt, player);
     }
+
+    if (this.gremlinKing && this.gremlinKing.mode !== "dormant") {
+      const g = this.gremlinKing;
+      if (g.mode === "respawning") {
+        g.respawnTimer = Math.max(0, g.respawnTimer - dt);
+        if (g.respawnTimer <= 0) {
+          this.respawnGremlin(g, false);
+        }
+      } else {
+        g.trail.update(g.worldPosition, cameraPos);
+        if (g.mode === "falling") {
+          this.updateFallingGremlin(g, dt);
+        } else if (g.mode === "alive") {
+          this.updateAliveGremlin(g, dt, player);
+        }
+      }
+    }
   }
 
   dispose() {
@@ -312,6 +366,11 @@ export class SkyGremlins {
     for (const gremlin of this.gremlins) {
       this.scene.remove(gremlin.trail.mesh);
       gremlin.trail.dispose();
+    }
+    if (this.gremlinKing) {
+      this.scene.remove(this.gremlinKing.trail.mesh);
+      this.gremlinKing.trail.dispose();
+      this.gremlinKing = null;
     }
     this.bodyGeo.dispose();
     this.headGeo.dispose();
@@ -335,37 +394,46 @@ export class SkyGremlins {
     this.eyeMaterial.dispose();
     this.gearMaterial.dispose();
     this.toothMaterial.dispose();
+    this.kingBodyMaterial.dispose();
+    this.kingBellyMaterial.dispose();
+    this.kingWingMaterial.dispose();
+    this.crownMaterial.dispose();
   }
 
-  private createGremlin(index: number): GremlinState {
+  private createGremlin(index: number, king = false): GremlinState {
+    const bodyMat = king ? this.kingBodyMaterial : this.bodyMaterial;
+    const bellyMat = king ? this.kingBellyMaterial : this.bellyMaterial;
+    const wingMat = king ? this.kingWingMaterial : this.wingMaterial;
+    const baseRigScale = king ? 1.4 : 0.7;
+
     const root = new Group();
     root.matrixAutoUpdate = false;
 
     const rig = new Group();
-    rig.scale.set(0.7, 0.7, 0.7);
+    rig.scale.setScalar(baseRigScale);
     root.add(rig);
 
-    const body = new Mesh(this.bodyGeo, this.bodyMaterial);
+    const body = new Mesh(this.bodyGeo, bodyMat);
     body.scale.set(1.0, 1.2, 0.9);
     body.rotation.x = 0.3;
     body.castShadow = true;
     rig.add(body);
 
-    const head = new Mesh(this.headGeo, this.bodyMaterial);
+    const head = new Mesh(this.headGeo, bodyMat);
     head.position.set(0, 0.06, 0.05);
     head.scale.set(1.2, 0.9, 1.1);
     head.rotation.x = -0.2;
     head.castShadow = true;
     rig.add(head);
 
-    const brow = new Mesh(this.browGeo, this.bodyMaterial);
+    const brow = new Mesh(this.browGeo, bodyMat);
     brow.position.set(0, 0.08, 0.085);
     brow.rotation.z = Math.PI / 2;
     brow.rotation.x = 0.2;
     brow.castShadow = true;
     rig.add(brow);
 
-    const snout = new Mesh(this.snoutGeo, this.bodyMaterial);
+    const snout = new Mesh(this.snoutGeo, bodyMat);
     snout.position.set(0, 0.05, 0.1);
     snout.rotation.x = Math.PI / 2;
     snout.castShadow = true;
@@ -383,13 +451,13 @@ export class SkyGremlins {
     rightTooth.castShadow = true;
     rig.add(rightTooth);
 
-    const leftEar = new Mesh(this.earGeo, this.bellyMaterial);
+    const leftEar = new Mesh(this.earGeo, bellyMat);
     leftEar.position.set(-0.045, 0.07, 0.03);
     leftEar.rotation.set(-0.2, -0.4, 1.2);
     leftEar.castShadow = true;
     rig.add(leftEar);
 
-    const rightEar = new Mesh(this.earGeo, this.bellyMaterial);
+    const rightEar = new Mesh(this.earGeo, bellyMat);
     rightEar.position.set(0.045, 0.07, 0.03);
     rightEar.rotation.set(-0.2, 0.4, -1.2);
     rightEar.castShadow = true;
@@ -407,13 +475,13 @@ export class SkyGremlins {
     rightEye.rotation.z = 0.3;
     rig.add(rightEye);
 
-    const leftArm = new Mesh(this.limbGeo, this.bodyMaterial);
+    const leftArm = new Mesh(this.limbGeo, bodyMat);
     leftArm.position.set(-0.04, 0.01, 0.04);
     leftArm.rotation.set(-1.0, 0.3, 0.4);
     leftArm.castShadow = true;
     rig.add(leftArm);
 
-    const rightArm = new Mesh(this.limbGeo, this.bodyMaterial);
+    const rightArm = new Mesh(this.limbGeo, bodyMat);
     rightArm.position.set(0.04, 0.01, 0.04);
     rightArm.rotation.set(-1.0, -0.3, -0.4);
     rightArm.castShadow = true;
@@ -425,13 +493,13 @@ export class SkyGremlins {
     gun.castShadow = true;
     rig.add(gun);
 
-    const leftLeg = new Mesh(this.limbGeo, this.bodyMaterial);
+    const leftLeg = new Mesh(this.limbGeo, bodyMat);
     leftLeg.position.set(-0.03, -0.06, -0.02);
     leftLeg.rotation.set(0.2, 0, 0.2);
     leftLeg.castShadow = true;
     rig.add(leftLeg);
 
-    const rightLeg = new Mesh(this.limbGeo, this.bodyMaterial);
+    const rightLeg = new Mesh(this.limbGeo, bodyMat);
     rightLeg.position.set(0.03, -0.06, -0.02);
     rightLeg.rotation.set(0.2, 0, -0.2);
     rightLeg.castShadow = true;
@@ -441,7 +509,7 @@ export class SkyGremlins {
     leftWingPivot.position.set(-0.03, 0.04, -0.04);
     rig.add(leftWingPivot);
 
-    const innerLeftWing = new Mesh(this.innerLeftWingGeo, this.wingMaterial);
+    const innerLeftWing = new Mesh(this.innerLeftWingGeo, wingMat);
     innerLeftWing.castShadow = true;
     leftWingPivot.add(innerLeftWing);
 
@@ -449,7 +517,7 @@ export class SkyGremlins {
     leftWingMidPivot.position.set(-0.08, 0, 0.04);
     leftWingPivot.add(leftWingMidPivot);
 
-    const outerLeftWing = new Mesh(this.outerLeftWingGeo, this.wingMaterial);
+    const outerLeftWing = new Mesh(this.outerLeftWingGeo, wingMat);
     outerLeftWing.castShadow = true;
     leftWingMidPivot.add(outerLeftWing);
 
@@ -457,7 +525,7 @@ export class SkyGremlins {
     rightWingPivot.position.set(0.03, 0.04, -0.04);
     rig.add(rightWingPivot);
 
-    const innerRightWing = new Mesh(this.innerRightWingGeo, this.wingMaterial);
+    const innerRightWing = new Mesh(this.innerRightWingGeo, wingMat);
     innerRightWing.castShadow = true;
     rightWingPivot.add(innerRightWing);
 
@@ -465,14 +533,32 @@ export class SkyGremlins {
     rightWingMidPivot.position.set(0.08, 0, 0.04);
     rightWingPivot.add(rightWingMidPivot);
 
-    const outerRightWing = new Mesh(this.outerRightWingGeo, this.wingMaterial);
+    const outerRightWing = new Mesh(this.outerRightWingGeo, wingMat);
     outerRightWing.castShadow = true;
     rightWingMidPivot.add(outerRightWing);
+
+    if (king) {
+      const crown = new Group();
+      crown.position.set(0, 0.11, 0.02);
+      const band = new Mesh(new CylinderGeometry(0.055, 0.058, 0.02, 8), this.crownMaterial);
+      band.rotation.x = 0.08;
+      crown.add(band);
+      for (let s = 0; s < 5; s++) {
+        const spike = new Mesh(new ConeGeometry(0.014, 0.05, 4), this.crownMaterial);
+        const a = (s / 5) * Math.PI * 2;
+        spike.position.set(Math.sin(a) * 0.04, 0.03, Math.cos(a) * 0.04);
+        spike.rotation.x = Math.PI / 2 + 0.15;
+        crown.add(spike);
+      }
+      rig.add(crown);
+    }
 
     const random = seededRandom(this.seed + index * 104729 + 17);
     return {
       index,
-      id: `${GREMLIN_SHOOTER_PREFIX}${index}`,
+      id: king ? GREMLIN_KING_SHOOTER_ID : `${GREMLIN_SHOOTER_PREFIX}${index}`,
+      baseRigScale,
+      isKing: king ? true : undefined,
       root,
       rig,
       leftWingPivot,
@@ -481,10 +567,11 @@ export class SkyGremlins {
       rightWingMidPivot,
       random,
       orbitSign: random() < 0.5 ? -1 : 1,
-      paintColor:
-        PAINTBALL_COLOR_PALETTE[
-          Math.floor(random() * PAINTBALL_COLOR_PALETTE.length)
-        ]!,
+      paintColor: king
+        ? 0xff6600
+        : PAINTBALL_COLOR_PALETTE[
+            Math.floor(random() * PAINTBALL_COLOR_PALETTE.length)
+          ]!,
       qPosition: new Quaternion(),
       heading: 0,
       altitude: GREMLIN_ALTITUDE_MIN,
@@ -494,7 +581,7 @@ export class SkyGremlins {
       turnPhase: random() * Math.PI * 2,
       fireCooldown: GREMLIN_FIRE_COOLDOWN_MIN,
       aimTimer: 0,
-      health: 3,
+      health: king ? 10 : 3,
       hitWobbleAmp: 0,
       hitWobblePhase: 0,
       respawnSalt: 0,
@@ -502,8 +589,19 @@ export class SkyGremlins {
       downTimer: 0,
       worldPosition: new Vector3(),
       mode: "respawning",
-      trail: new Trail(16, 0.015, 0x88aa88),
+      trail: king
+        ? new Trail(32, 0.038, 0xff6600)
+        : new Trail(16, 0.015, 0x88aa88),
     };
+  }
+
+  private spawnGremlinKing() {
+    if (this.gremlinKing) return;
+    this.gremlinKing = this.createGremlin(100, true);
+    this.group.add(this.gremlinKing.root);
+    this.scene.add(this.gremlinKing.trail.mesh);
+    this.respawnGremlin(this.gremlinKing, true);
+    this.onGremlinKingSpawn?.();
   }
 
   private respawnGremlin(gremlin: GremlinState, initial: boolean) {
@@ -553,7 +651,7 @@ export class SkyGremlins {
       (initial ? 0.5 : GREMLIN_FIRE_COOLDOWN_MIN) +
       gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
     gremlin.aimTimer = 0;
-    gremlin.health = 3;
+    gremlin.health = gremlin.isKing ? 10 : 3;
     gremlin.hitWobbleAmp = 0;
     gremlin.hitWobblePhase = 0;
     gremlin.mode = "alive";
@@ -562,7 +660,7 @@ export class SkyGremlins {
     gremlin.trail.mesh.visible = true;
     gremlin.rig.position.set(0, 0, 0);
     gremlin.rig.rotation.set(0, 0, 0);
-    gremlin.rig.scale.setScalar(0.7);
+    gremlin.rig.scale.setScalar(gremlin.baseRigScale);
     this.updateGremlinTransform(gremlin, 0);
   }
 
@@ -719,7 +817,9 @@ export class SkyGremlins {
             origin: this.muzzleScratch,
             direction: this.directionScratch,
             color: gremlin.paintColor,
-            speed: GREMLIN_SHOT_SPEED,
+            speed: GREMLIN_SHOT_SPEED * (gremlin.isKing ? 0.94 : 1),
+            ballRadius: gremlin.isKing ? 0.076 : undefined,
+            splatterScale: gremlin.isKing ? 2 : undefined,
           });
           gremlin.fireCooldown =
             GREMLIN_FIRE_COOLDOWN_MIN +
@@ -737,7 +837,9 @@ export class SkyGremlins {
     gremlin.downTimer = Math.max(0, gremlin.downTimer - dt);
     
     if (gremlin.downTimer < 0.2) {
-      gremlin.rig.scale.setScalar(0.7 * (gremlin.downTimer / 0.2));
+      gremlin.rig.scale.setScalar(
+        gremlin.baseRigScale * (gremlin.downTimer / 0.2),
+      );
     }
 
     const frame = tangentFrame(gremlin.qPosition);
@@ -762,6 +864,12 @@ export class SkyGremlins {
     gremlin.rightWingMidPivot.rotation.z *= 0.86;
 
     if (gremlin.downTimer <= 0) {
+      if (gremlin.isKing) {
+        gremlin.mode = "dormant";
+        gremlin.root.visible = false;
+        gremlin.trail.mesh.visible = false;
+        return;
+      }
       gremlin.mode = "respawning";
       gremlin.respawnTimer =
         GREMLIN_RESPAWN_MIN_SEC +
@@ -836,8 +944,17 @@ export class SkyGremlins {
         return;
       }
       info.consume();
-      this.paintballSystem.triggerLocalPlayerHit(this.currentPlayer.group, info.color);
-      this.currentPlayer.applyGremlinSlow();
+      this.paintballSystem.triggerLocalPlayerHit(
+        this.currentPlayer.group,
+        info.color,
+        undefined,
+        { splatterScale: info.splatterScale ?? 1 },
+      );
+      if (info.shooterId === GREMLIN_KING_SHOOTER_ID) {
+        this.currentPlayer.applyGremlinKingSlow();
+      } else {
+        this.currentPlayer.applyGremlinSlow();
+      }
       return;
     }
 
@@ -847,31 +964,52 @@ export class SkyGremlins {
       (!localId && info.shooterId === "local");
     if (!isLocalShot) return;
 
-    for (const gremlin of this.gremlins) {
-      if (gremlin.mode !== "alive") continue;
+    const hitR = (g: GremlinState) =>
+      GREMLIN_HIT_RADIUS * (g.isKing ? 2 : 1);
+
+    const targets: GremlinState[] = [];
+    for (const g of this.gremlins) {
+      if (g.mode === "alive") targets.push(g);
+    }
+    if (this.gremlinKing?.mode === "alive") targets.push(this.gremlinKing);
+
+    for (const gremlin of targets) {
       if (
         !this.segmentHitsSphere(
           info.previousPosition,
           info.currentPosition,
           gremlin.worldPosition,
-          GREMLIN_HIT_RADIUS,
+          hitR(gremlin),
         )
       ) {
         continue;
       }
       info.consume();
       this.paintballSystem.playImpactAtGroup(gremlin.root, info.color, false);
-      
+
       gremlin.health--;
       if (gremlin.health <= 0) {
         gremlin.mode = "falling";
         gremlin.downTimer = GREMLIN_FALL_SEC;
-        this.onShotDown(gremlin.worldPosition.clone());
+        if (gremlin.isKing) {
+          this.onKingDefeated?.(gremlin.worldPosition.clone());
+        } else {
+          this.onShotDown(gremlin.worldPosition.clone());
+          this.sessionGremlinKills++;
+          if (
+            this.sessionGremlinKills >= GREMLINS_KILLED_BEFORE_KING &&
+            !this.kingSpawned
+          ) {
+            this.kingSpawned = true;
+            this.spawnGremlinKing();
+          }
+        }
       } else {
         gremlin.hitWobbleAmp = 0.85;
         gremlin.hitWobblePhase = 0;
         this.onHit(gremlin.worldPosition.clone());
       }
+      break;
     }
   }
 
