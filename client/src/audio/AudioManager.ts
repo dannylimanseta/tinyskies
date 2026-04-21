@@ -238,7 +238,7 @@ export class AudioManager {
     if (!buffer) return;
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
-    const rate = Math.max(0.5, Math.min(2, playbackRate));
+    const rate = Math.max(0.35, Math.min(2, playbackRate));
     source.playbackRate.value = rate;
     const gain = this.ctx.createGain();
     source.connect(gain);

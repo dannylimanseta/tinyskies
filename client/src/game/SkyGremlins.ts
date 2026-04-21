@@ -54,6 +54,8 @@ const GREMLIN_STANDOFF_MAX = 1.45;
 const GREMLIN_ORBIT_WEIGHT = 0.92;
 const GREMLIN_RETREAT_WEIGHT = 1.25;
 const GREMLIN_FIRE_RANGE = 1.6;
+/** Gremlin King can engage the player from farther away. */
+const GREMLIN_KING_FIRE_RANGE = 2.55;
 const GREMLIN_FIRE_DOT = 0.32;
 const GREMLIN_FIRE_COOLDOWN_MIN = 1.35;
 const GREMLIN_FIRE_COOLDOWN_MAX = 2.15;
@@ -216,6 +218,8 @@ export class SkyGremlins {
     private readonly onShotDown: (worldPosition: Vector3) => void,
     private readonly onGremlinKingSpawn?: () => void,
     private readonly onKingDefeated?: (worldPosition: Vector3) => void,
+    /** Called on every local paintball hit that damages a gremlin (including killing shot). */
+    private readonly onGremlinPaintballHit?: (isKing: boolean) => void,
   ) {
     this.group.visible = false;
     this.scene.add(this.group);
@@ -808,8 +812,9 @@ export class SkyGremlins {
       .copy(this.currentPlayerWorldPos)
       .sub(gremlin.worldPosition);
     const fireDistance = this.directionScratch.length();
+    const fireRange = gremlin.isKing ? GREMLIN_KING_FIRE_RANGE : GREMLIN_FIRE_RANGE;
     if (
-      fireDistance <= GREMLIN_FIRE_RANGE &&
+      fireDistance <= fireRange &&
       fireDistance > 1e-4 &&
       gremlin.fireCooldown <= 0
     ) {
@@ -1011,6 +1016,7 @@ export class SkyGremlins {
       this.paintballSystem.playImpactAtGroup(gremlin.root, info.color, false);
 
       gremlin.health--;
+      this.onGremlinPaintballHit?.(gremlin.isKing === true);
       if (gremlin.health <= 0) {
         gremlin.mode = "falling";
         gremlin.downTimer = GREMLIN_FALL_SEC;

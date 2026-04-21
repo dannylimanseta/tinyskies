@@ -163,13 +163,14 @@ void main() {
   colWarm     += vec3(0.38, 0.14, 0.02) * flicker * core;
   colWarm     += vec3(0.12, 0.05, 0.0) * sin(uTime * 31.0 + cy * 40.0) * core;
 
-  vec3 blueDeep = vec3(0.04, 0.18, 0.92);
-  vec3 blueMid  = vec3(0.12, 0.52, 1.0);
-  vec3 cyanTip  = vec3(0.72, 0.96, 1.0);
-  vec3 colEternal = mix(blueMid, blueDeep, smoothstep(0.35, 1.0, cy));
-  colEternal      = mix(colEternal, cyanTip, core * (1.0 - cy * 0.78));
-  colEternal     += vec3(0.15, 0.42, 0.62) * flicker * core;
-  colEternal     += vec3(0.08, 0.22, 0.45) * sin(uTime * 31.0 + cy * 40.0) * core;
+  /* Cyan-forward eternal flame (less pure blue). */
+  vec3 cyanDeep = vec3(0.0, 0.38, 0.86);
+  vec3 cyanMid  = vec3(0.18, 0.82, 0.96);
+  vec3 cyanTip  = vec3(0.82, 0.98, 1.0);
+  vec3 colEternal = mix(cyanMid, cyanDeep, smoothstep(0.32, 1.0, cy));
+  colEternal      = mix(colEternal, cyanTip, core * (1.0 - cy * 0.75));
+  colEternal     += vec3(0.1, 0.55, 0.72) * flicker * core;
+  colEternal     += vec3(0.05, 0.4, 0.52) * sin(uTime * 31.0 + cy * 40.0) * core;
 
   vec3 col = mix(colWarm, colEternal, uEternal);
 
@@ -195,7 +196,7 @@ void main() {
   float glow = 1.0 - smoothstep(0.0, 1.0, d);
   float pulse = 0.72 + 0.28 * sin(uTime * 3.1) + 0.08 * sin(uTime * 11.0);
   vec3 colWarm = vec3(1.0, 0.14, 0.12);
-  vec3 colEternal = vec3(0.32, 0.58, 1.0);
+  vec3 colEternal = vec3(0.25, 0.88, 0.98);
   vec3 col = mix(colWarm, colEternal, uEternal);
   float glowBase = smoothstep(0.0, 0.34, vUv.y + 0.045 * sin(vUv.x * 15.0 + uTime * 4.2));
   float alpha = glow * glow * pulse * uBurn * 0.52 * glowBase;
@@ -955,7 +956,7 @@ export class Braziers {
       s.glowMat.uniforms.uEternal.value   = eternalOn;
 
       if (eternalOn > 0.5) {
-        s.light.color.setHex(0x77b0ff);
+        s.light.color.setHex(0x55eeff);
       } else {
         s.light.color.setHex(0xff3a32);
       }

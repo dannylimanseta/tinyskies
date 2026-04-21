@@ -214,6 +214,22 @@ const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
 const LEVELUP_SFX_VOLUME = 0.42;
 
 const GONG_SFX_VOLUME = 0.55;
+/** Gremlin King eternal-flame reward sting. */
+const CHOIR_1_SFX_VOLUME = 0.58;
+const KING_ETERNAL_FLAME_REWARD_DELAY_MS = 1000;
+
+const GREMLIN_HIT_SFX_IDS = [
+  "gremlin_1",
+  "gremlin_2",
+  "gremlin_3",
+  "gremlin_4",
+] as const;
+const GREMLIN_HIT_SFX_VOLUME = 0.5;
+/** Keeps chatter from firing on every paintball hit. */
+const GREMLIN_HIT_SFX_CHANCE = 0.24;
+const GREMLIN_HIT_SFX_MIN_MS = 400;
+/** Deeper than normal gremlin hits (`AudioManager.playSFX` allows down to 0.35). */
+const GREMLIN_KING_HIT_PLAYBACK_RATE = 0.4;
 /** Max gain for rewind SFX loop; multiplied by scene alpha during moon rewind. */
 const REWIND_LOOP_VOLUME = 0.38;
 
@@ -266,6 +282,8 @@ export class Game {
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
   private skyGremlins: SkyGremlins | null = null;
+  private lastGremlinHitSfxAt = 0;
+  private kingEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -458,6 +476,10 @@ export class Game {
       this.audioManager.loadSFX("fish_catch_1", "/audio/sfx/fish_catch_1.mp3");
       this.audioManager.loadSFX(OCEAN_WAVES_LOOP_NAME, "/audio/sfx/ocean_waves_1.mp3");
       this.audioManager.loadSFX(MOONSTONE_RUMBLE_LOOP_NAME, "/audio/sfx/rumble.mp3");
+      this.audioManager.loadSFX("choir_1", "/audio/sfx/choir_1.mp3");
+      for (const id of GREMLIN_HIT_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
     });
     this.playerName = ProgressionManager.loadPlayerName() ?? generateWhimsicalName();
     ProgressionManager.savePlayerName(this.playerName);
@@ -508,6 +530,17 @@ export class Game {
       },
     });
     this.lobby.show();
+  }
+
+  private maybePlayGremlinHitSfx(isKing: boolean) {
+    const now = performance.now();
+    if (now - this.lastGremlinHitSfxAt < GREMLIN_HIT_SFX_MIN_MS) return;
+    if (Math.random() > GREMLIN_HIT_SFX_CHANCE) return;
+    this.lastGremlinHitSfxAt = now;
+    const pick =
+      GREMLIN_HIT_SFX_IDS[(Math.random() * GREMLIN_HIT_SFX_IDS.length) | 0]!;
+    const rate = isKing ? GREMLIN_KING_HIT_PLAYBACK_RATE : 1;
+    this.audioManager.playSFX(pick, GREMLIN_HIT_SFX_VOLUME, rate);
   }
 
   /* ── Loading overlay ─────────────────────────────────────────────── */
@@ -1025,7 +1058,18 @@ export class Game {
           this.savePlayerWorldState({
             eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
           });
-          this.eternalFlameUI?.playKingLootSequence();
+          if (this.kingEternalFlameRewardTimeout != null) {
+            clearTimeout(this.kingEternalFlameRewardTimeout);
+            this.kingEternalFlameRewardTimeout = null;
+          }
+          this.kingEternalFlameRewardTimeout = setTimeout(() => {
+            this.kingEternalFlameRewardTimeout = null;
+            this.audioManager.playSFX("choir_1", CHOIR_1_SFX_VOLUME);
+            this.eternalFlameUI?.playKingLootSequence();
+          }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
+        },
+        (isKing) => {
+          this.maybePlayGremlinHitSfx(isKing);
         },
       );
     } else {
@@ -1234,6 +1278,11 @@ export class Game {
     this.paintballSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
+    this.lastGremlinHitSfxAt = 0;
+    if (this.kingEternalFlameRewardTimeout != null) {
+      clearTimeout(this.kingEternalFlameRewardTimeout);
+      this.kingEternalFlameRewardTimeout = null;
+    }
     this.meteorShower?.dispose();
     this.meteorShower = null;
     this.skyJellyfish?.dispose();
@@ -4130,6 +4179,11 @@ export class Game {
     this.paintballSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
+    this.lastGremlinHitSfxAt = 0;
+    if (this.kingEternalFlameRewardTimeout != null) {
+      clearTimeout(this.kingEternalFlameRewardTimeout);
+      this.kingEternalFlameRewardTimeout = null;
+    }
     this.meteorShower?.dispose();
     this.meteorShower = null;
     this.skyJellyfish?.dispose();
