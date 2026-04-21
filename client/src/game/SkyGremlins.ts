@@ -160,6 +160,11 @@ export class SkyGremlins {
     emissive: 0x664400,
     flatShading: true,
   });
+  private readonly crownGemMaterial = new MeshPhongMaterial({
+    color: 0xff1122,
+    emissive: 0x660000,
+    flatShading: true,
+  });
 
   private readonly bodyGeo = new SphereGeometry(0.06, 8, 8);
   private readonly headGeo = new SphereGeometry(0.045, 8, 8);
@@ -173,6 +178,7 @@ export class SkyGremlins {
   private readonly tailGeo = new ConeGeometry(0.012, 0.08, 4);
   private readonly backpackGeo = new BoxGeometry(0.06, 0.06, 0.04);
   private readonly goggleGeo = new CylinderGeometry(0.012, 0.012, 0.006, 8);
+  private readonly crownGemGeo = new SphereGeometry(0.006, 4, 4);
 
   private readonly innerLeftWingGeo: BufferGeometry;
   private readonly outerLeftWingGeo: BufferGeometry;
@@ -223,6 +229,7 @@ export class SkyGremlins {
     addRimLight(this.kingBellyMaterial, 0xffcc88, 0.48, 2.8);
     addRimLight(this.kingWingMaterial, 0xff8844, 0.42, 3.0);
     addRimLight(this.crownMaterial, 0xffee88, 0.55, 2.6);
+    addRimLight(this.crownGemMaterial, 0xff8888, 0.5, 2.5);
 
     const ilVerts = new Float32Array([
       0, 0, 0.02,
@@ -398,6 +405,8 @@ export class SkyGremlins {
     this.kingBellyMaterial.dispose();
     this.kingWingMaterial.dispose();
     this.crownMaterial.dispose();
+    this.crownGemMaterial.dispose();
+    this.crownGemGeo.dispose();
   }
 
   private createGremlin(index: number, king = false): GremlinState {
@@ -539,16 +548,30 @@ export class SkyGremlins {
 
     if (king) {
       const crown = new Group();
-      crown.position.set(0, 0.11, 0.02);
-      const band = new Mesh(new CylinderGeometry(0.055, 0.058, 0.02, 8), this.crownMaterial);
-      band.rotation.x = 0.08;
+      crown.position.set(0, 0.095, 0.05);
+      crown.rotation.x = -0.1;
+
+      const band = new Mesh(new CylinderGeometry(0.045, 0.045, 0.02, 8), this.crownMaterial);
+      band.castShadow = true;
       crown.add(band);
-      for (let s = 0; s < 5; s++) {
-        const spike = new Mesh(new ConeGeometry(0.014, 0.05, 4), this.crownMaterial);
-        const a = (s / 5) * Math.PI * 2;
-        spike.position.set(Math.sin(a) * 0.04, 0.03, Math.cos(a) * 0.04);
-        spike.rotation.x = Math.PI / 2 + 0.15;
-        crown.add(spike);
+
+      const numSpikes = 6;
+      for (let s = 0; s < numSpikes; s++) {
+        const spikeGroup = new Group();
+        const a = (s / numSpikes) * Math.PI * 2;
+        spikeGroup.position.set(Math.sin(a) * 0.042, 0.02, Math.cos(a) * 0.042);
+        spikeGroup.rotation.set(0.2, a, 0, "YXZ");
+
+        const spike = new Mesh(new ConeGeometry(0.015, 0.04, 4), this.crownMaterial);
+        spike.castShadow = true;
+        spikeGroup.add(spike);
+
+        const gem = new Mesh(this.crownGemGeo, this.crownGemMaterial);
+        gem.position.set(0, 0.02, 0);
+        gem.castShadow = true;
+        spikeGroup.add(gem);
+
+        crown.add(spikeGroup);
       }
       rig.add(crown);
     }
