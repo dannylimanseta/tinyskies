@@ -20,6 +20,22 @@ const VEHICLE_SVGS: Record<Vehicle, string> = {
   carpet: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 14c-3-3-6-3-9 0s-6 3-9 0l-1 2c3 3 6 3 9 0s6-3 9 0l1-2z"/><path d="M3 16v3"/><path d="M21 16v3"/><path d="M4 14v2"/><path d="M22 14v2"/><path d="M12 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M18 8l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/><path d="M7 9l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/></svg>`,
 };
 
+const LOBBY_DISPLAY_TITLE = "Tiny Skies";
+
+/** Per-letter spans for staggered entrance; `aria-label` on h1 carries the accessible name. */
+function lobbyTitleLettersHtml(): string {
+  let letterIndex = 0;
+  return [...LOBBY_DISPLAY_TITLE]
+    .map((ch) => {
+      if (ch === " ") {
+        return '<span class="lobby-title__space" aria-hidden="true"> </span>';
+      }
+      const i = letterIndex++;
+      return `<span class="lobby-title__char" style="--title-char-i:${i}" aria-hidden="true">${ch}</span>`;
+    })
+    .join("");
+}
+
 /* ── Whimsical Name Generator ──────────────────────────────────────── */
 
 const ADJECTIVES = [
@@ -123,7 +139,7 @@ export class Lobby {
         <div class="lobby-header">
           <div class="lobby-title-block">
             <p class="lobby-tagline">A Cosy Exploration Game</p>
-            <h1 class="lobby-title">Tiny Skies</h1>
+            <h1 class="lobby-title" aria-label="${LOBBY_DISPLAY_TITLE}">${lobbyTitleLettersHtml()}</h1>
           </div>
           <div class="lobby-username">
             <div class="lobby-greeting-row">
@@ -378,6 +394,48 @@ export class Lobby {
         line-height: 1;
         color: white;
         text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 100%;
+      }
+      .lobby-title__char {
+        display: inline-block;
+        opacity: 0;
+        transform: translate3d(0, 0.52em, 0);
+        will-change: transform, opacity;
+      }
+      .lobby-header.visible .lobby-title__char {
+        animation: lobby-title-char-in 0.68s cubic-bezier(0.28, 1.25, 0.55, 1) forwards;
+        animation-delay: calc(0.38s + var(--title-char-i) * 0.058s);
+      }
+      @keyframes lobby-title-char-in {
+        0% {
+          opacity: 0;
+          transform: translate3d(0, 0.52em, 0);
+        }
+        58% {
+          opacity: 1;
+          transform: translate3d(0, -0.06em, 0);
+        }
+        78% {
+          transform: translate3d(0, 0.03em, 0);
+        }
+        100% {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+      }
+      .lobby-title__space {
+        display: inline-block;
+        white-space: pre;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lobby-title__char {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
       }
       .lobby-username {
         margin: 8px 0 0;
