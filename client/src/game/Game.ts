@@ -180,6 +180,13 @@ const DIAMOND_SFX_IDS = [
   "diamond_collect_3",
 ] as const;
 
+const JELLYFISH_COLLECT_SFX_IDS = [
+  "jellyfish_1",
+  "jellyfish_2",
+  "jellyfish_3",
+] as const;
+const JELLYFISH_COLLECT_SFX_VOLUME = 0.35;
+
 const LANTERN_COLLECT_SFX_IDS = [
   "lantern_collect_1",
   "lantern_collect_2",
@@ -446,6 +453,9 @@ export class Game {
       for (const id of DIAMOND_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      for (const id of JELLYFISH_COLLECT_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
       for (const id of LANTERN_COLLECT_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
@@ -521,6 +531,9 @@ export class Game {
         });
         void this.audioManager.loadSFX(EXPLOSION_SFX_NAME, "/audio/sfx/explosion_1.mp3");
         for (const id of LANTERN_COLLECT_SFX_IDS) {
+          void this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+        }
+        for (const id of JELLYFISH_COLLECT_SFX_IDS) {
           void this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
         }
         this.lobby.fadeOut(() => {
@@ -939,7 +952,15 @@ export class Game {
       this.skyJellyfish.onCapture = (_colorIndex) => {
         this.awardXP("jellyfish", JELLY_CAPTURE_XP);
         this.audioManager.resumeContextIfNeeded();
-        this.audioManager.playSFX("portal_1", 0.35, 1.3);
+        const jellyPick =
+          JELLYFISH_COLLECT_SFX_IDS[
+            Math.floor(Math.random() * JELLYFISH_COLLECT_SFX_IDS.length)
+          ]!;
+        if (this.audioManager.hasSFX(jellyPick)) {
+          this.audioManager.playSFX(jellyPick, JELLYFISH_COLLECT_SFX_VOLUME);
+        } else {
+          this.audioManager.playSFX("portal_1", 0.35, 1.3);
+        }
         this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.2);
         this.cameraRig.shake(0.02, 0.15);
       };

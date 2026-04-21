@@ -3,11 +3,13 @@ import {
   Color,
   DoubleSide,
   Group,
+  Matrix4,
   Mesh,
   NormalBlending,
   PlaneGeometry,
   ShaderMaterial,
   SphereGeometry,
+  Vector3,
 } from "three";
 
 /**
@@ -24,9 +26,13 @@ import {
 const TENDRIL_COUNT = 6;
 const TENDRIL_LENGTH = 1.25;
 const TENDRIL_WIDTH = 0.055;
+/** More length segments = smoother bends when flow + waves stack. */
+const TENDRIL_LENGTH_SEGMENTS = 52;
 const BELL_RADIUS = 0.18;
 
 const _tmpColor = new Color();
+const _flowMeshScratch = new Vector3();
+const _flowInvWorld = new Matrix4();
 
 const noiseGLSL = `
 float hash3(vec3 p) {
@@ -138,6 +144,7 @@ void main() {
 const tendrilVert = `
 uniform float uTime;
 uniform float uPhase;
+uniform vec3 uFlowVelocity;
 varying vec2 vUv;
 varying float vTipFade;
 varying float vContraction;
@@ -149,6 +156,7 @@ void main() {
   float tipWeight = 1.0 - uv.y;
   float ampShape  = smoothstep(0.0, 1.0, tipWeight);
   float ampShape2 = ampShape * ampShape;
+  float ampShape3 = ampShape2 * ampShape;
 
   float contraction = jellyPulse(uTime, uPhase);
   float relaxed = 1.0 - contraction;
@@ -156,34 +164,50 @@ void main() {
 
   vec3 displaced = position;
 
+  float flowSpd = length(uFlowVelocity);
+  // Undulation gets livelier when the jelly moves; still some motion when nearly idle.
+  float flowBoost = 1.0 + smoothstep(0.0, 1.4, flowSpd) * 1.1;
+  // Keep soft waves through contraction so tips never look frozen.
+  float flapMult = mix(0.42, 1.0, relaxed * relaxed);
+
   // --- Power stroke: tips sweep upward toward bell (fold inward) ---
-  // During contraction the tentacles bunch together and point forward/up.
-  displaced.y += contraction * 0.55 * ampShape2;  // tip lifts toward bell
-  // Also pull tips slightly inward (reduce radius from bell axis)
+  displaced.y += contraction * 0.55 * ampShape2;
   displaced.x *= 1.0 - contraction * 0.6 * ampShape2;
   displaced.z *= 1.0 - contraction * 0.6 * ampShape2;
 
-  // --- Relaxation: tips trail and flow freely ---
-  // Lateral flapping waves only active during relaxed phase.
-  float flapMult = relaxed * relaxed;  // zero at peak contraction, full at rest
-  float w1 = sin(uTime * 2.5 + tipWeight * 8.0  + uPhase)       * 0.28 * flapMult;
-  float w2 = sin(uTime * 3.8 + tipWeight * 5.0  + uPhase * 1.7) * 0.18 * flapMult;
-  float w3 = sin(uTime * 1.9 + tipWeight * 12.0 + uPhase * 0.6) * 0.09 * flapMult;
+  // --- Procedural waves (travelling phase tied to motion reads as inertia) ---
+  float travel = tipWeight * flowSpd * 2.4;
+  float w1 = sin(uTime * 2.5 + tipWeight * 8.0  - travel + uPhase)       * 0.32 * flapMult * flowBoost;
+  float w2 = sin(uTime * 3.8 + tipWeight * 5.0  - travel * 0.7 + uPhase * 1.7) * 0.22 * flapMult * flowBoost;
+  float w3 = sin(uTime * 1.9 + tipWeight * 12.0 + uPhase * 0.6) * 0.11 * flapMult * flowBoost;
   displaced.x += (w1 + w2 + w3) * ampShape2;
 
-  float z1 = sin(uTime * 2.2 + tipWeight * 7.0  + uPhase * 2.1) * 0.22 * flapMult;
-  float z2 = sin(uTime * 3.1 + tipWeight * 10.0 + uPhase * 0.8) * 0.12 * flapMult;
-  float zNoise = (noise3(vec3(tipWeight * 4.0, uTime * 0.8, uPhase)) - 0.5) * 0.22 * flapMult;
+  float z1 = sin(uTime * 2.2 + tipWeight * 7.0  - travel * 0.85 + uPhase * 2.1) * 0.28 * flapMult * flowBoost;
+  float z2 = sin(uTime * 3.1 + tipWeight * 10.0 - travel + uPhase * 0.8) * 0.16 * flapMult * flowBoost;
+  float zNoise = (noise3(vec3(tipWeight * 4.0, uTime * 0.8, uPhase)) - 0.5) * 0.26 * flapMult * flowBoost;
   displaced.z += (z1 + z2 + zNoise) * ampShape2;
 
-  // Resting curl: each tendril has a unique gentle arc even at rest.
+  // Secondary slow meander (different frequency) so motion never reads as one stiff sine.
+  float meander = sin(uTime * 0.95 + tipWeight * 14.0 + uPhase * 1.2 + flowSpd * 0.5);
+  displaced.x += meander * 0.08 * ampShape3 * flowBoost;
+  displaced.z += cos(uTime * 1.1 + tipWeight * 11.0 + uPhase) * 0.07 * ampShape3 * flowBoost;
+
+  // Resting curl
   float curl = ampShape2 * ampShape * 0.22;
   displaced.x += sin(uPhase * 2.3) * curl * relaxed;
   displaced.z += cos(uPhase * 1.9) * curl * relaxed;
 
-  // Elongation: tips droop during relaxation, retract during contraction.
+  // Elongation / droop
   displaced.y -= ampShape2 * 0.18 * relaxed;
-  displaced.y -= sin(uTime * 3.5 + uPhase) * 0.07 * ampShape * relaxed;
+  displaced.y -= sin(uTime * 3.5 + uPhase) * 0.08 * ampShape * relaxed;
+
+  // --- Motion drag: mesh-local velocity; tips bend opposite travel (ribbon is XY, bend uses z + x) ---
+  vec3 drag = -uFlowVelocity;
+  float tipLag = ampShape2 * (1.0 + ampShape * 0.9);
+  float dragScale = 0.58 + 0.25 * smoothstep(0.0, 2.0, flowSpd);
+  displaced.x += drag.x * tipLag * dragScale;
+  displaced.y += drag.y * tipLag * 0.28 * dragScale;
+  displaced.z += drag.z * tipLag * 0.78 * dragScale;
 
   vTipFade = tipWeight;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
@@ -228,6 +252,8 @@ export interface JellyfishVisual {
   /** Call each frame with the current time seconds. */
   setTime(t: number): void;
   setOpacity(o: number): void;
+  /** World-space velocity (units/s); tendrils bend per-mesh in local space. */
+  updateTendrilFlow(worldVelocity: Vector3): void;
   dispose(): void;
 }
 
@@ -245,7 +271,12 @@ export function createJellyfishGeoms(): JellyfishGeomCache {
 
   // PlaneGeometry segmented lengthwise so vertex shader has room for waves.
   // Default plane is on XY plane with +Y up — perfect, base at top, tip at bottom.
-  const tendrilGeo = new PlaneGeometry(TENDRIL_WIDTH, TENDRIL_LENGTH, 1, 32);
+  const tendrilGeo = new PlaneGeometry(
+    TENDRIL_WIDTH,
+    TENDRIL_LENGTH,
+    1,
+    TENDRIL_LENGTH_SEGMENTS,
+  );
   // Shift so base (top of plane) is at origin, tip hangs down into -Y.
   tendrilGeo.translate(0, -TENDRIL_LENGTH / 2, 0);
   return { bellGeo, tendrilGeo };
@@ -302,6 +333,7 @@ export function createJellyfish(
         uPhase: { value: phase + i * 0.73 },
         uColor,
         uOpacity,
+        uFlowVelocity: { value: new Vector3() },
       },
       transparent: true,
       depthWrite: false,
@@ -331,6 +363,18 @@ export function createJellyfish(
     },
     setOpacity(o: number) {
       uOpacity.value = o;
+    },
+    updateTendrilFlow(worldVelocity: Vector3) {
+      group.updateMatrixWorld(true);
+      for (let ti = 0; ti < tendrils.length; ti++) {
+        const mesh = tendrils[ti]!;
+        _flowMeshScratch.copy(worldVelocity);
+        _flowInvWorld.copy(mesh.matrixWorld).invert();
+        _flowMeshScratch.transformDirection(_flowInvWorld);
+        (tendrilMats[ti]!.uniforms.uFlowVelocity!.value as Vector3).copy(
+          _flowMeshScratch,
+        );
+      }
     },
     dispose() {
       bellMat.dispose();

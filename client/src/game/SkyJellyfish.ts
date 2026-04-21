@@ -48,8 +48,12 @@ const JELLY_DRIFT_RADIUS = 0.15;
 /** Mesh scale — jellies are small compared to the ~5 unit globe radius. */
 const JELLY_SCALE_WORLD = 0.15;
 const JELLY_SCALE_FOLLOW = 0.075;
-/** Follow damping rate (higher = tighter). */
-const JELLY_FOLLOW_DAMPING = 1.5;
+/** World-space lag toward orbit slot (lower = more lag through turns). */
+const JELLY_FOLLOW_POS_RATE = 3.4;
+/** Rotation lag toward blended target (lower = less coupled to carpet). */
+const JELLY_FOLLOW_ORIENT_RATE = 1.25;
+/** Mix globe-radial “up” against carpet-aligned frame (0 = rigid carpet). */
+const JELLY_FOLLOW_GLOBE_UP_BLEND = 0.28;
 /** Snap time for "entering orbit" after capture completes. */
 const JELLY_CAPTURE_HANDOFF_SEC = 1.2;
 /** Reset fade duration (moon impact). */
@@ -110,6 +114,10 @@ interface Jelly {
   handoffEnd: Vector3;
   /** Bob phase for orbit slot. */
   bobPhase: number;
+  /** Previous scene position for velocity (tendril flow). */
+  prevScenePos: Vector3;
+  /** Smoothed world velocity for tendril shader (reduces jitter). */
+  smoothedFlowVel: Vector3;
 }
 
 const _tmpV = new Vector3();
@@ -163,8 +171,11 @@ export class SkyJellyfish {
         handoffStart: new Vector3(),
         handoffEnd: new Vector3(),
         bobPhase: i * 0.87,
+        prevScenePos: new Vector3(),
+        smoothedFlowVel: new Vector3(),
       };
       this.positionInWorld(jelly, 0);
+      jelly.prevScenePos.copy(jelly.visual.group.position);
       this.jellies.push(jelly);
     }
   }
@@ -191,6 +202,8 @@ export class SkyJellyfish {
       this.computeOrbitTarget(j, carpetMatrix, _tmpTarget);
       j.followPos.copy(_tmpTarget);
       j.visual.group.position.copy(_tmpTarget);
+      j.prevScenePos.copy(_tmpTarget);
+      j.smoothedFlowVel.set(0, 0, 0);
       this.orientFollower(j, carpetMatrix, 1000); // large dt to snap instantly
     }
   }
@@ -313,7 +326,8 @@ export class SkyJellyfish {
             _tmpV.addScaledVector(_pathDir, swim);
           }
 
-          j.followPos.copy(_tmpV);
+          const posAlpha = 1 - Math.exp(-JELLY_FOLLOW_POS_RATE * dt);
+          j.followPos.lerp(_tmpV, posAlpha);
           j.visual.group.position.copy(j.followPos);
           j.visual.group.scale.setScalar(MathUtils.lerp(JELLY_SCALE_WORLD, JELLY_SCALE_FOLLOW, smooth));
           this.orientFollower(j, carpetMatrix, dt);
@@ -325,9 +339,8 @@ export class SkyJellyfish {
 
         case "following": {
           this.computeOrbitTarget(j, carpetMatrix, _tmpTarget);
-          // Directly copy the target position so it never falls behind during speed boosts.
-          // The target position itself already includes smooth bobbing and swaying.
-          j.followPos.copy(_tmpTarget);
+          const posAlpha = 1 - Math.exp(-JELLY_FOLLOW_POS_RATE * dt);
+          j.followPos.lerp(_tmpTarget, posAlpha);
           j.visual.group.position.copy(j.followPos);
           j.visual.group.scale.setScalar(JELLY_SCALE_FOLLOW);
           this.orientFollower(j, carpetMatrix, dt);
@@ -343,6 +356,16 @@ export class SkyJellyfish {
           break;
         }
       }
+
+      // Tendril motion: bend opposite smoothed travel (world velocity → mesh-local per ribbon).
+      _tmpV.copy(j.visual.group.position).sub(j.prevScenePos).multiplyScalar(1 / Math.max(dt, 1e-4));
+      j.prevScenePos.copy(j.visual.group.position);
+      j.smoothedFlowVel.lerp(_tmpV, 1 - Math.exp(-12 * dt));
+      const maxFlow = 5.0;
+      if (j.smoothedFlowVel.lengthSq() > maxFlow * maxFlow) {
+        j.smoothedFlowVel.multiplyScalar(maxFlow / j.smoothedFlowVel.length());
+      }
+      j.visual.updateTendrilFlow(j.smoothedFlowVel);
     }
   }
 
@@ -429,41 +452,43 @@ export class SkyJellyfish {
   }
 
   private orientFollower(j: Jelly, carpetMatrix: Matrix4, dt: number) {
-    // Build a full right-handed rotation matrix locked to the carpet's orientation
-    // so the jelly perfectly banks and turns with the carpet.
-    // We want the jelly's local +Y (bell top) to point Forward (-Z of carpet).
-    // We want the jelly's local +Z (front) to point Up (+Y of carpet).
-    // Thus local +X MUST be cross(Y, Z) = cross(Forward, Up) to be right-handed.
-    _forwardScratch.setFromMatrixColumn(carpetMatrix, 2).normalize().negate(); // Carpet Forward
-    _upScratch.setFromMatrixColumn(carpetMatrix, 1).normalize();               // Carpet Up
-    _rightScratch.crossVectors(_forwardScratch, _upScratch).normalize();       // Right-handed X
+    // Carpet-aligned base (same basis as before).
+    _forwardScratch.setFromMatrixColumn(carpetMatrix, 2).normalize().negate();
+    _upScratch.setFromMatrixColumn(carpetMatrix, 1).normalize();
+    _rightScratch.crossVectors(_forwardScratch, _upScratch).normalize();
 
     _mat4.makeBasis(_rightScratch, _forwardScratch, _upScratch);
-    const q = _followQ.setFromRotationMatrix(_mat4);
+    _followQ.setFromRotationMatrix(_mat4);
 
-    // Tilt/roll around the forward axis so the jelly rocks side to side like
-    // it's steering. Uses the same forward vector as the rotation axis.
     const tilt = Math.sin(this.time * 2.5 + j.bobPhase) * 0.25;
-    // A smaller pitch nod around the right axis so it also bobs head-down/up.
     const nod = Math.sin(this.time * 1.8 + j.bobPhase * 1.3) * 0.15;
 
     _tiltQ.setFromAxisAngle(_forwardScratch, tilt);
-    q.premultiply(_tiltQ);
+    _followQ.premultiply(_tiltQ);
     _tiltQ.setFromAxisAngle(_rightScratch, nod);
-    q.premultiply(_tiltQ);
+    _followQ.premultiply(_tiltQ);
 
-    // Independent per-jelly drift tilt — slow, unique oscillation on two axes
-    // so each jelly looks like it has its own personality / is not rigidly parented.
     const driftRoll = Math.sin(this.time * 0.42 + j.bobPhase * 2.71) * 0.22;
     const driftPitch = Math.sin(this.time * 0.31 + j.bobPhase * 1.57) * 0.16;
     _tiltQ.setFromAxisAngle(_forwardScratch, driftRoll);
-    q.multiply(_tiltQ);
+    _followQ.multiply(_tiltQ);
     _tiltQ.setFromAxisAngle(_rightScratch, driftPitch);
-    q.multiply(_tiltQ);
+    _followQ.multiply(_tiltQ);
 
-    // Smoothly slerp to the target orientation. A higher rate (5.0) makes it
-    // track turns much better while still keeping a tiny bit of organic lag.
-    j.visual.group.quaternion.slerp(q, 1 - Math.exp(-5.0 * dt));
+    // Partly toward globe-radial up so the jellyfish does not bank exactly with the carpet.
+    _tmpV2.copy(j.visual.group.position);
+    if (_tmpV2.lengthSq() < 1e-10) {
+      _qBlend.copy(_followQ);
+    } else {
+      _tmpV2.normalize();
+      _qGlobe.setFromUnitVectors(JELLY_LOCAL_UP, _tmpV2);
+      const spin = Math.sin(this.time * 0.28 + j.bobPhase * 1.9) * Math.PI * 0.35;
+      _tiltQ.setFromAxisAngle(_tmpV2, spin);
+      _qGlobe.multiply(_tiltQ);
+      _qBlend.copy(_followQ).slerp(_qGlobe, JELLY_FOLLOW_GLOBE_UP_BLEND);
+    }
+
+    j.visual.group.quaternion.slerp(_qBlend, 1 - Math.exp(-JELLY_FOLLOW_ORIENT_RATE * dt));
   }
 }
 
@@ -475,6 +500,8 @@ const _bezierCtrl      = new Vector3();
 const _bezierDir       = new Vector3();
 const _pathDir         = new Vector3();
 const _followQ  = new Quaternion();
+const _qGlobe   = new Quaternion();
+const _qBlend   = new Quaternion();
 const _tiltQ    = new Quaternion();
 const _mat4     = new Matrix4();
 const JELLY_LOCAL_UP = new Vector3(0, 1, 0);
