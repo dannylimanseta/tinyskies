@@ -1,5 +1,6 @@
 import type { Vehicle } from "@globefly/shared";
 import { ProgressionManager } from "../game/ProgressionManager";
+import { VehicleUnlockPreview } from "./VehicleUnlockPreview";
 
 const VEHICLE_ORDER: Vehicle[] = ["plane", "carpet", "boat"];
 
@@ -60,6 +61,7 @@ export class Lobby {
   private options: LobbyOptions;
   private selectedVehicle: Vehicle = "plane";
   private unlockQueue: ("carpet" | "boat")[] = [];
+  private unlockPreview: VehicleUnlockPreview | null = null;
 
   constructor(container: HTMLElement, options: LobbyOptions) {
     this.container = container;
@@ -142,6 +144,7 @@ export class Lobby {
         <div class="lobby-unlock-modal" id="lobby-unlock-modal" aria-hidden="true">
           <div class="lobby-unlock-backdrop"></div>
           <div class="lobby-unlock-panel" role="dialog" aria-modal="true" aria-labelledby="lobby-unlock-title">
+            <div class="lobby-unlock-preview-canvas" id="lobby-unlock-preview" aria-hidden="true"></div>
             <h2 class="lobby-unlock-title" id="lobby-unlock-title"></h2>
             <p class="lobby-unlock-body"></p>
             <button type="button" class="lobby-unlock-ok" id="btn-unlock-ok">Got it</button>
@@ -202,6 +205,7 @@ export class Lobby {
     const unlockModal = this.el.querySelector("#lobby-unlock-modal") as HTMLElement;
     const unlockTitle = unlockModal.querySelector(".lobby-unlock-title") as HTMLElement;
     const unlockBody = unlockModal.querySelector(".lobby-unlock-body") as HTMLElement;
+    const unlockPreviewHost = this.el.querySelector("#lobby-unlock-preview") as HTMLElement;
     const unlockOk = this.el.querySelector("#btn-unlock-ok") as HTMLButtonElement;
 
     const setSelectedVehicle = (v: Vehicle) => {
@@ -231,12 +235,17 @@ export class Lobby {
 
     const showNextUnlockModal = () => {
       if (this.unlockQueue.length === 0) {
+        this.unlockPreview?.hide();
         unlockModal.classList.remove("open");
         unlockModal.setAttribute("aria-hidden", "true");
         flyBtn.disabled = false;
         return;
       }
       const kind = this.unlockQueue[0]!;
+      if (!this.unlockPreview) {
+        this.unlockPreview = new VehicleUnlockPreview(unlockPreviewHost);
+      }
+      this.unlockPreview?.show(kind);
       if (kind === "carpet") {
         unlockTitle.textContent = "Magic Carpet unlocked";
         unlockBody.textContent =
@@ -277,6 +286,7 @@ export class Lobby {
   show() {
     this.container.appendChild(this.el);
     requestAnimationFrame(() => {
+      this.unlockPreview?.resize();
       this.el.querySelector(".lobby-header")?.classList.add("visible");
       this.el.querySelector(".lobby-bar")?.classList.add("visible");
     });
@@ -301,6 +311,8 @@ export class Lobby {
   }
 
   dispose() {
+    this.unlockPreview?.dispose();
+    this.unlockPreview = null;
     this.el.remove();
     document.getElementById("lobby-styles")?.remove();
   }
@@ -565,7 +577,7 @@ export class Lobby {
       .lobby-unlock-panel {
         position: relative;
         z-index: 1;
-        width: min(22rem, calc(100% - 48px));
+        width: min(25rem, calc(100% - 48px));
         max-width: 100%;
         margin: 0 24px;
         padding: 22px 22px 20px;
@@ -573,11 +585,26 @@ export class Lobby {
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 16px;
+        overflow: hidden;
         background: rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(32px) saturate(120%);
         -webkit-backdrop-filter: blur(32px) saturate(120%) brightness(0.85);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
         box-sizing: border-box;
+      }
+      /* Bleed to panel edges (no inner frame); WebGL sits on the glass card. */
+      .lobby-unlock-preview-canvas {
+        width: calc(100% + 44px);
+        margin: -22px -22px 18px -22px;
+        height: clamp(170px, 32vw, 220px);
+        border-radius: 16px 16px 0 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .lobby-unlock-preview-canvas canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
       }
       .lobby-unlock-title {
         font-size: clamp(1.05rem, 3.6vw, 1.25rem);
@@ -638,6 +665,12 @@ export class Lobby {
           width: min(22rem, calc(100% - 32px));
           margin: 0 16px;
           padding: 18px 18px 16px;
+        }
+        .lobby-unlock-preview-canvas {
+          width: calc(100% + 36px);
+          margin: -18px -18px 16px -18px;
+          height: clamp(150px, 42vw, 190px);
+          border-radius: 16px 16px 0 0;
         }
         .lobby-unlock-body { font-size: 0.9rem; }
       }

@@ -1,13 +1,12 @@
 /**
  * Low-poly magic carpet — local +Z forward, +Y up.
- * Flat body with curled front edge, gold trim, corner tassels.
+ * Flat body with curled front edge, gold trim.
  * Vertex-shader cloth wobble driven by a shared time uniform.
  */
 import {
   Group,
   Mesh,
   BoxGeometry,
-  CylinderGeometry,
   MeshPhongMaterial,
   type IUniform,
 } from "three";
@@ -66,9 +65,6 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
   addRimLight(patternMat, 0xffaacc, 0.35, 2.5);
   addWobble(patternMat, timeUniform, [0, 0.001, 0]);
 
-  const tasselMat = new MeshPhongMaterial({ color: 0xd4a830, flatShading: true, shininess: 35 });
-  addRimLight(tasselMat, 0xffe888, 0.35, 2.5);
-
   // Main body — subdivided for cloth wobble
   const bodyW = s * 2.8;
   const bodyH = s * 0.06;
@@ -101,22 +97,6 @@ export function createCarpet(baseColor: number = 0x6b1d6e): Group {
     strip.position.set(0, 0.001, sz);
     carpet.add(strip);
   }
-
-  // Tassels — 4 small cylinders at the corners
-  const tasselR = s * 0.06;
-  const tasselH = s * 0.5;
-  const corners: [number, number][] = [
-    [-bodyW * 0.5, -bodyLen * 0.5],
-    [bodyW * 0.5, -bodyLen * 0.5],
-    [-bodyW * 0.5, bodyLen * 0.5],
-    [bodyW * 0.5, bodyLen * 0.5],
-  ];
-  corners.forEach(([cx, cz], i) => {
-    const tassel = new Mesh(new CylinderGeometry(tasselR, tasselR * 0.4, tasselH, 4), tasselMat);
-    tassel.position.set(cx, -tasselH * 0.5, cz);
-    tassel.name = `tassel${i}`;
-    carpet.add(tassel);
-  });
 
   // Capybara (Passenger)
   const capyGroup = new Group();

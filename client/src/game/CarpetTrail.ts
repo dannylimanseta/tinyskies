@@ -1,5 +1,5 @@
 /**
- * Two golden ribbon trails that stream from the rear tassels of the magic carpet.
+ * Two golden ribbon trails that stream from the rear corners of the magic carpet.
  * Opacity scales with speed so the trails fade in as the carpet accelerates.
  */
 import {
