@@ -36,6 +36,8 @@ export interface SavedPlayerWorldState {
   brazierEternal?: boolean[];
   /** Inventory of unused eternal flames (from Gremlin King); consumed when lighting a brazier. */
   eternalFlameCount?: number;
+  /** After the first Gremlin King kill, further kills never award another eternal flame. */
+  gremlinKingEternalFlameClaimed?: boolean;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;

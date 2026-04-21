@@ -1055,18 +1055,22 @@ export class Game {
           this.cameraRig.shake(0.065, 0.32);
           this.vehicleFlashTimer = 0.16;
           const prev = ProgressionManager.loadPlayerWorldState();
-          this.savePlayerWorldState({
-            eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
-          });
-          if (this.kingEternalFlameRewardTimeout != null) {
-            clearTimeout(this.kingEternalFlameRewardTimeout);
-            this.kingEternalFlameRewardTimeout = null;
+          const alreadyClaimed = !!prev.gremlinKingEternalFlameClaimed;
+          if (!alreadyClaimed) {
+            this.savePlayerWorldState({
+              eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
+              gremlinKingEternalFlameClaimed: true,
+            });
+            if (this.kingEternalFlameRewardTimeout != null) {
+              clearTimeout(this.kingEternalFlameRewardTimeout);
+              this.kingEternalFlameRewardTimeout = null;
+            }
+            this.kingEternalFlameRewardTimeout = setTimeout(() => {
+              this.kingEternalFlameRewardTimeout = null;
+              this.audioManager.playSFX("choir_1", CHOIR_1_SFX_VOLUME);
+              this.eternalFlameUI?.playKingLootSequence();
+            }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
           }
-          this.kingEternalFlameRewardTimeout = setTimeout(() => {
-            this.kingEternalFlameRewardTimeout = null;
-            this.audioManager.playSFX("choir_1", CHOIR_1_SFX_VOLUME);
-            this.eternalFlameUI?.playKingLootSequence();
-          }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
         },
         (isKing) => {
           this.maybePlayGremlinHitSfx(isKing);
@@ -3818,6 +3822,7 @@ export class Game {
         Array.from({ length: BRAZIER_COUNT }, () => false),
       brazierFizzleHintShown: this.showedBrazierFizzleHint || !!prev.brazierFizzleHintShown,
       eternalFlameCount: prev.eternalFlameCount ?? 0,
+      gremlinKingEternalFlameClaimed: !!prev.gremlinKingEternalFlameClaimed,
       ...overrides,
     };
     next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {
