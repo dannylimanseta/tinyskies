@@ -16,6 +16,8 @@ const MAX_SPEED = 0.8;
 const BOOST_SPEED = 1.3;
 /** Ring / collect speed boost duration. */
 const BOOST_DURATION_SEC = 1.7;
+/** Full 360° rotations per boost; values above 1 spin faster. */
+const BOOST_BARREL_ROLL_TURNS = 1.0;
 /** Hard ceiling: arc-step = 2.0*0.05/5 = 0.02 rad/frame — well within safe limits. */
 const ABSOLUTE_MAX_SPEED = 2.0;
 const GREMLIN_SLOW_DURATION_SEC = 1.6;
@@ -48,7 +50,7 @@ export class Plane {
   altitude = ALTITUDE;
   speed = 0;
   bankAngle = 0;
-  /** Kept at 0; still synced for PlayerState compatibility. */
+  /** Barrel roll around forward axis while boosting; synced for remotes. */
   rollAngle = 0;
   /** Remaining time at `BOOST_SPEED` after `speedBoost()`; 0 when not boosting. */
   private boostTimer = 0;
@@ -136,16 +138,22 @@ export class Plane {
 
     if (this.boostTimer > 0) {
       this.speed = effBoostSpeed;
-    } else if (forward) {
-      if (this.speed < effMaxSpeed) {
-        this.speed = Math.min(effMaxSpeed, this.speed + effAccel * dt);
-      } else {
-        this.speed = Math.max(effMaxSpeed, this.speed - 0.13 * dt);
-      }
-    } else if (brake) {
-      this.speed = Math.max(MIN_SPEED, this.speed - effBrakeDecel * dt);
+      const boostDur = BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
+      this.rollAngle +=
+        ((Math.PI * 2 * BOOST_BARREL_ROLL_TURNS) / Math.max(boostDur, 0.08)) * dt;
     } else {
-      this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
+      this.rollAngle = 0;
+      if (forward) {
+        if (this.speed < effMaxSpeed) {
+          this.speed = Math.min(effMaxSpeed, this.speed + effAccel * dt);
+        } else {
+          this.speed = Math.max(effMaxSpeed, this.speed - 0.13 * dt);
+        }
+      } else if (brake) {
+        this.speed = Math.max(MIN_SPEED, this.speed - effBrakeDecel * dt);
+      } else {
+        this.speed = Math.max(MIN_SPEED, this.speed - 0.3 * dt);
+      }
     }
 
     this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
@@ -232,6 +240,7 @@ export class Plane {
     const effBoost = Math.min(BOOST_SPEED * this.upgrades.boostSpeedMult, ABSOLUTE_MAX_SPEED);
     this.boostTimer = BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
     this.speed = effBoost;
+    this.rollAngle = 0;
   }
 
   applyMatrix() {
@@ -239,7 +248,7 @@ export class Plane {
       this.qPosition,
       this.heading,
       this.pitch,
-      this.bankAngle + this.paintballWobbleBank,
+      this.bankAngle + this.paintballWobbleBank + this.rollAngle,
       this.altitude,
       this.globeRadius,
     );
