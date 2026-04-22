@@ -391,6 +391,18 @@ export class WaterSpouts {
     return false;
   }
 
+  public getClosestDistance(playerPos: Vector3): number {
+    if (this.disposed || this.spouts.length === 0) return Infinity;
+    const pDir = playerPos.clone().normalize();
+    let minDist = Infinity;
+    for (const spout of this.spouts) {
+      const sDir = new Vector3(0, 1, 0).applyQuaternion(spout.q);
+      const dist = pDir.distanceTo(sDir) * this.globe.radius;
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  }
+
   dispose() {
     this.disposed = true;
     for (const spout of this.spouts) {

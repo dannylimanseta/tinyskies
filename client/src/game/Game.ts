@@ -499,6 +499,7 @@ export class Game {
       this.audioManager.loadSFX("splash_1", "/audio/sfx/splash_1.mp3");
       this.audioManager.loadSFX("splash_2", "/audio/sfx/splash_2.mp3");
       this.audioManager.loadSFX("fish_catch_1", "/audio/sfx/fish_catch_1.mp3");
+      this.audioManager.loadSFX("twister", "/audio/sfx/twister.mp3");
       this.audioManager.loadSFX(OCEAN_WAVES_LOOP_NAME, "/audio/sfx/ocean_waves_1.mp3");
       this.audioManager.loadSFX(MOONSTONE_RUMBLE_LOOP_NAME, "/audio/sfx/rumble.mp3");
       this.audioManager.loadSFX("choir_1", "/audio/sfx/choir_1.mp3");
@@ -543,6 +544,9 @@ export class Game {
         });
         void this.audioManager.loadSFX(MOONSTONE_RUMBLE_LOOP_NAME, "/audio/sfx/rumble.mp3").then(() => {
           this.audioManager.startLoop(MOONSTONE_RUMBLE_LOOP_NAME, 0);
+        });
+        void this.audioManager.loadSFX("twister", "/audio/sfx/twister.mp3").then(() => {
+          this.audioManager.startLoop("twister", 0);
         });
         void this.audioManager.loadSFX(EXPLOSION_SFX_NAME, "/audio/sfx/explosion_1.mp3");
         for (const id of LANTERN_COLLECT_SFX_IDS) {
@@ -2531,6 +2535,18 @@ export class Game {
       questPlayerPos,
     );
     this.waterSpouts?.update(dt);
+
+    let twisterVol = 0;
+    if (this.waterSpouts) {
+      const dist = this.waterSpouts.getClosestDistance(questPlayerPos);
+      if (dist < 8.0) {
+        // Ramp volume up as we get closer (max volume at distance 0.5)
+        twisterVol = Math.max(0, Math.min(1, 1.0 - (dist - 0.5) / 7.5));
+        // Scale down overall volume so it's not deafening
+        twisterVol *= 0.6;
+      }
+    }
+    this.audioManager.setLoopVolume("twister", twisterVol);
 
     const moonstoneProgress = this.updateMoonstoneRuins(questPlayerPos, !portalInteractionSuppressed);
     const moonstoneRumbleVol =
