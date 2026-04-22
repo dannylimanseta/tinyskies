@@ -168,9 +168,9 @@ export class WaterSpouts {
         float edge = sin(vUv.x * 3.14159);
         edge = pow(edge, 0.6);
         
-        // gradient: bottom cyan -> top dark blue
-        vec3 colorBot = vec3(0.0, 0.8, 1.0);
-        vec3 colorTop = vec3(0.0, 0.1, 0.4);
+        // gradient: bottom cyan -> top light blue/cyan
+        vec3 colorBot = vec3(0.1, 0.9, 1.0);
+        vec3 colorTop = vec3(0.2, 0.6, 0.9);
         diffuseColor.rgb = mix(colorBot, colorTop, vUv.y);
         
         diffuseColor.a *= combined * yFade * edge * 1.8;

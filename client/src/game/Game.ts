@@ -2170,14 +2170,13 @@ export class Game {
     if (this.twisterSpinTimer > 0) {
       this.twisterSpinTimer -= dt;
       
-      let spinInput = 4.0; // Plane
-      if (this.localPlayer.vehicle === "carpet") spinInput = 1.8;
-      else if (this.localPlayer.vehicle === "boat") spinInput = 3.0;
+      let spinInput = 2.5; // Plane
+      if (this.localPlayer.vehicle === "carpet") spinInput = 1.0;
+      else if (this.localPlayer.vehicle === "boat") spinInput = 1.5;
 
       turnRate = spinInput; // Force spin
       forward = false; // Kill forward input
       brake = true;    // Force brake
-      this.cameraRig.shake(0.01, 0.2); // Shake camera
     }
 
     this.localPlayer.visibility = 1;
@@ -2503,11 +2502,12 @@ export class Game {
       this.playerVehicle === "carpet"
         ? this.globe.getMoonstoneShakeTrauma(questPlayerPos)
         : 0;
+    const twisterTrauma = this.twisterSpinTimer > 0 ? 0.6 : 0;
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
     this.moonThreat?.update(dt);
     const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
-    this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma));
+    this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma, twisterTrauma));
     if (this.moonThreat) {
       if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
         this.startMoonImpactCinematic();
