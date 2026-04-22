@@ -2594,7 +2594,15 @@ export class Game {
 
   private onDebugKey = (e: KeyboardEvent) => {
     if (e.key === "q" || e.key === "Q") {
-      if (this.gamePhase === "flying") {
+      if (this.gamePhase !== "flying") return;
+      // Q: boat — spawn mystic octopuses near the player. Shift+Q: moonstone union (other vehicles).
+      if (this.oceanFish && this.localPlayer instanceof Boat && !e.shiftKey) {
+        this.oceanFish.debugSpawnMysteryOctopusesNearPlayer(
+          this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+        );
+        return;
+      }
+      if (e.shiftKey || !(this.oceanFish && this.localPlayer instanceof Boat)) {
         this.startMoonstoneUnionCinematic();
       }
     }

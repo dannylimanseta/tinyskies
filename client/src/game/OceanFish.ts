@@ -357,6 +357,32 @@ export class OceanFish {
 
     const rnd = seededRandom(this.seed + this.respawnSalt * 10009 + 7777);
     const schoolIds = this.pickMysterySchools(boatWorldPos, MYSTERY_OCTOPUS_SPAWN_COUNT, rnd);
+    this.spawnMysteryOctopusCluster(boatWorldPos, schoolIds, rnd);
+  }
+
+  /**
+   * Debug: clear any mystery octopuses and place a new set as close to the boat as
+   * school placement allows (fishing still works; does not require 12 fish).
+   */
+  debugSpawnMysteryOctopusesNearPlayer(boatWorldPos: Vector3) {
+    if (this.disposed) return;
+    this.removeAllMysteryOctopuses();
+    this.mysteryOctopusOffered = false;
+    const salt = (performance.now() * 0.001) ^ (this.fish.length * 1337);
+    const rnd = seededRandom(this.seed + salt);
+    const schoolIds = this.pickMysterySchoolsDebugNear(
+      boatWorldPos,
+      MYSTERY_OCTOPUS_SPAWN_COUNT,
+      rnd,
+    );
+    this.spawnMysteryOctopusCluster(boatWorldPos, schoolIds, rnd);
+  }
+
+  private spawnMysteryOctopusCluster(
+    boatWorldPos: Vector3,
+    schoolIds: number[],
+    rnd: () => number,
+  ) {
     for (let n = 0; n < MYSTERY_OCTOPUS_SPAWN_COUNT; n++) {
       const visual = createFishVisual("octopus");
       this.group.add(visual.group);
@@ -435,6 +461,22 @@ export class OceanFish {
     return out.setFromUnitVectors(_WORLD_UP, _schoolFishNormal);
   }
 
+  /**
+   * Recomputes the fish's ringAngle and spreadRad relative to its current school
+   * so it doesn't teleport when transitioning from capturing back to swimming.
+   */
+  private recomputeSchoolOffset(f: Fish) {
+    const sch = this.schools[f.schoolId]!;
+    const frame = tangentFrame(sch.centerQ);
+    const fPos = cartesianFromSpherical(f.posQ, 0, this.globeRadius);
+    const sPos = cartesianFromSpherical(sch.centerQ, 0, this.globeRadius);
+    _tmpV1.subVectors(fPos, sPos);
+    const x = frame.north.dot(_tmpV1);
+    const y = frame.east.dot(_tmpV1);
+    f.ringAngle = Math.atan2(y, x);
+    f.spreadRad = Math.sqrt(x * x + y * y) / SCHOOL_MAX_OFFSET;
+  }
+
   /** Prefer respawning into a school far from the boat so schools stay explorable. */
   private pickSchoolForRespawn(boatWorldPos: Vector3): number {
     let bestS = 0;
@@ -500,6 +542,34 @@ export class OceanFish {
     for (let s = 0; s < this.schools.length && out.length < count; s++) {
       if (used.has(s)) continue;
       used.add(s);
+      out.push(s);
+    }
+    while (out.length < count) {
+      out.push(Math.floor(rnd() * this.schools.length));
+    }
+    return out.slice(0, count);
+  }
+
+  /**
+   * Closest water schools to the player (for debug spawn). Skips near-zero
+   * distance to avoid the boat’s own cell.
+   */
+  private pickMysterySchoolsDebugNear(
+    boatWorldPos: Vector3,
+    count: number,
+    rnd: () => number,
+  ): number[] {
+    const scored: { s: number; d: number }[] = [];
+    for (let s = 0; s < this.schools.length; s++) {
+      const p = cartesianFromSpherical(this.schools[s]!.centerQ, FISH_SHADOW_ALT, this.globeRadius);
+      const chord = p.distanceTo(boatWorldPos);
+      if (chord < 0.2) continue;
+      scored.push({ s, d: chord });
+    }
+    scored.sort((a, b) => a.d - b.d);
+    const out: number[] = [];
+    for (const { s } of scored) {
+      if (out.length >= count) break;
       out.push(s);
     }
     while (out.length < count) {
@@ -717,6 +787,7 @@ export class OceanFish {
           f.progress = Math.max(0, f.progress - FISH_DECAY_RATE * dt);
           if (f.progress <= 0 && dist > effExitR) {
             f.status = "swimming";
+            this.recomputeSchoolOffset(f);
             this.removeActiveCapture(i);
           }
         }
@@ -877,6 +948,7 @@ export class OceanFish {
       Math.sin(this.time * 1.2 + f.phase * 1.43) * 0.15 +
       Math.max(-0.45, Math.min(0.45, turnDelta * 8.0));
     f.visual.setShadowWiggle(wiggle);
+    f.visual.setTime(this.time + f.phase);
     f.prevHeading = f.heading;
   }
 

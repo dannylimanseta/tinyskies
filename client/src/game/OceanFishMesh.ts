@@ -129,63 +129,307 @@ function getSharedLargeFishShadowTexture(): CanvasTexture {
   return tex;
 }
 
-let sharedOctopusShadowTexture: CanvasTexture | null = null;
-let octopusShadowTextureRefCount = 0;
+// ── Octopus textures (mantle + shared tentacle strip) ────────────────────
+let octopusTexRefCount = 0;
+let sharedMantleTex: CanvasTexture | null = null;
+let sharedTentacleTex: CanvasTexture | null = null;
 
-function getSharedOctopusShadowTexture(): CanvasTexture {
-  if (sharedOctopusShadowTexture) return sharedOctopusShadowTexture;
-
+/** Draws just the mantle sac + head oval — no tentacles (those are separate meshes). */
+function getOctopusMantleTexture(): CanvasTexture {
+  if (sharedMantleTex) return sharedMantleTex;
   const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
+  c.width = 192;
+  c.height = 128;
   const ctx = c.getContext("2d")!;
-  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.clearRect(0, 0, 192, 128);
 
-  const ink = "rgba(6, 10, 22, 0.92)";
-  const tent = "rgba(5, 9, 18, 0.88)";
-
-  const cx = 128;
-  const cy = 120;
-
+  const ink = "rgba(6, 10, 22, 0.97)";
   ctx.fillStyle = ink;
+
+  // Head/body oval (left side — where tentacles root)
   ctx.beginPath();
-  ctx.ellipse(cx, cy, 38, 32, 0, 0, Math.PI * 2);
+  ctx.ellipse(58, 64, 26, 34, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + 0.12;
-    ctx.strokeStyle = tent;
-    ctx.lineWidth = 10;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    const r0 = 32;
-    const x0 = cx + Math.cos(a) * r0;
-    const y0 = cy + Math.sin(a) * r0;
-    const len = 48 + (i % 3) * 6;
-    const wobble = i % 2 === 0 ? 0.12 : -0.1;
-    const a2 = a + wobble;
-    const x1 = x0 + Math.cos(a2) * len;
-    const y1 = y0 + Math.sin(a2) * len;
-    ctx.moveTo(x0, y0);
-    ctx.quadraticCurveTo(
-      x0 + Math.cos(a + 0.4) * (len * 0.5),
-      y0 + Math.sin(a + 0.4) * (len * 0.5),
-      x1,
-      y1,
-    );
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = ink;
+  // Mantle sac: organic teardrop pointing +X (right)
   ctx.beginPath();
-  ctx.ellipse(cx + 28, cy - 2, 18, 16, 0.15, 0, Math.PI * 2);
+  ctx.moveTo(178, 64);                             // pointed tip
+  ctx.bezierCurveTo(176, 30, 122, 24, 76, 32);    // top edge
+  ctx.lineTo(76, 96);                              // base left
+  ctx.bezierCurveTo(122, 104, 176, 98, 178, 64);  // bottom edge
   ctx.fill();
 
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
   tex.needsUpdate = true;
-  sharedOctopusShadowTexture = tex;
+  sharedMantleTex = tex;
   return tex;
+}
+
+/**
+ * Shared tapered arm texture reused for all 8 tentacle meshes.
+ * Runs along X: wide at base (left, uv.x=0), tapers to transparent at tip (right, uv.x=1).
+ */
+function getOctopusTentacleTexture(): CanvasTexture {
+  if (sharedTentacleTex) return sharedTentacleTex;
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 32;
+  const ctx = c.getContext("2d")!;
+  ctx.clearRect(0, 0, 128, 32);
+
+  const cy = 16;
+  // Fade alpha from opaque at base to transparent at tip
+  const grad = ctx.createLinearGradient(0, 0, 128, 0);
+  grad.addColorStop(0.0, "rgba(6,10,22,0.92)");
+  grad.addColorStop(0.65, "rgba(6,10,22,0.72)");
+  grad.addColorStop(1.0, "rgba(6,10,22,0.0)");
+  ctx.fillStyle = grad;
+
+  // Filled tapered shape: full height at x=0, tapers to a point at x=127
+  ctx.beginPath();
+  ctx.moveTo(0, cy - 13);
+  ctx.bezierCurveTo(32, cy - 13, 72, cy - 5, 126, cy);
+  ctx.bezierCurveTo(72, cy + 5, 32, cy + 13, 0, cy + 13);
+  ctx.closePath();
+  ctx.fill();
+
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.needsUpdate = true;
+  sharedTentacleTex = tex;
+  return tex;
+}
+
+// ── Octopus visual factory ────────────────────────────────────────────────
+/**
+ * Creates an octopus shadow composed of 8 independent tentacle strip meshes
+ * (each with its own animation phase) plus a mantle mesh — so every tentacle
+ * can ripple autonomously in the water plane.
+ */
+function createOctopusVisual(): OceanFishVisual {
+  octopusTexRefCount += 1;
+  glowTextureRefCount += 1;
+
+  const group = new Group();
+  const shadowGroup = new Group();
+  shadowGroup.scale.setScalar(2.25 * 0.65);
+
+  // ── Glow halo ──────────────────────────────────────────────────────────
+  const glowGeo = new PlaneGeometry(0.42, 0.42);
+  const glowMat = new MeshBasicMaterial({
+    map: getSharedGlowTexture(),
+    color: GLOW_COLOR_NIGHT.clone(),
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+  });
+  const glowMesh = new Mesh(glowGeo, glowMat);
+  glowMesh.rotation.x = -Math.PI / 2;
+  glowMesh.renderOrder = 7;
+  shadowGroup.add(glowMesh);
+
+  // ── Tentacles ──────────────────────────────────────────────────────────
+  // 8 fan angles (degrees from the backward direction; positive = toward +Z).
+  // Inner tentacles are longer and thicker.
+  const ANGLES_DEG = [-65, -40, -18, -5, 5, 18, 40, 65] as const;
+  const LENGTHS    = [0.095, 0.120, 0.140, 0.150, 0.150, 0.140, 0.120, 0.095] as const;
+  const WIDTHS     = [0.022, 0.028, 0.032, 0.034, 0.034, 0.032, 0.028, 0.022] as const;
+
+  const tentacleMats: MeshBasicMaterial[] = [];
+  const tentacleTimeUs: { value: number }[] = [];
+  const tentTex = getOctopusTentacleTexture();
+
+  for (let i = 0; i < 8; i++) {
+    const fanAngle = ANGLES_DEG[i]! * (Math.PI / 180);
+    const len = LENGTHS[i]!;
+    const width = WIDTHS[i]!;
+    // Irregular per-tentacle phase so they never move in sync
+    const phase = (i / 8) * Math.PI * 2 + Math.sin(i * 2.3) * 0.6;
+
+    // Wrapper rotates the strip to its fan direction (pointing backward + spread)
+    const wrapper = new Group();
+    wrapper.rotation.y = Math.PI + fanAngle;
+
+    const tentGeo = new PlaneGeometry(len, width, 18, 1);
+    const timeU = { value: 0.0 };
+    tentacleTimeUs.push(timeU);
+
+    const mat = new MeshBasicMaterial({
+      map: tentTex,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    tentacleMats.push(mat);
+
+    // Capture loop-variable values for the shader closure
+    const capturedTimeU = timeU;
+    const capturedPhase = phase;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.tentTime = capturedTimeU;
+      shader.uniforms.tentPhase = { value: capturedPhase };
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+        uniform float tentTime;
+        uniform float tentPhase;`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        // uv.x: 0 = base (head), 1 = tip
+        float tipFactor = uv.x;
+        // Traveling wave ripples from base toward tip — primary frequency
+        float wave1 = sin(tentTime * 3.2 + tentPhase + tipFactor * 3.14159) * tipFactor * tipFactor * 0.048;
+        // Secondary harmonic adds texture/complexity
+        float wave2 = sin(tentTime * 5.8 + tentPhase * 1.6 + tipFactor * 6.28) * tipFactor * 0.022;
+        // transformed.y is lateral in the water plane (after rotation.x = -PI/2 on the mesh)
+        transformed.y += wave1 + wave2;
+        `,
+      );
+    };
+
+    const tentMesh = new Mesh(tentGeo, mat);
+    tentMesh.rotation.x = -Math.PI / 2;
+    // Shift along +X so the base of the strip sits at the wrapper origin (= head)
+    tentMesh.position.x = len / 2;
+    tentMesh.renderOrder = 8;
+
+    wrapper.add(tentMesh);
+    shadowGroup.add(wrapper);
+  }
+
+  // ── Mantle (drawn on top so it covers tentacle bases cleanly) ──────────
+  const mantleGeo = new PlaneGeometry(0.19, 0.115, 2, 1);
+  const mantleMat = new MeshBasicMaterial({
+    map: getOctopusMantleTexture(),
+    transparent: true,
+    opacity: 1,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  const mantleMesh = new Mesh(mantleGeo, mantleMat);
+  mantleMesh.rotation.x = -Math.PI / 2;
+  mantleMesh.position.x = 0.038; // shift forward so head center aligns with tentacle roots
+  mantleMesh.renderOrder = 9;
+  shadowGroup.add(mantleMesh);
+
+  group.add(shadowGroup);
+
+  // ── Progress bar (identical to normal fish) ────────────────────────────
+  const barGroup = new Group();
+  const barBgGeo = new PlaneGeometry(BAR_W, BAR_H);
+  const barBgMat = new MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.45,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const barBgMesh = new Mesh(barBgGeo, barBgMat);
+  barBgMesh.position.y = FILL_HALF;
+  barBgMesh.renderOrder = 20;
+  const barFillGeo = new PlaneGeometry(BAR_W, BAR_H);
+  const barFillMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.92,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const barFillMesh = new Mesh(barFillGeo, barFillMat);
+  barFillMesh.renderOrder = 21;
+  barGroup.add(barBgMesh);
+  barGroup.add(barFillMesh);
+  group.add(barGroup);
+
+  let opacityFade = 1;
+
+  function setProgress(v: number) {
+    const p = Math.max(0, Math.min(1, v));
+    barFillMesh.visible = p > 0.001;
+    barGroup.visible = p > 0.001;
+    barFillMesh.scale.y = p;
+    barFillMesh.position.y = FILL_HALF * p;
+  }
+
+  function setShadowOpacity(a: number) {
+    const t = Math.max(0, Math.min(1, a * opacityFade));
+    for (const m of tentacleMats) {
+      m.opacity = t;
+      m.visible = t > 0.01;
+    }
+    mantleMat.opacity = t;
+    mantleMesh.visible = t > 0.01;
+  }
+
+  function setOpacityFade(a: number) {
+    opacityFade = Math.max(0, Math.min(1, a));
+  }
+
+  // Tentacles animate independently via setTime; no whole-body tilt needed.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function setShadowWiggle(_rad: number) { /* intentional no-op for octopus */ }
+
+  function setTime(t: number) {
+    for (const u of tentacleTimeUs) {
+      u.value = t;
+    }
+  }
+
+  function setNightGlow(night: number, evening = 0) {
+    const g = Math.max(0, Math.min(1, Math.max(night, evening) * opacityFade));
+    const denom = night + evening + 1e-6;
+    const tNight = night / denom;
+    glowMat.color.copy(GLOW_COLOR_EVENING).lerp(GLOW_COLOR_NIGHT, tNight);
+    const alphaScale = 0.35 * (1 - tNight) + 0.15 * tNight;
+    glowMat.opacity = g * alphaScale;
+    glowMesh.visible = g > 0.02;
+  }
+
+  function dispose() {
+    glowGeo.dispose();
+    glowMat.dispose();
+    for (const m of tentacleMats) m.dispose();
+    mantleGeo.dispose();
+    mantleMat.dispose();
+    barBgGeo.dispose();
+    barBgMat.dispose();
+    barFillGeo.dispose();
+    barFillMat.dispose();
+
+    octopusTexRefCount -= 1;
+    if (octopusTexRefCount <= 0) {
+      sharedMantleTex?.dispose(); sharedMantleTex = null;
+      sharedTentacleTex?.dispose(); sharedTentacleTex = null;
+    }
+    glowTextureRefCount -= 1;
+    if (glowTextureRefCount <= 0 && sharedGlowTexture) {
+      sharedGlowTexture.dispose();
+      sharedGlowTexture = null;
+    }
+  }
+
+  setProgress(0);
+  setNightGlow(0);
+  setShadowWiggle(0);
+
+  return {
+    group,
+    shadowGroup,
+    barGroup,
+    setProgress,
+    setShadowOpacity,
+    setOpacityFade,
+    setShadowWiggle,
+    setTime,
+    setNightGlow,
+    dispose,
+  };
 }
 
 let sharedGlowTexture: CanvasTexture | null = null;
@@ -235,6 +479,8 @@ export interface OceanFishVisual {
   setOpacityFade(a: number): void;
   /** Roll in the water plane (radians) for swimming wiggle — applied to shadow silhouette. */
   setShadowWiggle(rad: number): void;
+  /** Pass the current game time (in seconds) to animate independent parts like octopus tentacles. */
+  setTime(t: number): void;
   /**
    * Drives bioluminescent glow: intensity from night and/or evening, color blends
    * orange (evening) toward cyan (night).
@@ -252,34 +498,24 @@ const FILL_HALF = BAR_H * 0.5;
  * `shadowGroup` / `barGroup` rotations are set by {@link OceanFish}.
  */
 export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisual {
-  const isOctopus = variant === "octopus";
+  if (variant === "octopus") return createOctopusVisual();
+
   const isLarge = variant === "large";
-  if (isOctopus) {
-    octopusShadowTextureRefCount += 1;
-  } else {
-    shadowTextureRefCount += 1;
-  }
+  shadowTextureRefCount += 1;
   glowTextureRefCount += 1;
-  const tex = isOctopus
-    ? getSharedOctopusShadowTexture()
-    : isLarge
-      ? getSharedLargeFishShadowTexture()
-      : getSharedFishShadowTexture();
+
+  const tex = isLarge
+    ? getSharedLargeFishShadowTexture()
+    : getSharedFishShadowTexture();
   const glowTex = getSharedGlowTexture();
 
   const group = new Group();
 
   const shadowGroup = new Group();
-  // Octopus: large silhouette in the water; +X = head (texture drawn with head to +X)
-  shadowGroup.scale.setScalar(
-    isOctopus ? 2.25 * 0.65 : isLarge ? 1.5 * 0.65 : 0.65,
-  );
+  shadowGroup.scale.setScalar(isLarge ? 1.5 * 0.65 : 0.65);
 
-  // Top-view shadow (texture +X forward, ±Y lateral); ~50% of prior footprint
-  // 8 segments along X to allow smooth bending of the tail
-  const shadowW = isOctopus ? 0.22 : 0.12;
-  const shadowH = isOctopus ? 0.22 : 0.055;
-  const shadowGeo = new PlaneGeometry(shadowW, shadowH, 8, 1);
+  // Top-view shadow (texture +X forward, ±Y lateral); 8 segments along X for smooth tail bend
+  const shadowGeo = new PlaneGeometry(0.12, 0.055, 8, 1);
   const shadowMat = new MeshBasicMaterial({
     map: tex,
     transparent: true,
@@ -294,23 +530,21 @@ export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisu
     shader.vertexShader = shader.vertexShader.replace(
       "#include <common>",
       `#include <common>
-      uniform float bend;`
+      uniform float bend;`,
     );
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
       `#include <begin_vertex>
-      // uv.x goes from 0 (tail) to 1 (head)
+      // uv.x: 0 = tail, 1 = head
       float tail = 1.0 - uv.x;
-      // Curve the tail along the local Y axis (lateral)
       transformed.y += bend * tail * tail * 0.12;
-      // Pull the tail in slightly to preserve length
       transformed.x -= abs(bend) * tail * tail * 0.03;
-      `
+      `,
     );
   };
+
   // Bioluminescent night glow — rendered BEFORE the shadow so the dark shadow sits on top.
-  // Square plane + square texture → round, blurred halo (not an ellipse).
-  const glowGeo = new PlaneGeometry(isOctopus ? 0.42 : 0.275, isOctopus ? 0.42 : 0.275);
+  const glowGeo = new PlaneGeometry(0.275, 0.275);
   const glowMat = new MeshBasicMaterial({
     map: glowTex,
     color: GLOW_COLOR_NIGHT.clone(),
@@ -414,26 +648,10 @@ export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisu
     barFillGeo.dispose();
     barFillMat.dispose();
 
-    if (isOctopus) {
-      octopusShadowTextureRefCount -= 1;
-      if (octopusShadowTextureRefCount <= 0) {
-        if (sharedOctopusShadowTexture) {
-          sharedOctopusShadowTexture.dispose();
-          sharedOctopusShadowTexture = null;
-        }
-      }
-    } else {
-      shadowTextureRefCount -= 1;
-      if (shadowTextureRefCount <= 0) {
-        if (sharedShadowTexture) {
-          sharedShadowTexture.dispose();
-          sharedShadowTexture = null;
-        }
-        if (sharedLargeShadowTexture) {
-          sharedLargeShadowTexture.dispose();
-          sharedLargeShadowTexture = null;
-        }
-      }
+    shadowTextureRefCount -= 1;
+    if (shadowTextureRefCount <= 0) {
+      sharedShadowTexture?.dispose(); sharedShadowTexture = null;
+      sharedLargeShadowTexture?.dispose(); sharedLargeShadowTexture = null;
     }
     glowTextureRefCount -= 1;
     if (glowTextureRefCount <= 0 && sharedGlowTexture) {
@@ -441,6 +659,9 @@ export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisu
       sharedGlowTexture = null;
     }
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function setTime(_t: number) { /* no-op for regular fish */ }
 
   setProgress(0);
   setNightGlow(0);
@@ -455,6 +676,7 @@ export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisu
     setOpacityFade,
     setShadowWiggle,
     setNightGlow,
+    setTime,
     dispose,
   };
 }
