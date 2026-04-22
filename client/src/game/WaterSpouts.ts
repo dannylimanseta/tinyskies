@@ -1,11 +1,18 @@
 import {
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
   CylinderGeometry,
   DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
   NormalBlending,
+  Points,
+  PointsMaterial,
   Quaternion,
+  SRGBColorSpace,
   Vector3,
 } from "three";
 import { moveOnSphere, quaternionFromSurfaceNormal, seededRandom } from "./SphericalMath";
@@ -15,6 +22,36 @@ const SPOUT_COUNT = 8;
 const SPOUT_HEIGHT = 2.2;
 const SPOUT_RADIUS_TOP = 0.35;
 const SPOUT_RADIUS_BOT = 0.08;
+const SPLASH_COUNT = 300;
+const SPLASH_LIFE = 0.6;
+
+type Splash = {
+  alive: boolean;
+  age: number;
+  px: number;
+  py: number;
+  pz: number;
+  vx: number;
+  vy: number;
+  vz: number;
+};
+
+function makeSplashTexture(): CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 32;
+  c.height = 32;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 15);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.2, "rgba(200,240,255,0.9)");
+  g.addColorStop(0.5, "rgba(120,190,230,0.4)");
+  g.addColorStop(1, "rgba(80,150,200,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 32, 32);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
 
 export class WaterSpouts {
   public readonly group = new Group();
@@ -26,6 +63,13 @@ export class WaterSpouts {
   }[] = [];
   private timeU = { value: 0 };
   private disposed = false;
+
+  private splashPool: Splash[] = [];
+  private splashGeo: BufferGeometry;
+  private splashMat: PointsMaterial;
+  private splashPosArray: Float32Array;
+  private splashAlphaArray: Float32Array;
+  private splashEmitAccum = 0;
 
   constructor(
     private readonly globe: Globe,
@@ -159,14 +203,147 @@ export class WaterSpouts {
         mesh,
         q,
         heading: rnd() * Math.PI * 2,
-        speed: 0.05 + rnd() * 0.05, // rad/sec
+        speed: 0.2 + rnd() * 0.2, // world units/sec
       });
     }
+
+    // Splash particles
+    for (let i = 0; i < SPLASH_COUNT; i++) {
+      this.splashPool.push({ alive: false, age: 0, px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0 });
+    }
+    this.splashPosArray = new Float32Array(SPLASH_COUNT * 3);
+    this.splashAlphaArray = new Float32Array(SPLASH_COUNT);
+    this.splashGeo = new BufferGeometry();
+    this.splashGeo.setAttribute("position", new BufferAttribute(this.splashPosArray, 3));
+    this.splashGeo.setAttribute("alpha", new BufferAttribute(this.splashAlphaArray, 1));
+
+    this.splashMat = new PointsMaterial({
+      map: makeSplashTexture(),
+      color: 0xddffff,
+      size: 0.18,
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+    this.splashMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+        attribute float alpha;
+        varying float vAlpha;`
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vAlpha = alpha;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+        varying float vAlpha;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        diffuseColor.a *= vAlpha;`
+      );
+    };
+
+    const points = new Points(this.splashGeo, this.splashMat);
+    points.frustumCulled = false;
+    points.renderOrder = 100;
+    this.group.add(points);
+  }
+
+  private emitSplash(origin: Vector3, radial: Vector3, count: number) {
+    let emitted = 0;
+    for (let i = 0; i < SPLASH_COUNT && emitted < count; i++) {
+      const p = this.splashPool[i]!;
+      if (!p.alive) {
+        p.alive = true;
+        p.age = 0;
+        
+        const angle = Math.random() * Math.PI * 2;
+        const rad = Math.random() * SPOUT_RADIUS_BOT * 1.5;
+        
+        let ox = (Math.random() - 0.5);
+        let oy = (Math.random() - 0.5);
+        let oz = (Math.random() - 0.5);
+        const offset = new Vector3(ox, oy, oz);
+        offset.addScaledVector(radial, -offset.dot(radial));
+        offset.normalize().multiplyScalar(rad);
+        
+        p.px = origin.x + offset.x;
+        p.py = origin.y + offset.y;
+        p.pz = origin.z + offset.z;
+        
+        const swirl = new Vector3().crossVectors(radial, offset).normalize();
+        
+        const upSpeed = 0.8 + Math.random() * 0.8;
+        const swirlSpeed = 1.0 + Math.random() * 1.0;
+        const outSpeed = 0.5 + Math.random() * 0.5;
+        
+        p.vx = radial.x * upSpeed + swirl.x * swirlSpeed + offset.x * outSpeed;
+        p.vy = radial.y * upSpeed + swirl.y * swirlSpeed + offset.y * outSpeed;
+        p.vz = radial.z * upSpeed + swirl.z * swirlSpeed + offset.z * outSpeed;
+        
+        emitted++;
+      }
+    }
+  }
+
+  private updateSplash(dt: number) {
+    const pos = this.splashPosArray;
+    const alphas = this.splashAlphaArray;
+    
+    for (let i = 0; i < SPLASH_COUNT; i++) {
+      const p = this.splashPool[i]!;
+      if (!p.alive) {
+        pos[i * 3] = 0;
+        pos[i * 3 + 1] = 0;
+        pos[i * 3 + 2] = 0;
+        alphas[i] = 0;
+        continue;
+      }
+      p.age += dt;
+      if (p.age >= SPLASH_LIFE) {
+        p.alive = false;
+        pos[i * 3] = 0;
+        pos[i * 3 + 1] = 0;
+        pos[i * 3 + 2] = 0;
+        alphas[i] = 0;
+        continue;
+      }
+      
+      // Gravity / inward pull
+      p.vx -= p.px * 0.8 * dt;
+      p.vy -= p.py * 0.8 * dt;
+      p.vz -= p.pz * 0.8 * dt;
+      
+      p.px += p.vx * dt;
+      p.py += p.vy * dt;
+      p.pz += p.vz * dt;
+      
+      pos[i * 3] = p.px;
+      pos[i * 3 + 1] = p.py;
+      pos[i * 3 + 2] = p.pz;
+      
+      alphas[i] = 1.0 - (p.age / SPLASH_LIFE);
+    }
+    
+    this.splashGeo.attributes.position!.needsUpdate = true;
+    this.splashGeo.attributes.alpha!.needsUpdate = true;
   }
 
   update(dt: number) {
     if (this.disposed) return;
     this.timeU.value += dt;
+
+    this.splashEmitAccum += dt;
+    const emitCount = Math.floor(this.splashEmitAccum * 30); // 30 particles per second per spout
+    if (emitCount > 0) {
+      this.splashEmitAccum -= emitCount / 30;
+    }
 
     // Slowly wander on the ocean
     for (const spout of this.spouts) {
@@ -180,13 +357,19 @@ export class WaterSpouts {
       
       // Bounce off land
       if (this.globe.waterRatioAround(normal, 0.05, 4) < 0.5) {
-        spout.heading += Math.PI; // turn around
-        spout.q.copy(moveOnSphere(spout.q, spout.heading, (spout.speed * dt * 2) / this.globe.radius));
+        spout.heading += Math.PI * dt * 2.0; // steer away smoothly
       }
 
       spout.mesh.quaternion.copy(spout.q);
-      spout.mesh.position.copy(normal.multiplyScalar(this.globe.radius));
+      const pos = normal.clone().multiplyScalar(this.globe.radius);
+      spout.mesh.position.copy(pos);
+
+      if (emitCount > 0) {
+        this.emitSplash(pos, normal, emitCount);
+      }
     }
+
+    this.updateSplash(dt);
   }
 
   dispose() {
