@@ -42,6 +42,8 @@ export interface SavedPlayerWorldState {
   jellyfishSetEternalFlameClaimed?: boolean;
   /** After the 3rd package delivery, further deliveries never award the heirloom eternal flame. */
   packageThirdDeliveryEternalFlameClaimed?: boolean;
+  /** After the boat “mystery octopus” eternal flame, it never spawns or rewards again. */
+  boatMysteryOctopusEternalFlameClaimed?: boolean;
   /** All five braziers lit with eternal flames — moon approach frozen indefinitely. */
   moonFrozenByEternalFlames?: boolean;
   /** Saved moon `elapsed` seconds when frozen (restored each run). */

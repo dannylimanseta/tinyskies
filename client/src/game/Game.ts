@@ -97,7 +97,7 @@ import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkS
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 import { EternalFlameUI } from "../ui/EternalFlameUI";
 import { SkyJellyfish, JELLY_CAPTURE_XP, JELLY_COUNT } from "./SkyJellyfish";
-import { OceanFish, FISH_CATCH_XP } from "./OceanFish";
+import { OceanFish, FISH_CATCH_XP, FISH_COUNT_BEFORE_MYSTERY_OCTOPUS } from "./OceanFish";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
 
 /**
@@ -301,6 +301,7 @@ export class Game {
   private kingEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private jellyfishEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private packageThirdEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
+  private boatOctopusEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -377,6 +378,7 @@ export class Game {
   private jellyfishCaptureRing: CircularProgressRing | null = null;
   private oceanFish: OceanFish | null = null;
   private fishCaught = 0;
+  private boatMysteryAt12Handled = false;
   private fishCamScratch = new Vector3();
   private selfieProgressCached = 0;
   private vhsOverlay: HTMLDivElement | null = null;
@@ -1056,8 +1058,34 @@ export class Game {
       this.oceanFish = new OceanFish(globeRadius, seed, spawnSessionSalt, terrainType, this.audioManager);
       this.scene.add(this.oceanFish.group);
       this.fishCaught = 0;
+      this.boatMysteryAt12Handled = false;
       this.hud.setFishCaught(0);
       this.oceanFish.onCatch = (variant) => {
+        if (variant === "octopus") {
+          this.fishCaught += 1;
+          this.hud.setFishCaught(this.fishCaught);
+          this.audioManager.resumeContextIfNeeded();
+          this.cameraRig.shake(0.02, 0.14);
+          this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.18);
+          const pws = ProgressionManager.loadPlayerWorldState();
+          if (!pws.boatMysteryOctopusEternalFlameClaimed) {
+            this.savePlayerWorldState({
+              eternalFlameCount: (pws.eternalFlameCount ?? 0) + 1,
+              boatMysteryOctopusEternalFlameClaimed: true,
+            });
+            if (this.boatOctopusEternalFlameRewardTimeout != null) {
+              clearTimeout(this.boatOctopusEternalFlameRewardTimeout);
+              this.boatOctopusEternalFlameRewardTimeout = null;
+            }
+            this.boatOctopusEternalFlameRewardTimeout = setTimeout(() => {
+              this.boatOctopusEternalFlameRewardTimeout = null;
+              this.audioManager.playSFX("choir_1", CHOIR_1_SFX_VOLUME);
+              this.eternalFlameUI?.playKingLootSequence();
+            }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
+          }
+          return;
+        }
+
         this.fishCaught += 1;
         this.hud.setFishCaught(this.fishCaught);
         const xp = variant === "large" ? FISH_CATCH_XP * 2 : FISH_CATCH_XP;
@@ -1065,6 +1093,21 @@ export class Game {
         this.audioManager.resumeContextIfNeeded();
         this.cameraRig.shake(0.015, 0.12);
         this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.15);
+
+        if (
+          this.fishCaught === FISH_COUNT_BEFORE_MYSTERY_OCTOPUS &&
+          !this.boatMysteryAt12Handled
+        ) {
+          this.boatMysteryAt12Handled = true;
+          const pws = ProgressionManager.loadPlayerWorldState();
+          const alreadyRewarded = !!pws.boatMysteryOctopusEternalFlameClaimed;
+          if (!alreadyRewarded) {
+            this.oceanFish?.spawnMysteryOctopus(
+              new Vector3().setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+            );
+          }
+          this.hud.showOceanMysteryPresenceHint(alreadyRewarded);
+        }
       };
       this.oceanFish.setFishingLineResolution(this.container.clientWidth, this.container.clientHeight);
     }
@@ -1366,6 +1409,10 @@ export class Game {
     if (this.packageThirdEternalFlameRewardTimeout != null) {
       clearTimeout(this.packageThirdEternalFlameRewardTimeout);
       this.packageThirdEternalFlameRewardTimeout = null;
+    }
+    if (this.boatOctopusEternalFlameRewardTimeout != null) {
+      clearTimeout(this.boatOctopusEternalFlameRewardTimeout);
+      this.boatOctopusEternalFlameRewardTimeout = null;
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
@@ -3927,6 +3974,7 @@ export class Game {
       gremlinKingEternalFlameClaimed: !!prev.gremlinKingEternalFlameClaimed,
       jellyfishSetEternalFlameClaimed: !!prev.jellyfishSetEternalFlameClaimed,
       packageThirdDeliveryEternalFlameClaimed: !!prev.packageThirdDeliveryEternalFlameClaimed,
+      boatMysteryOctopusEternalFlameClaimed: !!prev.boatMysteryOctopusEternalFlameClaimed,
       moonFrozenByEternalFlames:
         overrides.moonFrozenByEternalFlames ?? prev.moonFrozenByEternalFlames ?? false,
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
@@ -4309,6 +4357,10 @@ export class Game {
     if (this.packageThirdEternalFlameRewardTimeout != null) {
       clearTimeout(this.packageThirdEternalFlameRewardTimeout);
       this.packageThirdEternalFlameRewardTimeout = null;
+    }
+    if (this.boatOctopusEternalFlameRewardTimeout != null) {
+      clearTimeout(this.boatOctopusEternalFlameRewardTimeout);
+      this.boatOctopusEternalFlameRewardTimeout = null;
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;

@@ -15,7 +15,7 @@ const GLOW_COLOR_NIGHT = new Color(0x66eeff);
 /** Dusk / evening tint for the same glow (warm orange). */
 const GLOW_COLOR_EVENING = new Color(0xff4400);
 
-export type FishVariant = "normal" | "large";
+export type FishVariant = "normal" | "large" | "octopus";
 
 let sharedShadowTexture: CanvasTexture | null = null;
 let sharedLargeShadowTexture: CanvasTexture | null = null;
@@ -129,6 +129,65 @@ function getSharedLargeFishShadowTexture(): CanvasTexture {
   return tex;
 }
 
+let sharedOctopusShadowTexture: CanvasTexture | null = null;
+let octopusShadowTextureRefCount = 0;
+
+function getSharedOctopusShadowTexture(): CanvasTexture {
+  if (sharedOctopusShadowTexture) return sharedOctopusShadowTexture;
+
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d")!;
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  const ink = "rgba(6, 10, 22, 0.92)";
+  const tent = "rgba(5, 9, 18, 0.88)";
+
+  const cx = 128;
+  const cy = 120;
+
+  ctx.fillStyle = ink;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 38, 32, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.12;
+    ctx.strokeStyle = tent;
+    ctx.lineWidth = 10;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    const r0 = 32;
+    const x0 = cx + Math.cos(a) * r0;
+    const y0 = cy + Math.sin(a) * r0;
+    const len = 48 + (i % 3) * 6;
+    const wobble = i % 2 === 0 ? 0.12 : -0.1;
+    const a2 = a + wobble;
+    const x1 = x0 + Math.cos(a2) * len;
+    const y1 = y0 + Math.sin(a2) * len;
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(
+      x0 + Math.cos(a + 0.4) * (len * 0.5),
+      y0 + Math.sin(a + 0.4) * (len * 0.5),
+      x1,
+      y1,
+    );
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = ink;
+  ctx.beginPath();
+  ctx.ellipse(cx + 28, cy - 2, 18, 16, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.needsUpdate = true;
+  sharedOctopusShadowTexture = tex;
+  return tex;
+}
+
 let sharedGlowTexture: CanvasTexture | null = null;
 let glowTextureRefCount = 0;
 
@@ -193,21 +252,34 @@ const FILL_HALF = BAR_H * 0.5;
  * `shadowGroup` / `barGroup` rotations are set by {@link OceanFish}.
  */
 export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisual {
-  shadowTextureRefCount += 1;
-  glowTextureRefCount += 1;
+  const isOctopus = variant === "octopus";
   const isLarge = variant === "large";
-  const tex = isLarge ? getSharedLargeFishShadowTexture() : getSharedFishShadowTexture();
+  if (isOctopus) {
+    octopusShadowTextureRefCount += 1;
+  } else {
+    shadowTextureRefCount += 1;
+  }
+  glowTextureRefCount += 1;
+  const tex = isOctopus
+    ? getSharedOctopusShadowTexture()
+    : isLarge
+      ? getSharedLargeFishShadowTexture()
+      : getSharedFishShadowTexture();
   const glowTex = getSharedGlowTexture();
 
   const group = new Group();
 
   const shadowGroup = new Group();
-  // Reduce overall shadow + glow size by ~35%
-  shadowGroup.scale.setScalar(isLarge ? 1.5 * 0.65 : 0.65);
+  // Octopus: large silhouette in the water; +X = head (texture drawn with head to +X)
+  shadowGroup.scale.setScalar(
+    isOctopus ? 2.25 * 0.65 : isLarge ? 1.5 * 0.65 : 0.65,
+  );
 
   // Top-view shadow (texture +X forward, ±Y lateral); ~50% of prior footprint
   // 8 segments along X to allow smooth bending of the tail
-  const shadowGeo = new PlaneGeometry(0.12, 0.055, 8, 1);
+  const shadowW = isOctopus ? 0.22 : 0.12;
+  const shadowH = isOctopus ? 0.22 : 0.055;
+  const shadowGeo = new PlaneGeometry(shadowW, shadowH, 8, 1);
   const shadowMat = new MeshBasicMaterial({
     map: tex,
     transparent: true,
@@ -238,7 +310,7 @@ export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisu
   };
   // Bioluminescent night glow — rendered BEFORE the shadow so the dark shadow sits on top.
   // Square plane + square texture → round, blurred halo (not an ellipse).
-  const glowGeo = new PlaneGeometry(0.275, 0.275);
+  const glowGeo = new PlaneGeometry(isOctopus ? 0.42 : 0.275, isOctopus ? 0.42 : 0.275);
   const glowMat = new MeshBasicMaterial({
     map: glowTex,
     color: GLOW_COLOR_NIGHT.clone(),
@@ -342,15 +414,25 @@ export function createFishVisual(variant: FishVariant = "normal"): OceanFishVisu
     barFillGeo.dispose();
     barFillMat.dispose();
 
-    shadowTextureRefCount -= 1;
-    if (shadowTextureRefCount <= 0) {
-      if (sharedShadowTexture) {
-        sharedShadowTexture.dispose();
-        sharedShadowTexture = null;
+    if (isOctopus) {
+      octopusShadowTextureRefCount -= 1;
+      if (octopusShadowTextureRefCount <= 0) {
+        if (sharedOctopusShadowTexture) {
+          sharedOctopusShadowTexture.dispose();
+          sharedOctopusShadowTexture = null;
+        }
       }
-      if (sharedLargeShadowTexture) {
-        sharedLargeShadowTexture.dispose();
-        sharedLargeShadowTexture = null;
+    } else {
+      shadowTextureRefCount -= 1;
+      if (shadowTextureRefCount <= 0) {
+        if (sharedShadowTexture) {
+          sharedShadowTexture.dispose();
+          sharedShadowTexture = null;
+        }
+        if (sharedLargeShadowTexture) {
+          sharedLargeShadowTexture.dispose();
+          sharedLargeShadowTexture = null;
+        }
       }
     }
     glowTextureRefCount -= 1;

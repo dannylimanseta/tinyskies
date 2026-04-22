@@ -245,6 +245,26 @@ export class HUD {
     );
   }
 
+  /**
+   * After 12 fish (boat). Uses a fixed root toast so the message is visible even when #hud
+   * is still hidden (intro) or toggled; does not use the regular centered-toast stack.
+   */
+  showOceanMysteryPresenceHint(rewardAlreadyClaimed: boolean) {
+    const el = document.createElement("div");
+    el.className = "hud-ocean-mystery-toast";
+    el.textContent = rewardAlreadyClaimed
+      ? "The ocean stirs, but you already carry its hidden flame."
+      : "You feel a large presence in the ocean…";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("hud-ocean-mystery-toast--in"));
+    setTimeout(() => {
+      el.classList.remove("hud-ocean-mystery-toast--in");
+      el.classList.add("hud-ocean-mystery-toast--out");
+      setTimeout(() => el.remove(), 500);
+    }, 4200);
+  }
+
   showLanternCelebrate(_count: number) {
     this.showCenteredToast(
       "hud-lantern-celebration",
@@ -796,6 +816,35 @@ export class HUD {
         .hud-gremlin-king-warning-animate {
           transform: translate(-50%, calc(-50% - 78px));
         }
+      }
+
+      .hud-ocean-mystery-toast {
+        position: fixed;
+        top: 42%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.96);
+        max-width: min(22rem, calc(100% - 32px));
+        padding: 10px 14px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.4;
+        text-align: center;
+        color: rgba(220, 245, 255, 0.98);
+        text-shadow: 0 0 20px rgba(40, 160, 255, 0.5), 0 2px 10px rgba(0, 0, 0, 0.55);
+        z-index: 200000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.4s ease-out, transform 0.45s ease-out;
+      }
+      .hud-ocean-mystery-toast--in {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      .hud-ocean-mystery-toast--out {
+        opacity: 0;
+        transform: translate(-50%, -48%) scale(0.99);
+        transition: opacity 0.45s ease-in, transform 0.5s ease-in;
       }
 
       .hud-lantern-celebration {

@@ -98,6 +98,13 @@ function createFishMesh(
   const matBlack = new MeshBasicMaterial({ color: 0x000000 });
   const g = new Group();
 
+  if (variant === "octopus") {
+    // Large purple silhouette; reward is the eternal flame, not a fish — still sells the “pull” moment.
+    const ob = new Color(0x4a2d7a);
+    const ot = new Color(0x352255);
+    return createFishMesh(ob, ot, "large");
+  }
+
   if (variant === "large") {
     // Body (bulkier, taller)
     const body = new Mesh(new SphereGeometry(0.055, 16, 12), matBody);

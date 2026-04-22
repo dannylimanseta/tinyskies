@@ -23,13 +23,18 @@ import {
 } from "./SphericalMath";
 import { isLand } from "./SimplexNoise";
 import type { AudioManager } from "../audio/AudioManager";
-import { createFishVisual, type OceanFishVisual } from "./OceanFishMesh";
+import { createFishVisual, type FishVariant, type OceanFishVisual } from "./OceanFishMesh";
 import { FishCatchVfx } from "./FishCatchVfx";
+export type { FishVariant } from "./OceanFishMesh";
 import { randomOceanQuaternion } from "./Boat";
 import type { UpgradeState } from "./UpgradeManager";
 
 export const FISH_COUNT = 240;
 export const FISH_CATCH_XP = 15;
+/** After this many catches in a session, mystery octopuses may appear (eternal flame reward, once per save). */
+export const FISH_COUNT_BEFORE_MYSTERY_OCTOPUS = 12;
+/** How many “octopus” shadows spawn at once; reeling in one makes the rest vanish. */
+const MYSTERY_OCTOPUS_SPAWN_COUNT = 3;
 
 /** Chord distance (world units) — same convention as SkyJellyfish. */
 const FISH_CATCH_RADIUS = 0.55;
@@ -80,8 +85,6 @@ interface SchoolState {
   heading: number;
   phase: number;
 }
-
-export type FishVariant = "normal" | "large";
 
 interface Fish {
   posQ: Quaternion;
@@ -137,6 +140,10 @@ export class OceanFish {
   private fishMaxConcurrent = 1;
   private respawnSalt = 0;
   private disposed = false;
+  /** Session flag: set once when {@link spawnMysteryOctopus} runs (only one prize per run). */
+  private mysteryOctopusOffered = false;
+  /** Set when any mystery octopus is reeled in; other octopuses are removed that frame. */
+  private mysteryOctopusCleanupAfterCatch = false;
 
   // Dashed fishing range ring — a flat RingGeometry disc oriented tangent to the globe
   // at the boat's position, textured with a dashed pattern. Using a textured mesh
@@ -341,6 +348,47 @@ export class OceanFish {
     return this.catchCount;
   }
 
+  /**
+   * Spawns several large octopus shadows (normal swim speed, slow reel). Catching
+   * one removes the rest for that encounter.
+   */
+  spawnMysteryOctopus(boatWorldPos: Vector3) {
+    if (this.disposed || this.mysteryOctopusOffered) return;
+
+    const rnd = seededRandom(this.seed + this.respawnSalt * 10009 + 7777);
+    const schoolIds = this.pickMysterySchools(boatWorldPos, MYSTERY_OCTOPUS_SPAWN_COUNT, rnd);
+    for (let n = 0; n < MYSTERY_OCTOPUS_SPAWN_COUNT; n++) {
+      const visual = createFishVisual("octopus");
+      this.group.add(visual.group);
+
+      const schoolId = schoolIds[n] ?? this.pickSchoolForMysteryCreature(boatWorldPos, rnd);
+      const ringAngle = (rnd() + n * 0.31) * Math.PI * 2;
+      const spreadRad = 0.12 + 0.88 * rnd();
+
+      const h0 = this.schools[schoolId]!.heading + rnd() * 0.4 + n * 0.17;
+      const fish: Fish = {
+        posQ: new Quaternion(),
+        heading: h0,
+        prevHeading: h0,
+        worldPos: new Vector3(),
+        progress: 0,
+        status: "swimming",
+        phase: 9.11 + n * 0.77,
+        variant: "octopus",
+        visual,
+        respawnT: 0,
+        respawnMoved: false,
+        prevBarZ: new Vector3(0, 0, 1),
+        schoolId,
+        ringAngle,
+        spreadRad,
+      };
+      this.computeFishQFromSchoolInto(fish, fish.posQ);
+      this.fish.push(fish);
+    }
+    this.mysteryOctopusOffered = true;
+  }
+
   private removeActiveCapture(idx: number) {
     const j = this.activeCaptures.indexOf(idx);
     if (j >= 0) this.activeCaptures.splice(j, 1);
@@ -400,6 +448,84 @@ export class OceanFish {
       }
     }
     return bestS;
+  }
+
+  /**
+   * Mystery octopus: place in a school a moderate distance from the boat so it is findable
+   * (farthest school can be on the other side of the globe).
+   */
+  private pickSchoolForMysteryCreature(boatWorldPos: Vector3, rnd: () => number): number {
+    const cands = this.getMysterySchoolCandidates(boatWorldPos);
+    if (cands.length > 0) {
+      return cands[Math.floor(rnd() * cands.length)]!;
+    }
+    return this.pickSchoolForRespawn(boatWorldPos);
+  }
+
+  private getMysterySchoolCandidates(boatWorldPos: Vector3): number[] {
+    const minD = 0.65;
+    const maxD = 2.15;
+    const out: number[] = [];
+    for (let s = 0; s < this.schools.length; s++) {
+      const p = cartesianFromSpherical(this.schools[s]!.centerQ, FISH_SHADOW_ALT, this.globeRadius);
+      const chord = p.distanceTo(boatWorldPos);
+      if (chord >= minD && chord <= maxD) {
+        out.push(s);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Prefer unique schools in the “moderate range” band; add other schools, then
+   * duplicate picks only if the world is too small.
+   */
+  private pickMysterySchools(boatWorldPos: Vector3, count: number, rnd: () => number): number[] {
+    const ring = this.getMysterySchoolCandidates(boatWorldPos);
+    const shuffled = [...ring];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const r = Math.floor(rnd() * (i + 1));
+      const a = shuffled[i]!;
+      shuffled[i] = shuffled[r]!;
+      shuffled[r] = a;
+    }
+    const out: number[] = [];
+    const used = new Set<number>();
+    for (const s of shuffled) {
+      if (out.length >= count) break;
+      if (used.has(s)) continue;
+      used.add(s);
+      out.push(s);
+    }
+    for (let s = 0; s < this.schools.length && out.length < count; s++) {
+      if (used.has(s)) continue;
+      used.add(s);
+      out.push(s);
+    }
+    while (out.length < count) {
+      out.push(Math.floor(rnd() * this.schools.length));
+    }
+    return out.slice(0, count);
+  }
+
+  /** Remove every mystery-octopus fish (caught or not). */
+  private removeAllMysteryOctopuses() {
+    for (let j = this.fish.length - 1; j >= 0; j--) {
+      if (this.fish[j]!.variant !== "octopus") continue;
+      const f = this.fish[j]!;
+      this.group.remove(f.visual.group);
+      f.visual.dispose();
+      this.fish.splice(j, 1);
+      for (let k = 0; k < this.activeCaptures.length; k++) {
+        const idx = this.activeCaptures[k]!;
+        if (idx === j) {
+          this.activeCaptures.splice(k, 1);
+          k--;
+        } else if (idx > j) {
+          this.activeCaptures[k] = idx - 1;
+        }
+      }
+    }
   }
 
   update(
@@ -523,8 +649,14 @@ export class OceanFish {
 
       // ── Capturing — flee + progress ──
       if (f.status === "capturing") {
-        const speedMult = f.variant === "large" ? 0.9 : 1.0;
-        const fillMult = f.variant === "large" ? (1 / 1.5) : 1.0;
+        const speedMult =
+          f.variant === "octopus" ? 1.0 : f.variant === "large" ? 0.9 : 1.0;
+        const fillMult =
+          f.variant === "octopus"
+            ? 1 / 2.4
+            : f.variant === "large"
+              ? 1 / 1.5
+              : 1.0;
         const frame = tangentFrame(f.posQ);
 
         // Base wander turn (faster, more erratic when hooked)
@@ -570,12 +702,16 @@ export class OceanFish {
             this.catchCount += 1;
             this.catchVfx.spawn(this.group.parent, wp.clone(), boatTargetPos, f.variant);
             this.onCatch?.(f.variant);
-            f.status = "respawning";
-            f.respawnT = 0;
-            f.respawnMoved = false;
-            f.progress = 0;
-            f.visual.setProgress(0);
             this.removeActiveCapture(i);
+            if (f.variant === "octopus") {
+              this.mysteryOctopusCleanupAfterCatch = true;
+            } else {
+              f.status = "respawning";
+              f.respawnT = 0;
+              f.respawnMoved = false;
+              f.progress = 0;
+              f.visual.setProgress(0);
+            }
           }
         } else {
           f.progress = Math.max(0, f.progress - FISH_DECAY_RATE * dt);
@@ -587,6 +723,11 @@ export class OceanFish {
       }
 
       this.applyFishTransform(f, boatRadial, cameraPos, dayWeight, nightWeight);
+    }
+
+    if (this.mysteryOctopusCleanupAfterCatch) {
+      this.mysteryOctopusCleanupAfterCatch = false;
+      this.removeAllMysteryOctopuses();
     }
 
     // ── Dotted range ring ────────────────────────────────────────
