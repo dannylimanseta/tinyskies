@@ -2539,9 +2539,9 @@ export class Game {
     let twisterVol = 0;
     if (this.waterSpouts) {
       const dist = this.waterSpouts.getClosestDistance(questPlayerPos);
-      if (dist < 8.0) {
+      if (dist < 3.0) {
         // Ramp volume up as we get closer (max volume at distance 0.5)
-        twisterVol = Math.max(0, Math.min(1, 1.0 - (dist - 0.5) / 7.5));
+        twisterVol = Math.max(0, Math.min(1, 1.0 - (dist - 0.5) / 2.5));
         // Scale down overall volume so it's not deafening
         twisterVol *= 0.6;
       }
