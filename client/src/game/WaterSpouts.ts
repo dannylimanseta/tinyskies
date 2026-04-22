@@ -42,19 +42,18 @@ export class WaterSpouts {
       side: DoubleSide,
       blending: NormalBlending,
     });
+    mat.defines = { USE_UV: "" };
 
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.time = this.timeU;
       shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
         `#include <common>
-        uniform float time;
-        varying vec2 vUv2;`,
+        uniform float time;`,
       );
       shader.vertexShader = shader.vertexShader.replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
-        vUv2 = uv;
         
         // Twisting
         float twist = uv.y * 6.0 + time * 1.5;
@@ -75,7 +74,6 @@ export class WaterSpouts {
         "#include <common>",
         `#include <common>
         uniform float time;
-        varying vec2 vUv2;
         
         // Simple 2D noise
         vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
@@ -111,7 +109,7 @@ export class WaterSpouts {
         `#include <color_fragment>
         
         // scrolling UVs
-        vec2 suv = vUv2;
+        vec2 suv = vUv;
         suv.x += time * 3.0; // fast spin
         suv.y -= time * 2.5; // fast updraft
         
@@ -120,10 +118,10 @@ export class WaterSpouts {
         float combined = n * 0.7 + n2 * 0.3;
         
         // fade top and bottom
-        float yFade = smoothstep(0.0, 0.1, vUv2.y) * smoothstep(1.0, 0.6, vUv2.y);
+        float yFade = smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
         
         // edge fade (fresnel-ish using uv.x)
-        float edge = sin(vUv2.x * 3.14159);
+        float edge = sin(vUv.x * 3.14159);
         edge = pow(edge, 0.6);
         
         diffuseColor.a *= combined * yFade * edge * 1.8;
