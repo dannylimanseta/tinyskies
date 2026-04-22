@@ -2543,7 +2543,7 @@ export class Game {
         // Ramp volume up as we get closer (max volume at distance 0.5)
         twisterVol = Math.max(0, Math.min(1, 1.0 - (dist - 0.5) / 2.5));
         // Scale down overall volume so it's not deafening
-        twisterVol *= 0.6;
+        twisterVol *= 0.45;
       }
     }
     this.audioManager.setLoopVolume("twister", twisterVol);
