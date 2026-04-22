@@ -213,7 +213,7 @@ export class Carpet {
     const targetPitch = -CLIMB_PITCH_MAX * Math.max(0, climbRate);
     this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
 
-    const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
+    const targetBank = Math.max(-MAX_BANK, Math.min(MAX_BANK, -this.turnInputSmoothed * MAX_BANK * 0.5));
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * this.upgrades.bankMult * dt);
 
     const targetCurl = this.speedRatio * Carpet.TASSEL_CURL_MAX;

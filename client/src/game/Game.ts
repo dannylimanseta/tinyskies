@@ -2170,9 +2170,9 @@ export class Game {
     if (this.twisterSpinTimer > 0) {
       this.twisterSpinTimer -= dt;
       
-      let spinInput = 2.5; // Plane
-      if (this.localPlayer.vehicle === "carpet") spinInput = 1.0;
-      else if (this.localPlayer.vehicle === "boat") spinInput = 1.5;
+      let spinInput = 6.0; // Plane
+      if (this.localPlayer.vehicle === "carpet") spinInput = 6.0;
+      else if (this.localPlayer.vehicle === "boat") spinInput = 5.0;
 
       turnRate = spinInput; // Force spin
       forward = false; // Kill forward input

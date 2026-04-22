@@ -196,7 +196,7 @@ export class Plane {
     const arcAngle = (this.speed * dt) / this.globeRadius;
     this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
 
-    const targetBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
+    const targetBank = Math.max(-MAX_BANK, Math.min(MAX_BANK, -this.turnInputSmoothed * MAX_BANK * 0.5));
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, effBankResp * dt);
 
     if (this.group.userData.propeller) {
