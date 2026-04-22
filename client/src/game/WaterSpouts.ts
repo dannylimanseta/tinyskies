@@ -19,10 +19,10 @@ import { moveOnSphere, quaternionFromSurfaceNormal, seededRandom } from "./Spher
 import type { Globe } from "./Globe";
 
 const SPOUT_COUNT = 3;
-const SPOUT_HEIGHT = 2.2;
-const SPOUT_RADIUS_TOP = 0.35;
-const SPOUT_RADIUS_BOT = 0.08;
-const SPLASH_COUNT = 900;
+const SPOUT_HEIGHT = 1.1;
+const SPOUT_RADIUS_TOP = 0.175;
+const SPOUT_RADIUS_BOT = 0.04;
+const SPLASH_COUNT = 1500;
 const SPLASH_LIFE = 0.6;
 
 type Splash = {
@@ -225,7 +225,7 @@ export class WaterSpouts {
     this.splashMat = new PointsMaterial({
       map: makeSplashTexture(),
       color: 0xddffff,
-      size: 0.08,
+      size: 0.04,
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -345,9 +345,9 @@ export class WaterSpouts {
     this.timeU.value += dt;
 
     this.splashEmitAccum += dt;
-    const emitCount = Math.floor(this.splashEmitAccum * 90); // 90 particles per second per spout
+    const emitCount = Math.floor(this.splashEmitAccum * 150); // 150 particles per second per spout
     if (emitCount > 0) {
-      this.splashEmitAccum -= emitCount / 90;
+      this.splashEmitAccum -= emitCount / 150;
     }
 
     // Slowly wander on the ocean
