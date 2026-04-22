@@ -40,6 +40,8 @@ export interface SavedPlayerWorldState {
   gremlinKingEternalFlameClaimed?: boolean;
   /** Once true, collecting all six sky jellyfish no longer awards a bonus eternal flame. */
   jellyfishSetEternalFlameClaimed?: boolean;
+  /** After the 3rd package delivery, further deliveries never award the heirloom eternal flame. */
+  packageThirdDeliveryEternalFlameClaimed?: boolean;
   /** All five braziers lit with eternal flames — moon approach frozen indefinitely. */
   moonFrozenByEternalFlames?: boolean;
   /** Saved moon `elapsed` seconds when frozen (restored each run). */

@@ -1,3 +1,5 @@
+import { ProgressionManager } from "./ProgressionManager";
+
 function seededRandom(seed: number): () => number {
   let s = seed;
   return () => {
@@ -227,6 +229,20 @@ const DELIVERY_TEMPLATES = [
   "A true sky courier! {sender} was right to trust you.",
 ];
 
+/**
+ * 0-based quest index. At this index, the **delivery** step is the 3rd completed package (NPC gives heirloom line).
+ * Paired with {@link THIRD_PACKAGE_HEIRLOOM_DELIVERY_TEMPLATES} and third-delivery eternal flame in Game.
+ */
+export const THIRD_PACKAGE_DELIVERY_INDEX = 2;
+
+const THIRD_PACKAGE_HEIRLOOM_DELIVERY_TEMPLATES = [
+  "You kept your word, pilot — and I keep mine. This is the eternal flame from my own hearth: my family passed it down for generations. I want you to have it. You've earned a piece of us.",
+  "The box was a formality. The true gift is this: our family heirloom, an eternal flame that never left our line — until now. Please take it. I'd rather it flew with you than sat on my shelf.",
+  "{sender} said you were the one to trust, and I believe them. This flame has warmed three generations. Carry it, pilot — the sky is your hearth now — and thank you for the delivery.",
+  "My grandmother swore to give this away only to someone who'd run three perfect errands for the village. You just did. It's an eternal flame, our oldest treasure. It's yours, truly.",
+  "Here — the parcel was nothing next to this. The eternal flame in my family, the one story we're proudest of. I'm handing it to you. Treat it as your own; you've saved more than a weekend with those flights.",
+];
+
 export interface QuestDialogue {
   senderName: string;
   receiverName: string;
@@ -270,6 +286,17 @@ export function generateQuestDialogue(
 
   let deliveryLine = deliveryPool[Math.floor(rand() * deliveryPool.length)];
   deliveryLine = deliveryLine.replace(/\{sender\}/g, senderName);
+
+  if (
+    questIndex === THIRD_PACKAGE_DELIVERY_INDEX &&
+    !ProgressionManager.loadPlayerWorldState().packageThirdDeliveryEternalFlameClaimed
+  ) {
+    const heirloomLine =
+      THIRD_PACKAGE_HEIRLOOM_DELIVERY_TEMPLATES[
+        Math.floor(rand() * THIRD_PACKAGE_HEIRLOOM_DELIVERY_TEMPLATES.length)
+      ]!;
+    deliveryLine = heirloomLine.replace(/\{sender\}/g, senderName);
+  }
 
   return { senderName, receiverName, pickupLine, deliveryLine };
 }

@@ -212,7 +212,16 @@ export class PackageQuestManager {
     const arcWorld = this.globeRadius * Math.acos(cos);
     return Math.max(0, Math.round(arcWorld * WORLD_ARC_TO_METRES));
   }
-  onDelivered: ((destName: string, npcName: string, dialogue: string, xp: number) => void) | null = null;
+  onDelivered:
+    | ((
+        destName: string,
+        npcName: string,
+        dialogue: string,
+        xp: number,
+        /** 0 = first quest completed, 1 = second, 2 = third, … */
+        completedQuestIndex: number,
+      ) => void)
+    | null = null;
   onProgressChange: ((progress: number, phase: "pickup" | "deliver") => void) | null = null;
 
   constructor(
@@ -349,7 +358,14 @@ export class PackageQuestManager {
       this.onProgressChange?.(0, "deliver");
 
       const dialogue = generateQuestDialogue(this.seed, this.questIndex, this.destination!.name, this.moonProgress);
-      this.onDelivered?.(this.destination!.name, dialogue.receiverName, dialogue.deliveryLine, DELIVERY_XP);
+      const completedQuestIndex = this.questIndex;
+      this.onDelivered?.(
+        this.destination!.name,
+        dialogue.receiverName,
+        dialogue.deliveryLine,
+        DELIVERY_XP,
+        completedQuestIndex,
+      );
 
       this.lastDestination = this.destination;
       this.questIndex++;

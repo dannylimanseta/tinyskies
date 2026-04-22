@@ -76,7 +76,15 @@ import { Braziers, BRAZIER_COUNT, type SavedBrazierState } from "./Braziers";
 import { SkyGremlins, SKY_GREMLIN_KING_XP, SKY_GREMLIN_XP } from "./SkyGremlins";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
-import { isNpcMale, pickBalloonGreeting, pickPanicLine, pickObservatoryGreeting, pickStonehengeWhisper, pickBrazierWhisper } from "./PackageDialogue";
+import {
+  isNpcMale,
+  pickBalloonGreeting,
+  pickPanicLine,
+  pickObservatoryGreeting,
+  pickStonehengeWhisper,
+  pickBrazierWhisper,
+  THIRD_PACKAGE_DELIVERY_INDEX,
+} from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
 import { MoonThreat } from "./MoonThreat";
@@ -292,6 +300,7 @@ export class Game {
   private lastGremlinHitSfxAt = 0;
   private kingEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private jellyfishEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
+  private packageThirdEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -1221,7 +1230,7 @@ export class Game {
         if (dm !== null) this.packageQuestHUD.setDeliveryDistanceMetres(dm);
       };
 
-      this.packageQuest.onDelivered = (_destName, npcName, dialogue, xp) => {
+      this.packageQuest.onDelivered = (_destName, npcName, dialogue, xp, completedQuestIndex) => {
         const cheerPick =
           CHEER_SFX_IDS[Math.floor(Math.random() * CHEER_SFX_IDS.length)]!;
         this.audioManager.playSFX(cheerPick, CHEER_SFX_VOLUME);
@@ -1229,6 +1238,25 @@ export class Game {
         this.packageQuestHUD.hideDeliveryTarget();
 
         this.awardXP("delivery", xp);
+
+        if (completedQuestIndex === THIRD_PACKAGE_DELIVERY_INDEX) {
+          const ws = ProgressionManager.loadPlayerWorldState();
+          if (!ws.packageThirdDeliveryEternalFlameClaimed) {
+            this.savePlayerWorldState({
+              eternalFlameCount: (ws.eternalFlameCount ?? 0) + 1,
+              packageThirdDeliveryEternalFlameClaimed: true,
+            });
+            if (this.packageThirdEternalFlameRewardTimeout != null) {
+              clearTimeout(this.packageThirdEternalFlameRewardTimeout);
+              this.packageThirdEternalFlameRewardTimeout = null;
+            }
+            this.packageThirdEternalFlameRewardTimeout = setTimeout(() => {
+              this.packageThirdEternalFlameRewardTimeout = null;
+              this.audioManager.playSFX("choir_1", CHOIR_1_SFX_VOLUME);
+              this.eternalFlameUI?.playKingLootSequence();
+            }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
+          }
+        }
       };
 
       this.packageQuest.onProgressChange = (progress) => {
@@ -1334,6 +1362,10 @@ export class Game {
     if (this.jellyfishEternalFlameRewardTimeout != null) {
       clearTimeout(this.jellyfishEternalFlameRewardTimeout);
       this.jellyfishEternalFlameRewardTimeout = null;
+    }
+    if (this.packageThirdEternalFlameRewardTimeout != null) {
+      clearTimeout(this.packageThirdEternalFlameRewardTimeout);
+      this.packageThirdEternalFlameRewardTimeout = null;
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
@@ -3894,6 +3926,7 @@ export class Game {
       eternalFlameCount: prev.eternalFlameCount ?? 0,
       gremlinKingEternalFlameClaimed: !!prev.gremlinKingEternalFlameClaimed,
       jellyfishSetEternalFlameClaimed: !!prev.jellyfishSetEternalFlameClaimed,
+      packageThirdDeliveryEternalFlameClaimed: !!prev.packageThirdDeliveryEternalFlameClaimed,
       moonFrozenByEternalFlames:
         overrides.moonFrozenByEternalFlames ?? prev.moonFrozenByEternalFlames ?? false,
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
@@ -4272,6 +4305,10 @@ export class Game {
     if (this.jellyfishEternalFlameRewardTimeout != null) {
       clearTimeout(this.jellyfishEternalFlameRewardTimeout);
       this.jellyfishEternalFlameRewardTimeout = null;
+    }
+    if (this.packageThirdEternalFlameRewardTimeout != null) {
+      clearTimeout(this.packageThirdEternalFlameRewardTimeout);
+      this.packageThirdEternalFlameRewardTimeout = null;
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
