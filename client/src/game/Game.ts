@@ -1363,7 +1363,6 @@ export class Game {
 
     this.clock.getDelta();
     this.running = true;
-    window.addEventListener("keydown", this.onDebugKey);
     this.tick();
   }
 
@@ -1730,7 +1729,6 @@ export class Game {
     if (this.returningToMenuAfterMoon) return;
     this.returningToMenuAfterMoon = true;
     this.running = false;
-    window.removeEventListener("keydown", this.onDebugKey);
 
     await this.showMoonEpitaphOverlay();
     await this.showMoonCreditsOverlay();
@@ -2588,31 +2586,6 @@ export class Game {
     }
     this.lensFlare?.render(this.renderer);
     this.rainOverlay?.render(this.renderer);
-  };
-
-  /* ── Debug ──────────────────────────────────────────────────── */
-
-  private onDebugKey = (e: KeyboardEvent) => {
-    if (e.key === "q" || e.key === "Q") {
-      if (this.gamePhase !== "flying") return;
-      // Q: boat — spawn mystic octopuses near the player. Shift+Q: moonstone union (other vehicles).
-      if (this.oceanFish && this.localPlayer instanceof Boat && !e.shiftKey) {
-        this.oceanFish.debugSpawnMysteryOctopusesNearPlayer(
-          this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
-        );
-        return;
-      }
-      if (e.shiftKey || !(this.oceanFish && this.localPlayer instanceof Boat)) {
-        this.startMoonstoneUnionCinematic();
-      }
-    }
-    if (e.key === "m" || e.key === "M") {
-      this.moonThreat?.jumpTo(0.83);
-    }
-    if (e.key === "r" || e.key === "R") {
-      if (!this.braziers) return;
-      this.braziers.debugLightAll();
-    }
   };
 
   /* ── Moon impact cinematic ────────────────────────────────────── */

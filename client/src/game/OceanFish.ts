@@ -360,24 +360,6 @@ export class OceanFish {
     this.spawnMysteryOctopusCluster(boatWorldPos, schoolIds, rnd);
   }
 
-  /**
-   * Debug: clear any mystery octopuses and place a new set as close to the boat as
-   * school placement allows (fishing still works; does not require 12 fish).
-   */
-  debugSpawnMysteryOctopusesNearPlayer(boatWorldPos: Vector3) {
-    if (this.disposed) return;
-    this.removeAllMysteryOctopuses();
-    this.mysteryOctopusOffered = false;
-    const salt = (performance.now() * 0.001) ^ (this.fish.length * 1337);
-    const rnd = seededRandom(this.seed + salt);
-    const schoolIds = this.pickMysterySchoolsDebugNear(
-      boatWorldPos,
-      MYSTERY_OCTOPUS_SPAWN_COUNT,
-      rnd,
-    );
-    this.spawnMysteryOctopusCluster(boatWorldPos, schoolIds, rnd);
-  }
-
   private spawnMysteryOctopusCluster(
     boatWorldPos: Vector3,
     schoolIds: number[],
@@ -542,34 +524,6 @@ export class OceanFish {
     for (let s = 0; s < this.schools.length && out.length < count; s++) {
       if (used.has(s)) continue;
       used.add(s);
-      out.push(s);
-    }
-    while (out.length < count) {
-      out.push(Math.floor(rnd() * this.schools.length));
-    }
-    return out.slice(0, count);
-  }
-
-  /**
-   * Closest water schools to the player (for debug spawn). Skips near-zero
-   * distance to avoid the boat’s own cell.
-   */
-  private pickMysterySchoolsDebugNear(
-    boatWorldPos: Vector3,
-    count: number,
-    rnd: () => number,
-  ): number[] {
-    const scored: { s: number; d: number }[] = [];
-    for (let s = 0; s < this.schools.length; s++) {
-      const p = cartesianFromSpherical(this.schools[s]!.centerQ, FISH_SHADOW_ALT, this.globeRadius);
-      const chord = p.distanceTo(boatWorldPos);
-      if (chord < 0.2) continue;
-      scored.push({ s, d: chord });
-    }
-    scored.sort((a, b) => a.d - b.d);
-    const out: number[] = [];
-    for (const { s } of scored) {
-      if (out.length >= count) break;
       out.push(s);
     }
     while (out.length < count) {

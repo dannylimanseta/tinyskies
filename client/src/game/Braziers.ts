@@ -866,17 +866,6 @@ export class Braziers {
     return this.states.every((s) => s.lit && s.eternal);
   }
 
-  /** Debug: force every brazier lit with a full burn (visual + progress). */
-  debugLightAll() {
-    const end = Date.now() + BRAZIER_BURN_MS;
-    for (const s of this.states) {
-      s.lit = true;
-      s.burnEndsAtMs = end;
-      s.fadeInT = 0;
-      s.fadeOutT = 0;
-    }
-  }
-
   update(
     dt: number,
     playerWorldPos: Vector3,

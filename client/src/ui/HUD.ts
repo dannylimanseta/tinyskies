@@ -4,7 +4,6 @@ import { CAMPSITE_HOME_ENABLED } from "../config/features";
 export class HUD {
   private el: HTMLDivElement;
   private hidden = false;
-  private onKey: (e: KeyboardEvent) => void;
   private onResize: () => void;
   private onFullscreenChange: () => void;
 
@@ -43,16 +42,6 @@ export class HUD {
     this.onResize = () => this.syncFullscreenButtonState();
     this.onFullscreenChange = () => this.syncFullscreenButtonState();
 
-    this.onKey = (e: KeyboardEvent) => {
-      if (e.key === "h" || e.key === "H") {
-        this.hidden = !this.hidden;
-        this.el.style.display = this.hidden ? "none" : "";
-      }
-      if (e.key === "m" || e.key === "M") {
-        this.muteBtn?.click();
-      }
-    };
-    window.addEventListener("keydown", this.onKey);
     window.addEventListener("resize", this.onResize);
     document.addEventListener("fullscreenchange", this.onFullscreenChange);
     document.addEventListener("webkitfullscreenchange", this.onFullscreenChange);
@@ -1488,7 +1477,6 @@ export class HUD {
   }
 
   dispose() {
-    window.removeEventListener("keydown", this.onKey);
     window.removeEventListener("resize", this.onResize);
     document.removeEventListener("fullscreenchange", this.onFullscreenChange);
     document.removeEventListener("webkitfullscreenchange", this.onFullscreenChange);
