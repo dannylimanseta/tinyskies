@@ -377,6 +377,18 @@ export class WaterSpouts {
     this.updateSplash(dt);
   }
 
+  public checkCollision(playerPos: Vector3, radius: number): boolean {
+    if (this.disposed) return false;
+    for (const spout of this.spouts) {
+      const spoutPos = new Vector3(0, 1, 0).applyQuaternion(spout.q).multiplyScalar(this.globe.radius);
+      // Simple 3D distance check, ignoring height for now since spouts are tall
+      if (playerPos.distanceTo(spoutPos) < radius) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   dispose() {
     this.disposed = true;
     for (const spout of this.spouts) {

@@ -296,6 +296,7 @@ export class Game {
   private lanternClusters: FloatingLanterns[] = [];
   private fireflyClusters: FireflyCluster[] = [];
   private waterSpouts: WaterSpouts | null = null;
+  private twisterSpinTimer = 0;
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
   private skyGremlins: SkyGremlins | null = null;
@@ -2156,8 +2157,24 @@ export class Game {
       this.portalInteractionSuppressTimer = Math.max(0, this.portalInteractionSuppressTimer - dt);
     }
 
-    const { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
+    let { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
+
+    // Twister Spin Effect
+    if (this.waterSpouts) {
+      const playerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      if (this.waterSpouts.checkCollision(playerPos, 0.45)) {
+        this.twisterSpinTimer = 1.5; // 1.5 seconds of spinning
+      }
+    }
+    if (this.twisterSpinTimer > 0) {
+      this.twisterSpinTimer -= dt;
+      turnRate = 12.0; // Force a very fast spin
+      forward = false; // Kill forward input
+      brake = true;    // Force brake
+      this.cameraRig.shake(0.01, 0.2); // Shake camera
+    }
+
     this.localPlayer.visibility = 1;
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, paintball, descend);
 
