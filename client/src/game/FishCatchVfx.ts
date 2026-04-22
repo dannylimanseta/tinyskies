@@ -16,6 +16,7 @@ import {
   Object3D,
   Points,
   PointsMaterial,
+  Quaternion,
   SRGBColorSpace,
   SphereGeometry,
   Vector3,
@@ -72,6 +73,76 @@ function splashTex(): CanvasTexture {
   return sharedSplashTex;
 }
 
+// ── Reusable temporaries for octopus arm orientation ─────────────────────
+const _tentDir = new Vector3();
+const _yUp = new Vector3(0, 1, 0);
+const _tentQ = new Quaternion();
+
+/**
+ * Procedural octopus model facing +X (mantle tip = direction of travel during the arc).
+ * 8 arms fan radially from the -X face; alternating primary (longer) & secondary arms.
+ */
+function createOctopusMesh(): { group: Group; matBody: MeshBasicMaterial; matTail: MeshBasicMaterial } {
+  const matBody = new MeshBasicMaterial({
+    color: 0x5a1f82, transparent: true, opacity: 1, depthTest: true, depthWrite: true,
+  });
+  const matArm = new MeshBasicMaterial({
+    color: 0x7d3db8, transparent: true, opacity: 1, depthTest: true, depthWrite: true,
+  });
+  const matWhite = new MeshBasicMaterial({ color: 0xf5eeff });
+  const matPupil = new MeshBasicMaterial({ color: 0x080212 });
+
+  const g = new Group();
+
+  // Head / body sphere
+  g.add(new Mesh(new SphereGeometry(0.046, 16, 12), matBody));
+
+  // Mantle sac — elongated teardrop pointing forward (+X)
+  const mantle = new Mesh(new SphereGeometry(0.05, 16, 12), matBody);
+  mantle.scale.set(2.0, 1.25, 1.25);
+  mantle.position.set(0.072, 0.01, 0);
+  g.add(mantle);
+
+  // Mantle tip (blunt rounded point)
+  const tip = new Mesh(new SphereGeometry(0.022, 12, 10), matBody);
+  tip.scale.set(1, 0.8, 0.8);
+  tip.position.set(0.165, 0.01, 0);
+  g.add(tip);
+
+  // Eyes — large and expressive, one each side
+  for (const side of [1, -1] as const) {
+    const eye = new Mesh(new SphereGeometry(0.014, 10, 10), matWhite);
+    eye.position.set(0.034, 0.022, side * 0.038);
+    g.add(eye);
+    const pupil = new Mesh(new SphereGeometry(0.0075, 8, 8), matPupil);
+    pupil.position.set(0.043, 0.022, side * 0.044);
+    g.add(pupil);
+  }
+
+  // 8 arms radiating from the -X face; alternate primary (long/thick) & secondary (short/thin)
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const fy = Math.cos(angle);
+    const fz = Math.sin(angle);
+    const isPrimary = i % 2 === 0;
+    const armLen = isPrimary ? 0.15 : 0.108;
+    const armRad = isPrimary ? 0.013 : 0.009;
+    // Primary arms splay wider; secondary stay tighter
+    const spread = isPrimary ? 0.92 : 0.62;
+
+    _tentDir.set(-0.48, fy * spread, fz * spread).normalize();
+    _tentQ.setFromUnitVectors(_yUp, _tentDir);
+
+    const arm = new Mesh(new ConeGeometry(armRad, armLen, 6), matArm);
+    arm.position.set(-0.035, fy * 0.022, fz * 0.022);
+    arm.quaternion.copy(_tentQ);
+    g.add(arm);
+  }
+
+  g.scale.setScalar(FISH_GROUP_SCALE * 1.65);
+  return { group: g, matBody, matTail: matArm };
+}
+
 /**
  * Cartoon fish facing +X: fusiform body, dorsal + paired fins, forked tail.
  */
@@ -98,12 +169,7 @@ function createFishMesh(
   const matBlack = new MeshBasicMaterial({ color: 0x000000 });
   const g = new Group();
 
-  if (variant === "octopus") {
-    // Large purple silhouette; reward is the eternal flame, not a fish — still sells the “pull” moment.
-    const ob = new Color(0x4a2d7a);
-    const ot = new Color(0x352255);
-    return createFishMesh(ob, ot, "large");
-  }
+  if (variant === "octopus") return createOctopusMesh();
 
   if (variant === "large") {
     // Body (bulkier, taller)
