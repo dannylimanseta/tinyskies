@@ -39,13 +39,21 @@ function ensureSelfieStyles() {
 
     .hotspring-selfie-overlay {
       position: fixed;
-      inset: 0;
+      left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+      min-height: -webkit-fill-available;
       z-index: 190;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
-        max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      box-sizing: border-box;
+      padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px))
+        max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
       background: rgba(0, 0, 0, 0.55);
       pointer-events: none;
       opacity: 0;
@@ -60,7 +68,12 @@ function ensureSelfieStyles() {
 
     .hotspring-selfie-stack {
       position: relative;
-      display: inline-block;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      max-width: 100%;
+      margin: 0 auto;
       transform-origin: center center;
       transition: transform ${SELFIE_EXIT_MS}ms cubic-bezier(0.4, 0, 0.2, 1),
         opacity ${SELFIE_EXIT_MS}ms ease;

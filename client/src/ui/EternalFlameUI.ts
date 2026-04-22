@@ -45,11 +45,23 @@ function ensureStyles() {
     }
     .eternal-flame-overlay {
       position: fixed;
-      inset: 0;
+      left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+      min-height: -webkit-fill-available;
       z-index: 195;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-sizing: border-box;
+      padding: max(12px, env(safe-area-inset-top, 0px))
+        max(12px, env(safe-area-inset-right, 0px))
+        max(12px, env(safe-area-inset-bottom, 0px))
+        max(12px, env(safe-area-inset-left, 0px));
       background: rgba(0, 0, 0, 0.52);
       pointer-events: none;
       opacity: 0;
@@ -62,6 +74,9 @@ function ensureStyles() {
       align-items: center;
       justify-content: center;
       gap: 18px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .eternal-flame-loot-message {
       margin: 0;
@@ -84,9 +99,13 @@ function ensureStyles() {
     }
     .eternal-flame-stack {
       position: relative;
-      display: inline-block;
+      display: block;
+      flex-shrink: 0;
       width: ${PREVIEW_PX}px;
+      max-width: min(${PREVIEW_PX}px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
       height: ${PREVIEW_PX}px;
+      max-height: min(${PREVIEW_PX}px, 72vh);
+      margin: 0 auto;
     }
     .eternal-flame-starburst {
       position: absolute;
@@ -350,7 +369,7 @@ export class EternalFlameUI {
     inner.appendChild(stack);
     inner.appendChild(msg);
     overlay.appendChild(inner);
-    this.container.appendChild(overlay);
+    document.body.appendChild(overlay);
 
     this.resizeRenderer(PREVIEW_PX, PREVIEW_PX);
     requestAnimationFrame(() => {
