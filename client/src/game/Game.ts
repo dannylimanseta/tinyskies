@@ -2169,7 +2169,12 @@ export class Game {
     }
     if (this.twisterSpinTimer > 0) {
       this.twisterSpinTimer -= dt;
-      turnRate = 12.0; // Force a very fast spin
+      
+      let spinInput = 4.0; // Plane
+      if (this.localPlayer.vehicle === "carpet") spinInput = 1.8;
+      else if (this.localPlayer.vehicle === "boat") spinInput = 3.0;
+
+      turnRate = spinInput; // Force spin
       forward = false; // Kill forward input
       brake = true;    // Force brake
       this.cameraRig.shake(0.01, 0.2); // Shake camera
