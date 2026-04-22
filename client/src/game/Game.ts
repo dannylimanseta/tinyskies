@@ -2504,6 +2504,7 @@ export class Game {
       this.localPlayer.heading,
       questPlayerPos,
     );
+    this.waterSpouts?.update(dt);
 
     const moonstoneProgress = this.updateMoonstoneRuins(questPlayerPos, !portalInteractionSuppressed);
     const moonstoneRumbleVol =
