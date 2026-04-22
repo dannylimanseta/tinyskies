@@ -48,6 +48,7 @@ import { PaintballSystem } from "./PaintballSystem";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
+import { WaterSpouts } from "./WaterSpouts";
 import { CarpetTrail } from "./CarpetTrail";
 import { CarpetWake } from "./CarpetWake";
 import { CarpetLeaves } from "./CarpetLeaves";
@@ -294,6 +295,7 @@ export class Game {
   private rainbowArches: RainbowArch[] = [];
   private lanternClusters: FloatingLanterns[] = [];
   private fireflyClusters: FireflyCluster[] = [];
+  private waterSpouts: WaterSpouts | null = null;
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
   private skyGremlins: SkyGremlins | null = null;
@@ -1193,6 +1195,9 @@ export class Game {
       this.fireflyClusters.push(new FireflyCluster(this.scene, globeRadius, seed, terrainType, fi));
     }
 
+    this.waterSpouts = new WaterSpouts(this.globe, seed);
+    this.scene.add(this.waterSpouts.group);
+
     this.ensureBraziersSpawned();
     this.restorePlayerWorldState();
     this.eternalFlameUI = new EternalFlameUI(this.container, this.hud.root);
@@ -1415,6 +1420,8 @@ export class Game {
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
+    this.waterSpouts?.dispose();
+    this.waterSpouts = null;
     this.skyJellyfish?.dispose();
     this.skyJellyfish = null;
     this.jellyfishCaptureRing?.dispose();
@@ -2024,6 +2031,7 @@ export class Game {
         this.localPlayer.heading,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       );
+      this.waterSpouts?.update(dt);
       this.skyJellyfish?.update(
         dt,
         this.localPlayer.group.matrixWorld,
@@ -2083,6 +2091,7 @@ export class Game {
         this.localPlayer.heading,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       );
+      this.waterSpouts?.update(dt);
       this.skyJellyfish?.update(
         dt,
         this.localPlayer.group.matrixWorld,
@@ -2115,6 +2124,7 @@ export class Game {
         this.localPlayer.heading,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       );
+      this.waterSpouts?.update(dt);
       this.skyJellyfish?.update(
         dt,
         this.localPlayer.group.matrixWorld,
@@ -4345,6 +4355,8 @@ export class Game {
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
+    this.waterSpouts?.dispose();
+    this.waterSpouts = null;
     this.skyJellyfish?.dispose();
     this.skyJellyfish = null;
     this.jellyfishCaptureRing?.dispose();

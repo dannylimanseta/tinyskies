@@ -366,7 +366,7 @@ export class Globe {
     return this.sampleTerrainAt(normal.x, normal.y, normal.z);
   }
 
-  private waterRatioAround(normal: Vector3, sampleDist: number, checks: number): number {
+  public waterRatioAround(normal: Vector3, sampleDist: number, checks: number): number {
     const tangent = new Vector3(-normal.y, normal.x, 0);
     if (tangent.lengthSq() < 0.001) tangent.set(0, -normal.z, normal.y);
     tangent.normalize();
