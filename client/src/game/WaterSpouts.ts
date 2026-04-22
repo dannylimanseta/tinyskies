@@ -18,11 +18,11 @@ import {
 import { moveOnSphere, quaternionFromSurfaceNormal, seededRandom } from "./SphericalMath";
 import type { Globe } from "./Globe";
 
-const SPOUT_COUNT = 8;
+const SPOUT_COUNT = 3;
 const SPOUT_HEIGHT = 2.2;
 const SPOUT_RADIUS_TOP = 0.35;
 const SPOUT_RADIUS_BOT = 0.08;
-const SPLASH_COUNT = 300;
+const SPLASH_COUNT = 900;
 const SPLASH_LIFE = 0.6;
 
 type Splash = {
@@ -100,7 +100,7 @@ export class WaterSpouts {
         `#include <begin_vertex>
         
         // Twisting
-        float twist = uv.y * 6.0 + time * 1.5;
+        float twist = uv.y * 6.0 + time * 0.5;
         float s = sin(twist);
         float c = cos(twist);
         mat2 rot = mat2(c, -s, s, c);
@@ -154,8 +154,8 @@ export class WaterSpouts {
         
         // scrolling UVs
         vec2 suv = vUv;
-        suv.x += time * 3.0; // fast spin
-        suv.y -= time * 2.5; // fast updraft
+        suv.x += time * 1.0; // spin speed
+        suv.y -= time * 1.5; // updraft speed
         
         float n = snoise(suv * vec2(12.0, 4.0)) * 0.5 + 0.5;
         float n2 = snoise(suv * vec2(24.0, 8.0) - vec2(time * 0.5, time)) * 0.5 + 0.5;
@@ -167,6 +167,11 @@ export class WaterSpouts {
         // edge fade (fresnel-ish using uv.x)
         float edge = sin(vUv.x * 3.14159);
         edge = pow(edge, 0.6);
+        
+        // gradient: bottom cyan -> top dark blue
+        vec3 colorBot = vec3(0.0, 0.8, 1.0);
+        vec3 colorTop = vec3(0.0, 0.1, 0.4);
+        diffuseColor.rgb = mix(colorBot, colorTop, vUv.y);
         
         diffuseColor.a *= combined * yFade * edge * 1.8;
         `,
@@ -220,7 +225,7 @@ export class WaterSpouts {
     this.splashMat = new PointsMaterial({
       map: makeSplashTexture(),
       color: 0xddffff,
-      size: 0.18,
+      size: 0.08,
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -340,9 +345,9 @@ export class WaterSpouts {
     this.timeU.value += dt;
 
     this.splashEmitAccum += dt;
-    const emitCount = Math.floor(this.splashEmitAccum * 30); // 30 particles per second per spout
+    const emitCount = Math.floor(this.splashEmitAccum * 90); // 90 particles per second per spout
     if (emitCount > 0) {
-      this.splashEmitAccum -= emitCount / 30;
+      this.splashEmitAccum -= emitCount / 90;
     }
 
     // Slowly wander on the ocean
