@@ -9,5 +9,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    /** Bind IPv4 + IPv6; otherwise on some systems only ::1 works and `localhost` → 127.0.0.1 fails. */
+    host: true,
   },
 });

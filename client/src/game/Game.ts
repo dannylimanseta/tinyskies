@@ -88,7 +88,7 @@ import { ProgressionManager, type SavedPlayerWorldState } from "./ProgressionMan
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 import { EternalFlameUI } from "../ui/EternalFlameUI";
-import { SkyJellyfish, JELLY_CAPTURE_XP } from "./SkyJellyfish";
+import { SkyJellyfish, JELLY_CAPTURE_XP, JELLY_COUNT } from "./SkyJellyfish";
 import { OceanFish, FISH_CATCH_XP } from "./OceanFish";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
 
@@ -291,6 +291,7 @@ export class Game {
   private skyGremlins: SkyGremlins | null = null;
   private lastGremlinHitSfxAt = 0;
   private kingEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
+  private jellyfishEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private flockFormationHUD: FlockFormationHUD | null = null;
   private remotePlayerNameLabels!: RemotePlayerNameLabels;
   private balloonInRange: boolean[] = [];
@@ -963,6 +964,28 @@ export class Game {
         }
         this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.2);
         this.cameraRig.shake(0.02, 0.15);
+
+        if (
+          this.skyJellyfish &&
+          this.skyJellyfish.getCollectedCount() === JELLY_COUNT
+        ) {
+          const ws = ProgressionManager.loadPlayerWorldState();
+          if (!ws.jellyfishSetEternalFlameClaimed) {
+            this.savePlayerWorldState({
+              eternalFlameCount: (ws.eternalFlameCount ?? 0) + 1,
+              jellyfishSetEternalFlameClaimed: true,
+            });
+            if (this.jellyfishEternalFlameRewardTimeout != null) {
+              clearTimeout(this.jellyfishEternalFlameRewardTimeout);
+              this.jellyfishEternalFlameRewardTimeout = null;
+            }
+            this.jellyfishEternalFlameRewardTimeout = setTimeout(() => {
+              this.jellyfishEternalFlameRewardTimeout = null;
+              this.audioManager.playSFX("choir_1", CHOIR_1_SFX_VOLUME);
+              this.eternalFlameUI?.playKingLootSequence();
+            }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
+          }
+        }
       };
     }
 
@@ -1307,6 +1330,10 @@ export class Game {
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
       this.kingEternalFlameRewardTimeout = null;
+    }
+    if (this.jellyfishEternalFlameRewardTimeout != null) {
+      clearTimeout(this.jellyfishEternalFlameRewardTimeout);
+      this.jellyfishEternalFlameRewardTimeout = null;
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
@@ -3866,6 +3893,7 @@ export class Game {
       brazierFizzleHintShown: this.showedBrazierFizzleHint || !!prev.brazierFizzleHintShown,
       eternalFlameCount: prev.eternalFlameCount ?? 0,
       gremlinKingEternalFlameClaimed: !!prev.gremlinKingEternalFlameClaimed,
+      jellyfishSetEternalFlameClaimed: !!prev.jellyfishSetEternalFlameClaimed,
       moonFrozenByEternalFlames:
         overrides.moonFrozenByEternalFlames ?? prev.moonFrozenByEternalFlames ?? false,
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
@@ -4240,6 +4268,10 @@ export class Game {
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
       this.kingEternalFlameRewardTimeout = null;
+    }
+    if (this.jellyfishEternalFlameRewardTimeout != null) {
+      clearTimeout(this.jellyfishEternalFlameRewardTimeout);
+      this.jellyfishEternalFlameRewardTimeout = null;
     }
     this.meteorShower?.dispose();
     this.meteorShower = null;
