@@ -608,7 +608,7 @@ export class Game {
       if (this.transitionOverlay) {
         await this.transitionOverlay.fadeOut({
           durationSec: 1.65,
-          message: "You died.",
+          message: "Oops. You died.",
           holdAtFullSec: 1.35,
         });
       }
