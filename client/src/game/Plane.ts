@@ -31,13 +31,13 @@ const BOOST_DURATION_SEC = 1.7;
 const BOOST_BARREL_ROLL_TURNS = 1.0;
 /** Hard ceiling: arc-step = 2.0*0.05/5 = 0.02 rad/frame — well within safe limits. */
 const ABSOLUTE_MAX_SPEED = 2.0;
-const GREMLIN_SLOW_DURATION_SEC = 1.6;
-const GREMLIN_SLOW_MULT = 0.45;
-const GREMLIN_KING_SLOW_DURATION_SEC = 2.5;
-const GREMLIN_KING_SLOW_MULT = 0.28;
+const GREMLIN_SLOW_DURATION_SEC = 1.35;
+const GREMLIN_SLOW_MULT = 0.58;
+const GREMLIN_KING_SLOW_DURATION_SEC = 2.1;
+const GREMLIN_KING_SLOW_MULT = 0.42;
 
-/** HP from sky-gremlin paintballs (matches gremlin bar pill geometry). */
-const PL_HP_MAX = 10;
+/** HP from sky-gremlin paintballs (matches gremlin bar pill geometry). Base 10 + 30%. */
+const PL_HP_MAX = 14;
 const PL_HP_BAR_W = 0.135;
 const PL_HP_BAR_H = 0.0145;
 const PL_HP_BAR_D = 0.014;

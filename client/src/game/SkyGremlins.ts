@@ -83,8 +83,11 @@ const GREMLIN_FIRE_RANGE = 1.6;
 /** Gremlin King can engage the player from farther away. */
 const GREMLIN_KING_FIRE_RANGE = 2.55;
 const GREMLIN_FIRE_DOT = 0.32;
-const GREMLIN_FIRE_COOLDOWN_MIN = 1.35;
-const GREMLIN_FIRE_COOLDOWN_MAX = 2.15;
+/** Seconds between shots (randomized per burst). */
+const GREMLIN_FIRE_COOLDOWN_MIN = 1.85;
+const GREMLIN_FIRE_COOLDOWN_MAX = 2.95;
+const GREMLIN_KING_FIRE_COOLDOWN_MIN = 2.5;
+const GREMLIN_KING_FIRE_COOLDOWN_MAX = 3.85;
 const GREMLIN_RESPAWN_MIN_SEC = 6.5;
 const GREMLIN_RESPAWN_MAX_SEC = 9.5;
 const GREMLIN_HIT_RADIUS = 0.16;
@@ -95,6 +98,33 @@ const GREMLIN_SHOT_SPEED = 2.85;
 const GREMLIN_MUZZLE_FORWARD = 0.12;
 const GREMLIN_MUZZLE_UP = -0.01;
 const GREMLIN_AIM_SIDE_SPREAD = 0.24;
+
+function rollGremlinFireCooldown(
+  random: () => number,
+  isKing: boolean,
+  initialRespawn: boolean,
+): number {
+  const min = isKing
+    ? GREMLIN_KING_FIRE_COOLDOWN_MIN
+    : GREMLIN_FIRE_COOLDOWN_MIN;
+  const max = isKing
+    ? GREMLIN_KING_FIRE_COOLDOWN_MAX
+    : GREMLIN_FIRE_COOLDOWN_MAX;
+  return (initialRespawn ? 0.5 : min) + random() * (max - min);
+}
+
+/** After the player lands a non-lethal hit, this gremlin tries to shoot from farther out. */
+const RETALIATE_DURATION_SEC = 5.5;
+const RETALIATE_FIRE_RANGE_MULT = 1.48;
+const RETALIATE_FIRE_DOT = 0.12;
+const RETALIATE_COOLDOWN_CAP = 0.32;
+/** Orbit band shifted outward so they keep range instead of diving in. */
+const RETALIATE_STANDOFF_MIN = 1.02;
+const RETALIATE_STANDOFF_IDEAL_NORMAL = 1.4;
+const RETALIATE_STANDOFF_MAX_NORMAL = 1.86;
+const RETALIATE_STANDOFF_MIN_KING = 1.08;
+const RETALIATE_STANDOFF_IDEAL_KING = 1.58;
+const RETALIATE_STANDOFF_MAX_KING = 2.12;
 
 /** Embers at the Gremlin King trident prongs (local space, parented to trident). */
 const KING_TRIDENT_EMBER_N = 44;
@@ -163,6 +193,8 @@ type GremlinState = {
   health: number;
   hitWobbleAmp: number;
   hitWobblePhase: number;
+  /** >0: prefer long-range shots and wide standoff after player paintball damage. */
+  longRangeRetaliateSec: number;
   respawnSalt: number;
   respawnTimer: number;
   downTimer: number;
@@ -900,7 +932,7 @@ export class SkyGremlins {
       flapPhase: random() * Math.PI * 2,
       bobPhase: random() * Math.PI * 2,
       turnPhase: random() * Math.PI * 2,
-      fireCooldown: GREMLIN_FIRE_COOLDOWN_MIN,
+      fireCooldown: rollGremlinFireCooldown(random, king === true, true),
       aimTimer: 0,
       health: maxHealth,
       maxHealth,
@@ -910,6 +942,7 @@ export class SkyGremlins {
       hpBarInnerW: innerW,
       hitWobbleAmp: 0,
       hitWobblePhase: 0,
+      longRangeRetaliateSec: 0,
       respawnSalt: 0,
       respawnTimer: 0,
       downTimer: 0,
@@ -974,14 +1007,17 @@ export class SkyGremlins {
       ),
     );
     gremlin.altitude = gremlin.baseAltitude;
-    gremlin.fireCooldown =
-      (initial ? 0.5 : GREMLIN_FIRE_COOLDOWN_MIN) +
-      gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
+    gremlin.fireCooldown = rollGremlinFireCooldown(
+      gremlin.random,
+      gremlin.isKing === true,
+      initial,
+    );
     gremlin.aimTimer = 0;
     gremlin.health = gremlin.maxHealth;
     gremlin.hpDisplay = 1;
     gremlin.hitWobbleAmp = 0;
     gremlin.hitWobblePhase = 0;
+    gremlin.longRangeRetaliateSec = 0;
     gremlin.mode = "alive";
     gremlin.downTimer = 0;
     gremlin.root.visible = true;
@@ -997,6 +1033,25 @@ export class SkyGremlins {
 
   private updateAliveGremlin(gremlin: GremlinState, dt: number, player: Plane, camera: Camera) {
     gremlin.fireCooldown = Math.max(0, gremlin.fireCooldown - dt);
+    if (gremlin.longRangeRetaliateSec > 0) {
+      gremlin.longRangeRetaliateSec = Math.max(0, gremlin.longRangeRetaliateSec - dt);
+    }
+    const retaliate = gremlin.longRangeRetaliateSec > 0;
+    const standMin = retaliate
+      ? gremlin.isKing
+        ? RETALIATE_STANDOFF_MIN_KING
+        : RETALIATE_STANDOFF_MIN
+      : GREMLIN_STANDOFF_MIN;
+    const standMax = retaliate
+      ? gremlin.isKing
+        ? RETALIATE_STANDOFF_MAX_KING
+        : RETALIATE_STANDOFF_MAX_NORMAL
+      : GREMLIN_STANDOFF_MAX;
+    const standIdeal = retaliate
+      ? gremlin.isKing
+        ? RETALIATE_STANDOFF_IDEAL_KING
+        : RETALIATE_STANDOFF_IDEAL_NORMAL
+      : GREMLIN_STANDOFF_IDEAL;
 
     this.worldPosScratch.copy(
       cartesianFromSpherical(gremlin.qPosition, gremlin.altitude, this.globeRadius),
@@ -1023,21 +1078,18 @@ export class SkyGremlins {
 
       let approachWeight = 0;
       let orbitWeight = GREMLIN_ORBIT_WEIGHT;
-      if (distanceToPlayer < GREMLIN_STANDOFF_MIN) {
+      if (distanceToPlayer < standMin) {
         approachWeight = -GREMLIN_RETREAT_WEIGHT;
         orbitWeight = 0.38;
         moveSpeed = GREMLIN_CHASE_SPEED * 1.08;
-      } else if (distanceToPlayer > GREMLIN_STANDOFF_MAX) {
-        approachWeight = 0.9;
+      } else if (distanceToPlayer > standMax) {
+        approachWeight = retaliate ? 0.65 : 0.9;
         orbitWeight = 0.56;
         moveSpeed = GREMLIN_CHASE_SPEED;
       } else {
-        const halfBand = Math.max(
-          0.08,
-          (GREMLIN_STANDOFF_MAX - GREMLIN_STANDOFF_MIN) * 0.5,
-        );
+        const halfBand = Math.max(0.08, (standMax - standMin) * 0.5);
         approachWeight =
-          ((distanceToPlayer - GREMLIN_STANDOFF_IDEAL) / halfBand) * 0.28;
+          ((distanceToPlayer - standIdeal) / halfBand) * 0.28;
         moveSpeed = GREMLIN_CRUISE_SPEED * 1.08;
       }
 
@@ -1117,7 +1169,11 @@ export class SkyGremlins {
       .copy(this.currentPlayerWorldPos)
       .sub(gremlin.worldPosition);
     const fireDistance = this.directionScratch.length();
-    const fireRange = gremlin.isKing ? GREMLIN_KING_FIRE_RANGE : GREMLIN_FIRE_RANGE;
+    const baseFireRange = gremlin.isKing
+      ? GREMLIN_KING_FIRE_RANGE
+      : GREMLIN_FIRE_RANGE;
+    const fireRange = retaliate ? baseFireRange * RETALIATE_FIRE_RANGE_MULT : baseFireRange;
+    const fireDot = retaliate ? RETALIATE_FIRE_DOT : GREMLIN_FIRE_DOT;
     if (
       fireDistance <= fireRange &&
       fireDistance > 1e-4 &&
@@ -1125,7 +1181,7 @@ export class SkyGremlins {
     ) {
       this.directionScratch.divideScalar(fireDistance);
       this.forwardFromHeading(gremlin.qPosition, gremlin.heading, this.forwardScratch);
-      if (this.forwardScratch.dot(this.directionScratch) >= GREMLIN_FIRE_DOT) {
+      if (this.forwardScratch.dot(this.directionScratch) >= fireDot) {
         gremlin.aimTimer += dt;
         if (gremlin.aimTimer >= 0.2) {
           gremlin.aimTimer = 0;
@@ -1154,9 +1210,11 @@ export class SkyGremlins {
             ballRadius: gremlin.isKing ? 0.076 : undefined,
             splatterScale: gremlin.isKing ? 2 : undefined,
           });
-          gremlin.fireCooldown =
-            GREMLIN_FIRE_COOLDOWN_MIN +
-            gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
+          gremlin.fireCooldown = rollGremlinFireCooldown(
+            gremlin.random,
+            gremlin.isKing === true,
+            false,
+          );
         }
       } else {
         gremlin.aimTimer = 0;
@@ -1388,6 +1446,8 @@ export class SkyGremlins {
       } else {
         gremlin.hitWobbleAmp = 0.85;
         gremlin.hitWobblePhase = 0;
+        gremlin.longRangeRetaliateSec = RETALIATE_DURATION_SEC;
+        gremlin.fireCooldown = Math.min(gremlin.fireCooldown, RETALIATE_COOLDOWN_CAP);
         this.onHit(gremlin.worldPosition.clone());
       }
       break;
