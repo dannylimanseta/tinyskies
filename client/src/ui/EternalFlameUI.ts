@@ -126,13 +126,18 @@ function ensureStyles() {
     }
     .eternal-flame-dock {
       position: fixed;
-      left: max(12px, env(safe-area-inset-left));
-      bottom: max(72px, calc(64px + env(safe-area-inset-bottom)));
+      left: max(8px, env(safe-area-inset-left, 0px));
+      bottom: max(8px, env(safe-area-inset-bottom, 0px));
       height: ${DOCK_PX}px;
       z-index: 25;
       pointer-events: none;
       opacity: 0;
       transition: opacity 0.35s ease;
+    }
+    .eternal-flame-dock canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
     .eternal-flame-dock.visible { opacity: 1; }
   `;
@@ -491,7 +496,12 @@ export class EternalFlameUI {
       this.raf = requestAnimationFrame(loop);
       if (!this.scene || !this.camera || !this.renderer || !this.modelRoot) return;
       const dt = this.clock.getDelta();
-      this.modelRoot.rotation.y += dt * 1.1;
+      // Spin each docked flame on its own pivot — rotating the whole group locked them together.
+      for (let i = 0; i < this.modelRoot.children.length; i++) {
+        const child = this.modelRoot.children[i]!;
+        const rate = 1.02 + ((i * 0.23) % 0.38);
+        child.rotation.y += dt * rate;
+      }
       this.renderer.render(this.scene, this.camera);
     };
     loop();
