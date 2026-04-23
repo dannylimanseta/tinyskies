@@ -2,6 +2,7 @@ import {
   Group,
   Mesh,
   BoxGeometry,
+  ConeGeometry,
   PlaneGeometry,
   CylinderGeometry,
   MeshPhongMaterial,
@@ -15,6 +16,7 @@ import {
   type Scene,
 } from "three";
 import { type Landmark, type LandmarkRegistry } from "./Landmarks";
+import { addRimLight } from "./RimLight";
 import { surfaceDisplacementAt } from "./TerrainSurface";
 import { generateQuestDialogue } from "./PackageDialogue";
 
@@ -27,7 +29,15 @@ const DECAY_RATE = 0.3;
 const DELIVERY_XP = 50;
 const PACKAGE_LIFT = 0.25;
 const PACKAGE_BOB_AMP = 0.012;
-const SPIN_SPEED = 1.2;
+/** Y rotation rad/s for the package in pickup / destination beams. */
+const SPIN_SPEED = 2.35;
+/** Scale multiplier for the box mesh in the gold / blue quest beams (larger, more visible). */
+const BEAM_PACKAGE_SCALE = 1.75;
+/** Local Y of the “drop here” arrow anchor above the ghost package; bob adds on top. */
+const DEST_ARROW_BASE_Y = 0.07;
+const DEST_ARROW_BOB_AMP = 0.02;
+/** Bob frequency (Hz) for the drop arrow — keep low for a slow, gentle float. */
+const DEST_ARROW_BOB_HZ = 0.85;
 const MIN_PAIR_DOT = 0.85;
 const MAX_PAIR_RETRIES = 20;
 
@@ -105,12 +115,15 @@ function createPackageMesh(ghost = false): Group {
     transparent: ghost,
     opacity: ghost ? 0.3 : 1,
   });
+  // Fresnel edge read against sky / ground (intensity a bit lower on ghost for softer glow).
+  addRimLight(boxMat, 0xffcc66, ghost ? 0.48 : 0.62, 2.4);
   const box = new Mesh(boxGeo, boxMat);
   pkg.add(box);
 
   if (!ghost) {
     const strapGeo = new BoxGeometry(0.056, 0.004, 0.008);
     const strapMat = new MeshPhongMaterial({ color: 0xf5deb3 });
+    addRimLight(strapMat, 0xffffff, 0.45, 2.2);
     const strap1 = new Mesh(strapGeo, strapMat);
     strap1.position.y = 0.022;
     pkg.add(strap1);
@@ -122,6 +135,24 @@ function createPackageMesh(ghost = false): Group {
   }
 
   return pkg;
+}
+
+/** Down-pointing chevron (local −Y) for the destination beam, parented so +Y is “up” from the ground. */
+function createDestinationDownArrow(): Group {
+  const g = new Group();
+  const mat = new MeshBasicMaterial({
+    color: 0xf2fbff,
+    transparent: true,
+    opacity: 0.95,
+    depthWrite: false,
+  });
+  const coneH = 0.048;
+  const coneR = 0.024;
+  const cone = new Mesh(new ConeGeometry(coneR, coneH, 12, 1, false), mat);
+  // Default tip +Y; flip so the tip points toward local −Y (drop direction).
+  cone.rotation.x = Math.PI;
+  g.add(cone);
+  return g;
 }
 
 function createBeamGroup(color: number): Group {
@@ -181,7 +212,10 @@ export class PackageQuestManager {
   private originBeam: Group;
   private destBeam: Group;
   private packageMesh: Group;
+  /** Root aligned to the destination village; child {@link ghostPackageContent} spins, {@link destDownArrow} bobs. */
   private ghostPackage: Group;
+  private ghostPackageContent: Group;
+  private destDownArrow: Group;
   private carryGroup: Group;
   private stringMesh: Mesh;
 
@@ -237,7 +271,12 @@ export class PackageQuestManager {
     this.originBeam = createBeamGroup(0xffd700);
     this.destBeam = createBeamGroup(0x88ccff);
     this.packageMesh = createPackageMesh(false);
-    this.ghostPackage = createPackageMesh(true);
+    this.ghostPackage = new Group();
+    this.ghostPackageContent = createPackageMesh(true);
+    this.destDownArrow = createDestinationDownArrow();
+    this.ghostPackage.add(this.ghostPackageContent);
+    this.ghostPackage.add(this.destDownArrow);
+    this.destDownArrow.position.y = DEST_ARROW_BASE_Y;
 
     this.carryGroup = new Group();
     const stringGeo = new CylinderGeometry(0.001, 0.001, STRING_LENGTH, 4);
@@ -457,7 +496,7 @@ export class PackageQuestManager {
     this.spinAngle += SPIN_SPEED * dt;
     this.packageMesh.quaternion.setFromUnitVectors(REF_UP, n);
     this.packageMesh.rotateY(this.spinAngle);
-    this.packageMesh.scale.setScalar(spawnScale);
+    this.packageMesh.scale.setScalar(spawnScale * BEAM_PACKAGE_SCALE);
 
     const beamBob = Math.sin(this.time * 0.8) * 0.015 + spawnLift;
     const br = this.globeRadius + disp + beamBob;
@@ -467,6 +506,7 @@ export class PackageQuestManager {
 
   private animateGhost(dt: number) {
     if (!this.destination) return;
+    this.spinAngle += SPIN_SPEED * dt;
     const n = this.destination.normal;
     const disp = surfaceDisplacementAt(this.seed, this.terrainType, n.x, n.y, n.z);
 
@@ -484,8 +524,11 @@ export class PackageQuestManager {
     const r = this.globeRadius + disp + bob;
     this.ghostPackage.position.set(n.x * r, n.y * r, n.z * r);
     this.ghostPackage.quaternion.setFromUnitVectors(REF_UP, n);
-    this.ghostPackage.rotateY(this.spinAngle);
-    this.ghostPackage.scale.setScalar(spawnScale);
+    this.ghostPackageContent.rotation.set(0, this.spinAngle, 0);
+    this.ghostPackage.scale.setScalar(spawnScale * BEAM_PACKAGE_SCALE);
+    this.destDownArrow.position.y =
+      DEST_ARROW_BASE_Y +
+      Math.sin(this.time * (Math.PI * 2) * DEST_ARROW_BOB_HZ) * DEST_ARROW_BOB_AMP;
 
     const beamBob = Math.sin(this.time * 0.8 + 1.0) * 0.015 + spawnLift;
     const br = this.globeRadius + disp + beamBob;
