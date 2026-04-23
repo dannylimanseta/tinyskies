@@ -37,7 +37,7 @@ export const SKY_GREMLIN_KING_XP = 120;
 
 const GREMLIN_SHOOTER_PREFIX = "gremlin:";
 const GREMLIN_KING_SHOOTER_ID = "gremlin:king";
-const GREMLINS_KILLED_BEFORE_KING = 7;
+const GREMLINS_KILLED_BEFORE_KING = 5;
 const GREMLIN_SURFACE_CLEARANCE = 0.2;
 const GREMLIN_ALTITUDE_MIN = 0.52;
 const GREMLIN_ALTITUDE_MAX = 0.65;
@@ -500,11 +500,13 @@ export class SkyGremlins {
     rightArm.castShadow = true;
     rig.add(rightArm);
 
-    const gun = new Mesh(this.gunGeo, this.gearMaterial);
-    gun.position.set(0, -0.01, 0.08);
-    gun.rotation.x = Math.PI / 2;
-    gun.castShadow = true;
-    rig.add(gun);
+    if (!king) {
+      const gun = new Mesh(this.gunGeo, this.gearMaterial);
+      gun.position.set(0, -0.01, 0.08);
+      gun.rotation.x = Math.PI / 2;
+      gun.castShadow = true;
+      rig.add(gun);
+    }
 
     const leftLeg = new Mesh(this.limbGeo, bodyMat);
     leftLeg.position.set(-0.03, -0.06, -0.02);
@@ -578,6 +580,47 @@ export class SkyGremlins {
         crown.add(spikeGroup);
       }
       rig.add(crown);
+
+      const trident = new Group();
+      trident.position.set(0.05, 0.02, 0.06);
+      trident.rotation.set(0.6, 0, -0.4);
+
+      const handle = new Mesh(new CylinderGeometry(0.004, 0.004, 0.2, 5), this.crownMaterial);
+      handle.castShadow = true;
+      trident.add(handle);
+
+      const headBase = new Mesh(new BoxGeometry(0.03, 0.01, 0.01), this.crownMaterial);
+      headBase.position.set(0, 0.1, 0);
+      headBase.castShadow = true;
+      trident.add(headBase);
+
+      const centerProng = new Mesh(new ConeGeometry(0.006, 0.04, 4), this.crownMaterial);
+      centerProng.position.set(0, 0.12, 0);
+      centerProng.castShadow = true;
+      trident.add(centerProng);
+
+      const leftProng = new Mesh(new ConeGeometry(0.004, 0.03, 4), this.crownMaterial);
+      leftProng.position.set(-0.012, 0.115, 0);
+      leftProng.castShadow = true;
+      trident.add(leftProng);
+
+      const rightProng = new Mesh(new ConeGeometry(0.004, 0.03, 4), this.crownMaterial);
+      rightProng.position.set(0.012, 0.115, 0);
+      rightProng.castShadow = true;
+      trident.add(rightProng);
+
+      const flameMat = new MeshPhongMaterial({
+        color: 0xffaa00,
+        emissive: 0xff4400,
+        emissiveIntensity: 2.0,
+        transparent: true,
+        opacity: 0.9,
+      });
+      const flame = new Mesh(new ConeGeometry(0.015, 0.05, 5), flameMat);
+      flame.position.set(0, 0.13, 0);
+      trident.add(flame);
+
+      rig.add(trident);
     }
 
     const random = seededRandom(this.seed + index * 104729 + 17);

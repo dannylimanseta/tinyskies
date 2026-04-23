@@ -101,10 +101,12 @@ function ensureStyles() {
       position: relative;
       display: block;
       flex-shrink: 0;
-      width: ${PREVIEW_PX}px;
-      max-width: min(${PREVIEW_PX}px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
-      height: ${PREVIEW_PX}px;
-      max-height: min(${PREVIEW_PX}px, 72vh);
+      aspect-ratio: 1 / 1;
+      width: min(
+        ${PREVIEW_PX}px,
+        calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+        72vh
+      );
       margin: 0 auto;
     }
     .eternal-flame-starburst {
@@ -119,10 +121,17 @@ function ensureStyles() {
       animation: eternal-flame-starburst-spin 18s linear infinite;
     }
     .eternal-flame-canvas-wrap {
-      position: relative;
+      position: absolute;
+      inset: 0;
       z-index: 1;
-      width: 100%;
-      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .eternal-flame-canvas-wrap canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
     }
     .eternal-flame-dock {
       position: fixed;
@@ -136,8 +145,8 @@ function ensureStyles() {
     }
     .eternal-flame-dock canvas {
       display: block;
-      width: 100%;
-      height: 100%;
+      width: 100% !important;
+      height: 100% !important;
     }
     .eternal-flame-dock.visible { opacity: 1; }
   `;
@@ -268,6 +277,8 @@ export class EternalFlameUI {
   private modelLoaded = false;
   private loadPromise: Promise<void> | null = null;
   private busy = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private observedEl: Element | null = null;
 
   constructor(container: HTMLElement, _hudRoot: HTMLElement) {
     ensureStyles();
@@ -292,6 +303,7 @@ export class EternalFlameUI {
           this.dock.appendChild(this.renderer.domElement);
         }
         this.resizeRenderer(w, DOCK_PX);
+        this.observeElementSize(this.dock);
       } else if (this.dock) {
         this.dock.style.width = "";
       }
@@ -376,7 +388,12 @@ export class EternalFlameUI {
     overlay.appendChild(inner);
     document.body.appendChild(overlay);
 
-    this.resizeRenderer(PREVIEW_PX, PREVIEW_PX);
+    const wrapRect = wrap.getBoundingClientRect();
+    this.resizeRenderer(
+      wrapRect.width || PREVIEW_PX,
+      wrapRect.height || PREVIEW_PX,
+    );
+    this.observeElementSize(wrap);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => overlay.classList.add("eternal-flame-overlay--in"));
     });
@@ -409,17 +426,40 @@ export class EternalFlameUI {
     this.dock.style.width = `${dockWidthForCount(total)}px`;
     this.dock.appendChild(this.renderer.domElement);
     this.resizeRenderer(dockWidthForCount(total), DOCK_PX);
+    this.observeElementSize(this.dock);
     this.setDockVisible(true);
     this.busy = false;
   }
 
   private resizeRenderer(w: number, h: number) {
     if (!this.renderer || !this.camera) return;
-    this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
+    const safeW = Math.max(1, Math.round(w));
+    const safeH = Math.max(1, Math.round(h));
+    this.renderer.setSize(safeW, safeH, false);
+    this.camera.aspect = safeW / safeH;
     const n = this.dockFlameCount;
     this.camera.position.z = 1.12 + Math.max(0, n - 1) * 0.095;
+    // Dock renders are wider-than-tall: nudge the camera so the flame visually sits
+    // a touch higher. Preview is always square, so keep camera perfectly centered.
+    const isWideDock = safeW / safeH > 1.3;
+    this.camera.position.y = isWideDock ? 0.06 : 0;
     this.camera.updateProjectionMatrix();
+  }
+
+  private observeElementSize(el: Element) {
+    if (this.observedEl === el) return;
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    } else if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const rect = entry.contentRect;
+          this.resizeRenderer(rect.width, rect.height);
+        }
+      });
+    }
+    this.observedEl = el;
+    this.resizeObserver?.observe(el);
   }
 
   private async ensureSceneReady(): Promise<void> {
@@ -510,6 +550,9 @@ export class EternalFlameUI {
   dispose() {
     cancelAnimationFrame(this.raf);
     this.loopRunning = false;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.observedEl = null;
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
     if (this.modelRoot) {

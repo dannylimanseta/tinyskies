@@ -97,6 +97,7 @@ import { ProgressionManager, type SavedPlayerWorldState } from "./ProgressionMan
 import { CarpetLandmarkSelfieQuest, LANDMARK_SELFIE_XP } from "./CarpetLandmarkSelfieQuest";
 import { HotspringPhotoUI } from "../ui/HotspringPhotoUI";
 import { EternalFlameUI } from "../ui/EternalFlameUI";
+import { DebugMenu } from "../ui/DebugMenu";
 import { SkyJellyfish, JELLY_CAPTURE_XP, JELLY_COUNT } from "./SkyJellyfish";
 import { OceanFish, FISH_CATCH_XP, FISH_COUNT_BEFORE_MYSTERY_OCTOPUS } from "./OceanFish";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
@@ -294,6 +295,7 @@ export class Game {
   private carpetLandmarkSelfieQuest: CarpetLandmarkSelfieQuest | null = null;
   private carpetSelfiePhotoUI: HotspringPhotoUI | null = null;
   private eternalFlameUI: EternalFlameUI | null = null;
+  private debugMenu: DebugMenu | null = null;
   private birdFlocks: BirdFlock[] = [];
   private rainbowArches: RainbowArch[] = [];
   private lanternClusters: FloatingLanterns[] = [];
@@ -1213,6 +1215,14 @@ export class Game {
     this.eternalFlameUI = new EternalFlameUI(this.container, this.hud.root);
     this.eternalFlameUI.syncFromSave();
 
+    this.debugMenu = new DebugMenu(this.container, () => {
+      const prev = ProgressionManager.loadPlayerWorldState();
+      this.savePlayerWorldState({
+        eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
+      });
+      this.eternalFlameUI?.playKingLootSequence();
+    });
+
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     landmarkRegistry.registerLighthouses(this.globe.lighthouseCenters, seed);
@@ -1448,6 +1458,8 @@ export class Game {
     this.carpetSelfiePhotoUI = null;
     this.eternalFlameUI?.dispose();
     this.eternalFlameUI = null;
+    this.debugMenu?.dispose();
+    this.debugMenu = null;
     this.carpetLandmarkSelfieQuest = null;
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
@@ -4451,6 +4463,8 @@ export class Game {
     this.carpetSelfiePhotoUI?.dispose();
     this.eternalFlameUI?.dispose();
     this.eternalFlameUI = null;
+    this.debugMenu?.dispose();
+    this.debugMenu = null;
     for (const f of this.birdFlocks) f.dispose();
     this.birdFlocks = [];
     for (const r of this.rainbowArches) r.dispose();
