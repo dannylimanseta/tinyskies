@@ -16,6 +16,11 @@ const POOL_SIZE = 4;
 const LIFETIME = 0.55;
 const DIAMOND_COLOR: [number, number, number] = [0.2, 1.0, 0.8];
 
+export type RingCollectVFXOptions = {
+  /** Additive shard tint; defaults to cold diamond green-cyan. */
+  shardRgb?: [number, number, number];
+};
+
 const shardVert = `
 varying vec3 vNorm;
 void main() {
@@ -54,6 +59,8 @@ interface VFXInstance {
   active: boolean;
   center: Vector3;
   upDir: Vector3;
+  /** Per-burst; falls back to {@link DIAMOND_COLOR} in the update loop when null. */
+  shardTint: [number, number, number] | null;
 }
 
 const _dummy = new Object3D();
@@ -130,10 +137,11 @@ export class RingCollectVFX {
       active: false,
       center: new Vector3(),
       upDir: new Vector3(0, 1, 0),
+      shardTint: null,
     };
   }
 
-  play(worldPos: Vector3, _tier: number) {
+  play(worldPos: Vector3, _tier: number, options?: RingCollectVFXOptions) {
     const inst = this.pool.find((p) => !p.active);
     if (!inst) return;
 
@@ -142,6 +150,10 @@ export class RingCollectVFX {
     inst.center.copy(worldPos);
     inst.upDir.copy(worldPos).normalize();
     inst.group.visible = true;
+    const tint = options?.shardRgb;
+    inst.shardTint = tint ? [tint[0], tint[1], tint[2]] : null;
+    const base: [number, number, number] = tint ?? DIAMOND_COLOR;
+    inst.shardMat.uniforms.color.value = [base[0], base[1], base[2]];
 
     for (let i = 0; i < SHARD_COUNT; i++) {
       const s = inst.states[i];
@@ -203,6 +215,7 @@ export class RingCollectVFX {
       if (progress >= 1) {
         inst.active = false;
         inst.group.visible = false;
+        inst.shardTint = null;
         continue;
       }
 
@@ -211,11 +224,12 @@ export class RingCollectVFX {
       const brightness = 1.0 + (1 - progress) * 1.2;
       const avgAlpha = inst.states.reduce((sum, st) => sum + st.alpha, 0) / SHARD_COUNT;
 
+      const base = inst.shardTint ?? DIAMOND_COLOR;
       inst.shardMat.uniforms.globalAlpha.value = fade * avgAlpha;
       inst.shardMat.uniforms.color.value = [
-        DIAMOND_COLOR[0] * brightness,
-        DIAMOND_COLOR[1] * brightness,
-        DIAMOND_COLOR[2] * brightness,
+        base[0] * brightness,
+        base[1] * brightness,
+        base[2] * brightness,
       ];
 
       for (let i = 0; i < SHARD_COUNT; i++) {

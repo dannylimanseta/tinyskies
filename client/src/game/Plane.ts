@@ -317,6 +317,17 @@ export class Plane {
     return this.gremlinHealth <= 0;
   }
 
+  /** True while HP is below max; pick-ups can be skipped to avoid waste. */
+  canHealFromGremlinPickups(): boolean {
+    return this.gremlinHealth < PL_HP_MAX;
+  }
+
+  /** Gremlin / heart pick-ups. Does nothing at full health. */
+  healGremlinHealth(amount: number) {
+    if (amount <= 0 || this.gremlinHealth >= PL_HP_MAX) return;
+    this.gremlinHealth = Math.min(PL_HP_MAX, this.gremlinHealth + Math.floor(amount));
+  }
+
   /** World-space billboarding for the gremlin-damage bar (call each frame in flight). */
   updateGremlinDamageHpBar(dt: number, camera: Camera) {
     const maxH = PL_HP_MAX;

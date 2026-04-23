@@ -75,6 +75,7 @@ import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyClus
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { Braziers, BRAZIER_COUNT, type SavedBrazierState } from "./Braziers";
 import { SkyGremlins, SKY_GREMLIN_KING_XP, SKY_GREMLIN_XP } from "./SkyGremlins";
+import { GremlinHearts } from "./GremlinHearts";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
 import {
@@ -303,6 +304,7 @@ export class Game {
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
   private skyGremlins: SkyGremlins | null = null;
+  private gremlinHearts: GremlinHearts | null = null;
   private lastGremlinHitSfxAt = 0;
   private kingEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private jellyfishEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -604,7 +606,11 @@ export class Game {
     this.audioManager.stopLoop("engine_biplane");
     try {
       if (this.transitionOverlay) {
-        await this.transitionOverlay.fadeOut();
+        await this.transitionOverlay.fadeOut({
+          durationSec: 1.65,
+          message: "You died.",
+          holdAtFullSec: 1.35,
+        });
       }
       this.teardownGameplaySession();
       this.dayNightCycle.moonProgress = 0;
@@ -1017,6 +1023,8 @@ export class Game {
 
     this.collectVFX = new RingCollectVFX();
     this.scene.add(this.collectVFX.group);
+    // Pre-compiles the additive shard ShaderMaterial (× pool size); avoids a big hitch on first ring/heart collect.
+    this.renderer.compile(this.collectVFX.group, this.cameraRig.camera, this.scene);
 
     this.meteorShower = new MeteorShower(globeRadius, seed, terrainType);
     this.scene.add(this.meteorShower.group);
@@ -1251,8 +1259,27 @@ export class Game {
           this.onLocalPlayerGremlinPaintballHit(isKing);
         },
       );
+      this.gremlinHearts = new GremlinHearts(globeRadius, seed, terrainType);
+      this.gremlinHearts.onCollect = (heal, worldPos) => {
+        if (!(this.localPlayer instanceof Plane)) return;
+        this.localPlayer.healGremlinHealth(heal);
+        this.vehicleFlashTimer = 0.14;
+        this.cameraRig.shake(0.022, 0.2);
+        this.collectVFX.play(worldPos, 0, {
+          shardRgb: [1, 0.2, 0.32],
+        });
+        this.audioManager.resumeContextIfNeeded();
+        const id =
+          DIAMOND_SFX_IDS[Math.floor(Math.random() * DIAMOND_SFX_IDS.length)]!;
+        if (this.audioManager.hasSFX(id)) {
+          this.audioManager.playSFX(id, DIAMOND_SFX_VOLUME, 1.12);
+        }
+      };
+      this.scene.add(this.gremlinHearts.group);
+      this.renderer.compile(this.gremlinHearts.group, this.cameraRig.camera, this.scene);
     } else {
       this.skyGremlins = null;
+      this.gremlinHearts = null;
     }
 
     this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
@@ -1480,6 +1507,11 @@ export class Game {
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
     this.ringManager?.dispose();
+    if (this.gremlinHearts) {
+      this.scene.remove(this.gremlinHearts.group);
+      this.gremlinHearts.dispose();
+      this.gremlinHearts = null;
+    }
     this.collectVFX?.dispose();
     this.localPlayer?.dispose();
     this.paintballSystem?.dispose();
@@ -2357,11 +2389,12 @@ export class Game {
 
     this.localPlayer.group.updateMatrixWorld(true);
 
-    if (this.vehicleFeatures.collectibleDiamonds) {
-      this.collectVFX.update(dt);
-      if (!portalInteractionSuppressed) {
-        this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
-      }
+    this.collectVFX.update(dt);
+    if (this.vehicleFeatures.collectibleDiamonds && !portalInteractionSuppressed) {
+      this.ringManager.update(dt, this.localPlayer.qPosition, this.localPlayer.altitude);
+    }
+    if (this.gremlinHearts && this.localPlayer instanceof Plane) {
+      this.gremlinHearts.update(dt, this.localPlayer, portalInteractionSuppressed);
     }
 
     if (!portalInteractionSuppressed && this.birdFlocks.length > 0 && this.flockFormationHUD) {
@@ -4475,6 +4508,11 @@ export class Game {
     this.paintballSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
+    if (this.gremlinHearts) {
+      this.scene.remove(this.gremlinHearts.group);
+      this.gremlinHearts.dispose();
+      this.gremlinHearts = null;
+    }
     this.lastGremlinHitSfxAt = 0;
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
