@@ -53,11 +53,13 @@ export class PackageQuestHUD {
 
     this.bannerEl = document.createElement("div");
     this.bannerEl.className = "pkg-banner";
+    const lead = document.createElement("span");
+    lead.className = "pkg-banner-lead";
+    lead.textContent = "Deliver to ";
     this.bannerNameEl = document.createElement("span");
     this.bannerNameEl.className = "pkg-banner-name";
-    this.bannerEl.appendChild(document.createTextNode("Deliver to "));
+    this.bannerEl.appendChild(lead);
     this.bannerEl.appendChild(this.bannerNameEl);
-    this.bannerEl.appendChild(document.createTextNode(" "));
     this.bannerDistEl = document.createElement("span");
     this.bannerDistEl.className = "pkg-banner-dist";
     this.bannerEl.appendChild(this.bannerDistEl);
@@ -151,7 +153,7 @@ export class PackageQuestHUD {
   }
 
   setDeliveryDistanceMetres(m: number) {
-    this.bannerDistEl.textContent = `${m}m`;
+    this.bannerDistEl.textContent = ` \u00a0· ${m}m`;
   }
 
   hideDeliveryTarget() {
@@ -224,7 +226,15 @@ export class PackageQuestHUD {
       .pkg-banner {
         position: absolute;
         top: 32px;
+        left: 10px;
         right: calc(var(--hud-top-right-reserved, 120px) + 12px);
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: baseline;
+        justify-content: flex-end;
+        min-width: 0;
+        box-sizing: border-box;
         font-size: 0.95rem;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.5);
@@ -233,17 +243,27 @@ export class PackageQuestHUD {
         transition: opacity 0.3s ease-in-out;
         pointer-events: none;
         z-index: 11;
+        gap: 0.12em;
+      }
+      .pkg-banner-lead {
+        flex-shrink: 0;
         white-space: nowrap;
-        max-width: calc(100vw - var(--hud-top-right-reserved, 120px) - 56px);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        text-align: right;
+        color: rgba(255, 255, 255, 0.5);
+        font-weight: 600;
       }
       .pkg-banner-name {
+        min-width: 0;
+        flex: 0 1 auto;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         color: rgba(255, 255, 255, 0.85);
         font-weight: 700;
       }
       .pkg-banner-dist {
+        flex-shrink: 0;
+        white-space: nowrap;
         color: rgba(255, 255, 255, 0.65);
         font-weight: 600;
         font-variant-numeric: tabular-nums;
@@ -313,7 +333,8 @@ export class PackageQuestHUD {
         }
         .pkg-banner {
           top: max(24px, calc(14px + env(safe-area-inset-top)));
-          right: calc(var(--hud-top-right-reserved, 120px) + 12px);
+          left: 8px;
+          right: calc(var(--hud-top-right-reserved, 120px) + 8px);
           font-size: 0.8rem;
         }
       }

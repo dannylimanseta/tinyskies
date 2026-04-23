@@ -93,6 +93,8 @@ export class Plane {
     altSpeedMult: 1,
     bankMult: 1,
     brakeDecelMult: 1,
+    /** Max HP = round(PL_HP_MAX * this). */
+    gremlinHpMaxMult: 1,
   };
 
   /** Smoothed yaw command (matches keyboard / stick after lag). */
@@ -107,7 +109,7 @@ export class Plane {
   private paintballWobbleBank = 0;
 
   /** Survive hits from sky gremlins; at 0 the Game ends the run. */
-  private gremlinHealth = PL_HP_MAX;
+  private gremlinHealth: number;
   /** Tween 0–1 for the cockpit HP pill (matches gremlins’ fill animation). */
   private gremlinHpDisplay = 1;
   private readonly gremlinHpBarRoot: Group;
@@ -168,6 +170,28 @@ export class Plane {
     this.gremlinHpFillMesh = hpFill;
     this.gremlinHpBarRoot.add(hpTrack);
     this.gremlinHpBarRoot.add(hpFill);
+    this.gremlinHealth = this.getGremlinMaxHp();
+  }
+
+  getGremlinMaxHp(): number {
+    return Math.max(1, Math.round(PL_HP_MAX * this.upgrades.gremlinHpMaxMult));
+  }
+
+  /**
+   * After {@link gremlinHpMaxMult} changes, keep HP fraction stable when max increases
+   * and clamp when it decreases.
+   */
+  reconcileGremlinMaxHpChange(previousMax: number) {
+    const newMax = this.getGremlinMaxHp();
+    if (newMax === previousMax) return;
+    if (previousMax <= 0) {
+      this.gremlinHealth = newMax;
+      return;
+    }
+    this.gremlinHealth = Math.min(
+      newMax,
+      Math.max(0, Math.round((this.gremlinHealth * newMax) / previousMax)),
+    );
   }
 
   update(
@@ -319,18 +343,19 @@ export class Plane {
 
   /** True while HP is below max; pick-ups can be skipped to avoid waste. */
   canHealFromGremlinPickups(): boolean {
-    return this.gremlinHealth < PL_HP_MAX;
+    return this.gremlinHealth < this.getGremlinMaxHp();
   }
 
   /** Gremlin / heart pick-ups. Does nothing at full health. */
   healGremlinHealth(amount: number) {
-    if (amount <= 0 || this.gremlinHealth >= PL_HP_MAX) return;
-    this.gremlinHealth = Math.min(PL_HP_MAX, this.gremlinHealth + Math.floor(amount));
+    const cap = this.getGremlinMaxHp();
+    if (amount <= 0 || this.gremlinHealth >= cap) return;
+    this.gremlinHealth = Math.min(cap, this.gremlinHealth + Math.floor(amount));
   }
 
   /** World-space billboarding for the gremlin-damage bar (call each frame in flight). */
   updateGremlinDamageHpBar(dt: number, camera: Camera) {
-    const maxH = PL_HP_MAX;
+    const maxH = this.getGremlinMaxHp();
     const target = this.gremlinHealth <= 0 ? 0 : this.gremlinHealth / maxH;
     this.gremlinHpDisplay += (target - this.gremlinHpDisplay) * Math.min(1, PL_HP_TWEEN_SPEED * dt);
 

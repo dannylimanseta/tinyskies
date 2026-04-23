@@ -86,6 +86,8 @@ export class GremlinHearts {
   private readonly globeRadius: number;
   private time = 0;
   private hearts: HeartState[] = [];
+  private readonly heartGeometry: ExtrudeGeometry;
+  private heartHealMult = 1;
 
   onCollect: ((heal: number, worldPos: Vector3) => void) | null = null;
 
@@ -93,35 +95,49 @@ export class GremlinHearts {
     this.globeRadius = globeRadius;
     void _terrainType;
     void seed;
-    const geo = createHeartExtrudeGeometry();
+    this.heartGeometry = createHeartExtrudeGeometry();
     for (let i = 0; i < HEART_COUNT; i++) {
-      const mat = new ShaderMaterial({
-        vertexShader: holoVert,
-        fragmentShader: holoFrag,
-        uniforms: {
-          time: { value: 0 },
-          phaseOffset: { value: Math.random() * Math.PI * 2 },
-          spawnScale: { value: 0 },
-        },
-        transparent: true,
-        blending: AdditiveBlending,
-        side: DoubleSide,
-        depthWrite: false,
-      });
-      const mesh = new Mesh(geo, mat);
-      mesh.frustumCulled = false;
-      const pointLight = new PointLight(0xff6677, 0.38, 0.45, 1.2);
-      pointLight.position.set(0, 0, 0);
-      mesh.add(pointLight);
-      this.group.add(mesh);
-      this.hearts.push(this.createHeartState(mesh, pointLight, geo));
+      this.pushNewHeart();
     }
+  }
+
+  setHeartHealMult(m: number) {
+    this.heartHealMult = Math.max(0.1, m);
+  }
+
+  /** Add extra world hearts (e.g. from Heart Orchard upgrade). */
+  addBonusHearts(n: number) {
+    for (let i = 0; i < n; i++) {
+      this.pushNewHeart();
+    }
+  }
+
+  private pushNewHeart() {
+    const mat = new ShaderMaterial({
+      vertexShader: holoVert,
+      fragmentShader: holoFrag,
+      uniforms: {
+        time: { value: 0 },
+        phaseOffset: { value: Math.random() * Math.PI * 2 },
+        spawnScale: { value: 0 },
+      },
+      transparent: true,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      depthWrite: false,
+    });
+    const mesh = new Mesh(this.heartGeometry, mat);
+    mesh.frustumCulled = false;
+    const pointLight = new PointLight(0xff6677, 0.38, 0.45, 1.2);
+    pointLight.position.set(0, 0, 0);
+    mesh.add(pointLight);
+    this.group.add(mesh);
+    this.hearts.push(this.createHeartState(mesh, pointLight));
   }
 
   private createHeartState(
     mesh: Mesh,
     pointLight: PointLight,
-    _geo: ExtrudeGeometry,
   ): HeartState {
     const qPos = this.randomSpherePosition();
     const worldPos = cartesianFromSpherical(qPos, HEART_FLIGHT_ALTITUDE, this.globeRadius);
@@ -255,7 +271,8 @@ export class GremlinHearts {
         h.mesh.getWorldPosition(worldPos);
         h.active = false;
         h.mesh.visible = false;
-        this.onCollect?.(HEAL_HP, worldPos);
+        const heal = Math.max(1, Math.round(HEAL_HP * this.heartHealMult));
+        this.onCollect?.(heal, worldPos);
         h.pendingRespawn = {
           timer: 0,
           delay: RESPAWN_DELAY_MIN + Math.random() * (RESPAWN_DELAY_MAX - RESPAWN_DELAY_MIN),
@@ -265,16 +282,11 @@ export class GremlinHearts {
   }
 
   dispose() {
-    this.hearts.length = 0;
-    const g = this.group.children[0] as Mesh | undefined;
-    if (g) {
-      g.geometry?.dispose();
-    }
     for (const child of this.group.children) {
       const m = child as Mesh;
-      if (m.material) {
-        (m.material as ShaderMaterial).dispose();
-      }
+      if (m.material) (m.material as ShaderMaterial).dispose();
     }
+    this.heartGeometry.dispose();
+    this.hearts.length = 0;
   }
 }

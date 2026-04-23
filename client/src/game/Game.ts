@@ -396,6 +396,7 @@ export class Game {
   private levelUpCards!: LevelUpCards;
   /** Count of previously spawned bonus collectibles so we only spawn the delta. */
   private prevDiamondCountBonus = 0;
+  private prevWorldHeartCountBonus = 0;
   private prevExtraRainbows = 0;
   private prevExtraFireflies = 0;
   private prevExtraLanterns = 0;
@@ -893,6 +894,7 @@ export class Game {
     this.transitionOverlay = new TransitionOverlay(this.container);
     this.levelUpCards = new LevelUpCards();
     this.prevDiamondCountBonus = 0;
+    this.prevWorldHeartCountBonus = 0;
     this.prevExtraRainbows = 0;
     this.prevExtraFireflies = 0;
     this.prevExtraLanterns = 0;
@@ -1277,6 +1279,7 @@ export class Game {
       };
       this.scene.add(this.gremlinHearts.group);
       this.renderer.compile(this.gremlinHearts.group, this.cameraRig.camera, this.scene);
+      this.propagateUpgrades();
     } else {
       this.skyGremlins = null;
       this.gremlinHearts = null;
@@ -4196,12 +4199,10 @@ export class Game {
   }
 
   /**
-   * Single XP chokepoint so global modifiers (Night Owl) and per-source
-   * modifiers (Selfie XP, Delivery XP) stay consistent.
+   * Single XP chokepoint so per-source modifiers (Selfie XP, Delivery XP) stay consistent.
    *
    * Diamonds already have their per-source multipliers applied inside
-   * RingManager (diamondXpMult, frequentFlyer, wake_rider highSpeedMult) so
-   * we only add Night Owl on top for "diamond".
+   * RingManager (diamondXpMult, wake_rider highSpeedMult).
    */
   private updateOceanFish(dt: number, allowCapture: boolean) {
     if (!this.oceanFish || !(this.localPlayer instanceof Boat)) return;
@@ -4255,9 +4256,6 @@ export class Game {
       default:
         break;
     }
-    if (s.nightOwlEnabled) {
-      amt *= 1 + 0.2 * this.dayNightCycle.getNightWeight();
-    }
     const rounded = Math.max(0, Math.round(amt));
     if (rounded <= 0) return;
     this.hud.showXPGain(rounded);
@@ -4268,14 +4266,18 @@ export class Game {
     const s = this.progression.upgrades.state;
 
     if (this.localPlayer instanceof Plane) {
-      Object.assign(this.localPlayer.upgrades, {
+      const plane = this.localPlayer;
+      const oldMaxHp = plane.getGremlinMaxHp();
+      Object.assign(plane.upgrades, {
         maxSpeedMult: s.maxSpeedMult,
         boostSpeedMult: s.boostSpeedMult,
         boostDurationMult: s.boostDurationMult,
         altSpeedMult: s.altSpeedMult,
         bankMult: s.bankMult,
         brakeDecelMult: s.brakeDecelMult,
+        gremlinHpMaxMult: s.planeGremlinHpMaxMult,
       });
+      plane.reconcileGremlinMaxHpChange(oldMaxHp);
     } else if (this.localPlayer instanceof Carpet) {
       Object.assign(this.localPlayer.upgrades, {
         maxSpeedMult: s.carpetSpeedMult,
@@ -4294,8 +4296,10 @@ export class Game {
     }
 
     this.ringManager.upgrades.diamondXpMult = s.diamondXpMult;
-    this.ringManager.upgrades.frequentFlyerEnabled = s.frequentFlyerEnabled;
-    this.ringManager.upgrades.magnetMult = s.magnetMult;
+
+    if (this.gremlinHearts) {
+      this.gremlinHearts.setHeartHealMult(s.heartHealMult);
+    }
 
     if (this.carpetPortalSystem) {
       this.carpetPortalSystem.upgrades.triggerRadiusMult = s.carpetPortalRadiusMult;
@@ -4330,6 +4334,12 @@ export class Game {
     if (diamondDelta > 0) {
       this.ringManager.spawnBonusDiamonds(diamondDelta);
       this.prevDiamondCountBonus = s.diamondCountBonus;
+    }
+
+    const heartDelta = s.worldHeartCountBonus - this.prevWorldHeartCountBonus;
+    if (heartDelta > 0 && this.gremlinHearts) {
+      this.gremlinHearts.addBonusHearts(heartDelta);
+      this.prevWorldHeartCountBonus = s.worldHeartCountBonus;
     }
 
     // Rainbow Finder

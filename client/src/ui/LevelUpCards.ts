@@ -104,10 +104,7 @@ const CSS = `
 const UPGRADE_ICONS: Record<string, string> = {
   // Shared
   prospector: "✨",
-  magnet_field: "🧲",
-  night_owl: "🦉",
-  combo_hunter: "🎯",
-  rainbow_finder: "🌈",
+  diamond_sky: "💎",
   // Plane
   tailwind: "💨",
   afterburner: "🔥",
@@ -115,8 +112,9 @@ const UPGRADE_ICONS: Record<string, string> = {
   tight_turn: "🌀",
   sharpshooter: "🎯",
   double_tap: "💥",
-  generous_tip: "📦",
-  frequent_flyer: "✈️",
+  hull_reinforced: "🛡️",
+  bountiful_hearts: "❤️",
+  heart_orchard: "🫀",
   // Carpet
   silk_wind: "🪁",
   thermal_surge: "🌋",

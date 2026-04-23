@@ -1,6 +1,5 @@
 import {
   AdditiveBlending,
-  CircleGeometry,
   DoubleSide,
   Float32BufferAttribute,
   Group,
@@ -12,7 +11,6 @@ import {
   MeshPhongMaterial,
   PlaneGeometry,
   Quaternion,
-  RingGeometry,
   Scene,
   ShaderMaterial,
   SphereGeometry,
@@ -197,30 +195,6 @@ function buildVolcanoGeometry(seed: number): LatheGeometry {
   return geo;
 }
 
-/* ── Crater glow shaders ───────────────────────────────────────── */
-
-const craterGlowVert = /* glsl */ `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const craterGlowFrag = /* glsl */ `
-uniform float uTime;
-varying vec2 vUv;
-void main() {
-  float d = distance(vUv, vec2(0.5)) * 2.0;
-  vec3 core = vec3(1.0, 0.7, 0.12);
-  vec3 edge = vec3(1.0, 0.3, 0.0);
-  vec3 col = mix(core, edge, smoothstep(0.0, 1.0, d));
-  float pulse = 0.8 + 0.2 * sin(uTime * 2.0);
-  float alpha = (1.0 - smoothstep(0.6, 1.0, d)) * pulse;
-  gl_FragColor = vec4(col * 3.0, alpha);
-}
-`;
-
 /* ── Lava blob shaders ─────────────────────────────────────────── */
 
 const lavaVert = /* glsl */ `
@@ -287,27 +261,6 @@ void main() {
 }
 `;
 
-/* ── Blending skirt shader ─────────────────────────────────────── */
-
-const skirtVert = /* glsl */ `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const skirtFrag = /* glsl */ `
-varying vec2 vUv;
-void main() {
-  float r = length(vUv - 0.5) * 2.0;
-  float inner = 0.35;
-  float alpha = 1.0 - smoothstep(inner, 1.0, r);
-  vec3 col = vec3(0.22, 0.18, 0.15);
-  gl_FragColor = vec4(col, alpha * 0.7);
-}
-`;
-
 /* ── Per-particle state ────────────────────────────────────────── */
 
 interface LavaBlob {
@@ -341,12 +294,10 @@ export class Volcano {
 
   private lavaMat: ShaderMaterial;
   private smokeMat: ShaderMaterial;
-  private skirtMat: ShaderMaterial;
   private volcanoBodyMat: MeshPhongMaterial;
   private volcanoGeo: LatheGeometry;
   private lavaSphereGeo: SphereGeometry;
   private smokePlaneGeo: PlaneGeometry;
-  private skirtGeo: CircleGeometry;
 
   private lavaInstanced: InstancedMesh;
   private smokeInstanced: InstancedMesh;
@@ -391,21 +342,6 @@ export class Volcano {
     const bodyMesh = new Mesh(this.volcanoGeo, this.volcanoBodyMat);
     bodyMesh.castShadow = true;
     this.group.add(bodyMesh);
-
-    /* ── Blending skirt ────────────────────────────────────────── */
-    const skirtRadius = S * 1.8;
-    this.skirtGeo = new CircleGeometry(skirtRadius, 24);
-    this.skirtMat = new ShaderMaterial({
-      vertexShader: skirtVert,
-      fragmentShader: skirtFrag,
-      transparent: true,
-      depthWrite: false,
-      side: DoubleSide,
-    });
-    const skirtMesh = new Mesh(this.skirtGeo, this.skirtMat);
-    skirtMesh.rotation.x = -Math.PI / 2;
-    skirtMesh.position.y = S * H * 0.06;
-    this.group.add(skirtMesh);
 
     /* ── Lava blobs (instanced) ────────────────────────────────── */
     this.lavaSphereGeo = new SphereGeometry(0.02, 5, 4);
@@ -680,8 +616,6 @@ export class Volcano {
     this.smokePlaneGeo.dispose();
     this.smokeMat.dispose();
     this.smokeInstanced.dispose();
-    this.skirtGeo.dispose();
-    this.skirtMat.dispose();
     this.group.removeFromParent();
   }
 }

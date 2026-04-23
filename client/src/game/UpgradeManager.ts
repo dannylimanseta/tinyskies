@@ -10,6 +10,8 @@ export interface UpgradeState {
   bankMult: number;
   /** Retained so legacy `quick_brake` saves don't throw. */
   brakeDecelMult: number;
+  /** Max gremlin paintball HP = round(PL_HP_MAX * this). */
+  planeGremlinHpMaxMult: number;
 
   // ── Carpet performance ────────────────────────────
   carpetSpeedMult: number;
@@ -46,23 +48,25 @@ export interface UpgradeState {
   /** Double-Tap burst fire: 2 paintballs ~90ms apart, longer post-burst cooldown. */
   paintballDoubleTapEnabled: boolean;
 
+  // ── Gremlin heart pickups (plane world) ───────────
+  /** Heal amount = round(HEAL_HP * this). */
+  heartHealMult: number;
+  /** Extra heart collectibles; spawned via GremlinHearts.addBonusHearts. */
+  worldHeartCountBonus: number;
+
   // ── Shared economy ────────────────────────────────
-  /** Diamond pickup-radius multiplier (real magnet). */
-  magnetMult: number;
   diamondXpMult: number;
   deliveryXpMult: number;
-  frequentFlyerEnabled: boolean;
-  nightOwlEnabled: boolean;
+  /** Extra world diamonds; RingManager.spawnBonusDiamonds. */
+  diamondCountBonus: number;
 
-  // ── Combo tuning (diamond streaks) ────────────────
+  // ── Combo tuning (diamond streaks) — multipliers on base Game constants. ─
   comboWindowMs: number;
   comboMaxSteps: number;
   comboRatePerStep: number;
 
   // ── Spawn-count bonuses (only rainbows are live) ──
   extraRainbows: number;
-  /** Retained so legacy saves don't throw. No card feeds them. */
-  diamondCountBonus: number;
   extraFireflies: number;
   extraLanterns: number;
 }
@@ -83,6 +87,7 @@ function defaultState(): UpgradeState {
     altSpeedMult: 1,
     bankMult: 1,
     brakeDecelMult: 1,
+    planeGremlinHpMaxMult: 1,
 
     carpetSpeedMult: 1,
     carpetBoostSpeedMult: 1,
@@ -106,18 +111,18 @@ function defaultState(): UpgradeState {
     paintballRangeMult: 1,
     paintballDoubleTapEnabled: false,
 
-    magnetMult: 1,
+    heartHealMult: 1,
+    worldHeartCountBonus: 0,
+
     diamondXpMult: 1,
     deliveryXpMult: 1,
-    frequentFlyerEnabled: false,
-    nightOwlEnabled: false,
+    diamondCountBonus: 0,
 
-    comboWindowMs: 900,
-    comboMaxSteps: 5,
-    comboRatePerStep: 0.028,
+    comboWindowMs: 1,
+    comboMaxSteps: 1,
+    comboRatePerStep: 1,
 
     extraRainbows: 0,
-    diamondCountBonus: 0,
     extraFireflies: 0,
     extraLanterns: 0,
   };
@@ -133,36 +138,11 @@ const SHARED_UPGRADES: UpgradeDefinition[] = [
     apply: (s) => { s.diamondXpMult *= 1.25; },
   },
   {
-    id: "magnet_field",
-    name: "Magnet Field",
-    description: "Diamond pickup radius x2",
+    id: "diamond_sky",
+    name: "Diamond Sky",
+    description: "+4 diamonds in the world",
     category: "economy",
-    apply: (s) => { s.magnetMult *= 2.0; },
-  },
-  {
-    id: "night_owl",
-    name: "Night Owl",
-    description: "+20% XP from every source at night",
-    category: "economy",
-    apply: (s) => { s.nightOwlEnabled = true; },
-  },
-  {
-    id: "combo_hunter",
-    name: "Combo Hunter",
-    description: "Longer diamond combo window, higher pitch ceiling",
-    category: "economy",
-    apply: (s) => {
-      s.comboWindowMs = 1800;
-      s.comboMaxSteps = 8;
-      s.comboRatePerStep = 0.045;
-    },
-  },
-  {
-    id: "rainbow_finder",
-    name: "Rainbow Finder",
-    description: "+2 rainbow arches in the world",
-    category: "economy",
-    apply: (s) => { s.extraRainbows += 2; },
+    apply: (s) => { s.diamondCountBonus += 4; },
   },
 ];
 
@@ -171,9 +151,9 @@ const PLANE_UPGRADES: UpgradeDefinition[] = [
   {
     id: "tailwind",
     name: "Tailwind",
-    description: "+10% cruise speed",
+    description: "+20% cruise speed",
     category: "performance",
-    apply: (s) => { s.maxSpeedMult *= 1.10; },
+    apply: (s) => { s.maxSpeedMult *= 1.2; },
   },
   {
     id: "afterburner",
@@ -214,18 +194,25 @@ const PLANE_UPGRADES: UpgradeDefinition[] = [
     apply: (s) => { s.paintballDoubleTapEnabled = true; },
   },
   {
-    id: "generous_tip",
-    name: "Generous Tip",
-    description: "+35% delivery quest XP",
-    category: "economy",
-    apply: (s) => { s.deliveryXpMult *= 1.35; },
+    id: "hull_reinforced",
+    name: "Reinforced Hull",
+    description: "+20% max paintball / gremlin HP",
+    category: "performance",
+    apply: (s) => { s.planeGremlinHpMaxMult *= 1.2; },
   },
   {
-    id: "frequent_flyer",
-    name: "Frequent Flyer",
-    description: "Every 5th diamond collected gives double XP",
+    id: "bountiful_hearts",
+    name: "Bountiful Hearts",
+    description: "Heart pick-ups restore +30% more HP",
+    category: "performance",
+    apply: (s) => { s.heartHealMult *= 1.3; },
+  },
+  {
+    id: "heart_orchard",
+    name: "Heart Orchard",
+    description: "+3 heart pick-ups in the world",
     category: "economy",
-    apply: (s) => { s.frequentFlyerEnabled = true; },
+    apply: (s) => { s.worldHeartCountBonus += 3; },
   },
 ];
 
@@ -337,12 +324,62 @@ const LEGACY_BOAT_UPGRADES: UpgradeDefinition[] = [
   },
 ];
 
+/**
+ * Removed or renamed cards: keep `apply` as no-ops so save IDs do not
+ * re-run old logic when the state model changed.
+ */
+const LEGACY_ECONOMY_CARDS: UpgradeDefinition[] = [
+  {
+    id: "magnet_field",
+    name: "Magnet Field",
+    description: "(removed)",
+    category: "economy",
+    apply: () => {},
+  },
+  {
+    id: "night_owl",
+    name: "Night Owl",
+    description: "(removed)",
+    category: "economy",
+    apply: () => {},
+  },
+  {
+    id: "combo_hunter",
+    name: "Combo Hunter",
+    description: "(removed)",
+    category: "economy",
+    apply: () => {},
+  },
+  {
+    id: "rainbow_finder",
+    name: "Rainbow Finder",
+    description: "(removed)",
+    category: "economy",
+    apply: () => {},
+  },
+  {
+    id: "generous_tip",
+    name: "Generous Tip",
+    description: "(removed)",
+    category: "economy",
+    apply: () => {},
+  },
+  {
+    id: "frequent_flyer",
+    name: "Frequent Flyer",
+    description: "(removed)",
+    category: "economy",
+    apply: () => {},
+  },
+];
+
 const ALL_POOLS: UpgradeDefinition[][] = [
   SHARED_UPGRADES,
   PLANE_UPGRADES,
   CARPET_UPGRADES,
   BOAT_UPGRADES,
   LEGACY_BOAT_UPGRADES,
+  LEGACY_ECONOMY_CARDS,
 ];
 
 function vehiclePool(vehicle: Vehicle): UpgradeDefinition[] {

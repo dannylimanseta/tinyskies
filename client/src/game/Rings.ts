@@ -149,18 +149,12 @@ export class RingManager {
   /** Upgrade multipliers pushed by Game.propagateUpgrades(). */
   upgrades = {
     diamondXpMult: 1,
-    frequentFlyerEnabled: false,
-    /** Diamond pickup radius multiplier (real magnet). */
-    magnetMult: 1,
     /**
      * Multiplier applied to diamond XP gated on vehicle speed (Wake Rider).
      * Game.ts sets this each tick based on local boat speedRatio.
      */
     highSpeedMult: 1,
   };
-
-  /** Running count of diamonds collected this session (used for Frequent Flyer). */
-  private diamondStreakCount = 0;
 
   setConsumerActive(active: boolean) {
     this.consumerActive = active;
@@ -403,9 +397,8 @@ export class RingManager {
 
       if (spawnProgress >= 1.0) {
         const dist = planePos.distanceTo(worldPos);
-        const baseRadius =
+        const effRadius =
           this.mode === "carpet" ? CARPET_COLLECTION_RADIUS : COLLECTION_RADIUS;
-        const effRadius = baseRadius * this.upgrades.magnetMult;
 
         if (dist < effRadius) {
           this.collectDiamond(d, worldPos);
@@ -426,19 +419,11 @@ export class RingManager {
     d.active = false;
     d.mesh.visible = false;
 
-    this.diamondStreakCount++;
-    const isFrequentFlyerBonus =
-      this.upgrades.frequentFlyerEnabled && this.diamondStreakCount % 5 === 0;
-    const freqMult = isFrequentFlyerBonus ? 2 : 1;
-
     const xp = Math.round(
-      DIAMOND_XP *
-        this.upgrades.diamondXpMult *
-        freqMult *
-        this.upgrades.highSpeedMult,
+      DIAMOND_XP * this.upgrades.diamondXpMult * this.upgrades.highSpeedMult,
     );
 
-    this.onCollect?.(xp, worldPos, isFrequentFlyerBonus ? 1 : 0);
+    this.onCollect?.(xp, worldPos, 0);
 
     const delay = RESPAWN_DELAY_MIN + Math.random() * (RESPAWN_DELAY_MAX - RESPAWN_DELAY_MIN);
     this.pendingRespawns.push({ timer: 0, delay });
@@ -477,7 +462,6 @@ export class RingManager {
   }
 
   dispose() {
-    this.diamondStreakCount = 0;
     for (const d of this.diamonds) {
       (d.mesh.material as ShaderMaterial).dispose();
       this.group.remove(d.mesh);
