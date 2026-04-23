@@ -929,8 +929,16 @@ export class Game {
       () => this.socketClient?.id,
       () => this.socketClient,
       this.remotePlanes,
-      (colorHex?: number) => {
-        this.cameraRig.shake(0.038, 0.26);
+      (colorHex?: number, ctx?: { fromGremlin?: boolean; gremlinKing?: boolean }) => {
+        if (ctx?.fromGremlin) {
+          if (ctx.gremlinKing) {
+            this.cameraRig.shake(0.1, 0.48);
+          } else {
+            this.cameraRig.shake(0.078, 0.4);
+          }
+        } else {
+          this.cameraRig.shake(0.038, 0.26);
+        }
         this.hud.showPaintballSplatter(colorHex);
       },
       (victimId) => {

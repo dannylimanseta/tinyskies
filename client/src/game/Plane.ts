@@ -1,5 +1,4 @@
 import {
-  BoxGeometry,
   Camera,
   Group,
   Mesh,
@@ -143,7 +142,10 @@ export class Plane {
       PL_HP_BAR_CORNER_R,
     );
     this.gremlinHpBarInnerW = PL_HP_BAR_W - 2 * PL_HP_BAR_INSET;
-    const fillGeo = new BoxGeometry(1, PL_HP_BAR_H * 0.6, PL_HP_BAR_D * 0.45);
+    const fillH = PL_HP_BAR_H * 0.6;
+    const fillD = PL_HP_BAR_D * 0.45;
+    const fillR = Math.min(PL_HP_BAR_CORNER_R * 0.55, fillH * 0.48, fillD * 0.45);
+    const fillGeo = new RoundedBoxGeometry(1, fillH, fillD, PL_HP_BAR_SEGMENTS, fillR);
     const trackMat = new MeshBasicMaterial({
       color: PL_HP_TRACK,
       transparent: true,

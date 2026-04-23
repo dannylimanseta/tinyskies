@@ -241,7 +241,10 @@ export class PaintballSystem {
     /** Null when offline / menu — projectiles still work solo. */
     private getSocket: () => import("../network/SocketClient").SocketClient | null,
     private remotePlanes: RemotePlaneManager,
-    private onLocalPlayerPaintballHit?: (colorHex?: number) => void,
+    private onLocalPlayerPaintballHit?: (
+      colorHex?: number,
+      ctx?: { fromGremlin?: boolean; gremlinKing?: boolean },
+    ) => void,
     private onPaintballVictimWobble?: (victimId: string) => void,
     /** One-shot when a projectile actually spawns (local + remote). */
     private onPaintballShoot?: () => void,
@@ -476,7 +479,7 @@ export class PaintballSystem {
     if (!victimRoot) return;
 
     if (ev.victimId === myId) {
-      this.onLocalPlayerPaintballHit?.(ev.color);
+      this.onLocalPlayerPaintballHit?.(ev.color, undefined);
     }
     this.onPaintballVictimWobble?.(ev.victimId);
     this.applyImpactAtGroup(victimRoot, ev.color, ev.splatSeed);
@@ -491,11 +494,14 @@ export class PaintballSystem {
     localPlaneGroup: Group | null,
     colorHex: number,
     splatSeed = (Math.random() * 0xffffffff) >>> 0,
-    options?: { splatterScale?: number },
+    options?: { splatterScale?: number; fromGremlin?: boolean; gremlinKing?: boolean },
   ) {
     if (!localPlaneGroup) return;
     const splatterScale = options?.splatterScale && options.splatterScale > 0 ? options.splatterScale : 1;
-    this.onLocalPlayerPaintballHit?.(colorHex);
+    this.onLocalPlayerPaintballHit?.(colorHex, {
+      fromGremlin: options?.fromGremlin,
+      gremlinKing: options?.gremlinKing,
+    });
     this.onPaintballVictimWobble?.(this.getSocketId() ?? "local");
     this.applyImpactAtGroup(localPlaneGroup, colorHex, splatSeed, splatterScale);
     this.onPaintballImpact?.(splatSeed, false);

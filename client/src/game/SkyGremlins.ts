@@ -278,7 +278,7 @@ export class SkyGremlins {
   private readonly hpBarCamQuat = new Quaternion();
   private currentPlayer: Plane | null = null;
   private readonly hpBarTrackGeo: RoundedBoxGeometry;
-  private readonly hpBarFillGeo: BoxGeometry;
+  private readonly hpBarFillGeo: RoundedBoxGeometry;
   private readonly hpBarTrackMat: MeshBasicMaterial;
   private readonly hpBarFillMat: MeshBasicMaterial;
   private readonly removeProjectileStepListener: () => void;
@@ -371,7 +371,12 @@ export class SkyGremlins {
       HP_BAR_SEGMENTS,
       HP_BAR_CORNER_R,
     );
-    this.hpBarFillGeo = new BoxGeometry(1, HP_BAR_H * 0.6, HP_BAR_D * 0.45);
+    {
+      const fillH = HP_BAR_H * 0.6;
+      const fillD = HP_BAR_D * 0.45;
+      const fillR = Math.min(HP_BAR_CORNER_R * 0.55, fillH * 0.48, fillD * 0.45);
+      this.hpBarFillGeo = new RoundedBoxGeometry(1, fillH, fillD, HP_BAR_SEGMENTS, fillR);
+    }
     this.hpBarTrackMat = new MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
@@ -1317,7 +1322,11 @@ export class SkyGremlins {
         this.currentPlayer.group,
         info.color,
         undefined,
-        { splatterScale: info.splatterScale ?? 1 },
+        {
+          splatterScale: info.splatterScale ?? 1,
+          fromGremlin: true,
+          gremlinKing: info.shooterId === GREMLIN_KING_SHOOTER_ID,
+        },
       );
       if (info.shooterId === GREMLIN_KING_SHOOTER_ID) {
         this.currentPlayer.applyGremlinKingSlow();
