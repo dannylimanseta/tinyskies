@@ -61,6 +61,7 @@ import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { pickRandomVehicleColor } from "./vehicleColors";
 import { CarpetPortalSystem } from "./CarpetPortalSystem";
+import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -271,6 +272,7 @@ export class Game {
   private carpetWake!: CarpetWake;
   private carpetLeaves!: CarpetLeaves;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
+  private cosmicWorldPortal: CosmicWorldPortal | null = null;
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
@@ -1010,8 +1012,11 @@ export class Game {
       });
       this.scene.add(this.carpetPortalSystem.group);
       this.carpetPortalSystem.syncToCarpet(this.localPlayer as Carpet);
+      this.cosmicWorldPortal = new CosmicWorldPortal(globeRadius, seed, terrainType);
+      this.scene.add(this.cosmicWorldPortal.group);
     } else {
       this.carpetPortalSystem = null;
+      this.cosmicWorldPortal = null;
     }
 
     this.lensFlare = new LensFlare();
@@ -1511,6 +1516,11 @@ export class Game {
       this.scene.remove(this.carpetPortalSystem.group);
       this.carpetPortalSystem.dispose();
       this.carpetPortalSystem = null;
+    }
+    if (this.cosmicWorldPortal) {
+      this.scene.remove(this.cosmicWorldPortal.group);
+      this.cosmicWorldPortal.dispose();
+      this.cosmicWorldPortal = null;
     }
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
@@ -2148,6 +2158,7 @@ export class Game {
 
       this.globe.update(dt);
       this.moonThreat?.update(dt);
+      this.cosmicWorldPortal?.update(dt);
       this.remotePlanes.update(dt, this.cameraRig.camera);
       this.applyDayNightPreset();
       this.audioManager.update(dt);
@@ -2263,6 +2274,7 @@ export class Game {
         false,
       );
       this.updateOceanFish(dt, false);
+      this.cosmicWorldPortal?.update(dt);
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
     }
@@ -2655,6 +2667,7 @@ export class Game {
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
     this.moonThreat?.update(dt);
+    this.cosmicWorldPortal?.update(dt);
     const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
     this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma, twisterTrauma));
     if (this.moonThreat) {
@@ -2838,6 +2851,7 @@ export class Game {
       this.localPlayer.visibility = 0;
     }
     this.globe.update(dt);
+    this.cosmicWorldPortal?.update(dt);
 
     if (this.moonThreat) {
       this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
@@ -4569,6 +4583,11 @@ export class Game {
       this.scene?.remove(this.carpetPortalSystem.group);
       this.carpetPortalSystem.dispose();
       this.carpetPortalSystem = null;
+    }
+    if (this.cosmicWorldPortal) {
+      this.scene?.remove(this.cosmicWorldPortal.group);
+      this.cosmicWorldPortal.dispose();
+      this.cosmicWorldPortal = null;
     }
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();

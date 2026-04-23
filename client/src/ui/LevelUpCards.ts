@@ -118,9 +118,7 @@ const UPGRADE_ICONS: Record<string, string> = {
   heart_orchard: "🫀",
   // Carpet
   silk_wind: "🪁",
-  thermal_surge: "🌋",
   tight_tassels: "🌀",
-  wide_portal: "🌀",
   leaf_flourish: "🍃",
   // Boat
   keel_cut: "⛵",

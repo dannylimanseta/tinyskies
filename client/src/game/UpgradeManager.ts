@@ -233,16 +233,6 @@ const CARPET_UPGRADES: UpgradeDefinition[] = [
     apply: (s) => { s.carpetSpeedMult *= 1.12; },
   },
   {
-    id: "thermal_surge",
-    name: "Thermal Surge",
-    description: "Diamond boost duration +35% and peak speed +10%",
-    category: "performance",
-    apply: (s) => {
-      s.carpetBoostDurationMult *= 1.35;
-      s.carpetBoostSpeedMult *= 1.10;
-    },
-  },
-  {
     id: "tight_tassels",
     name: "Tight Tassels",
     description: "+18% bank responsiveness",
@@ -250,20 +240,32 @@ const CARPET_UPGRADES: UpgradeDefinition[] = [
     apply: (s) => { s.carpetBankMult *= 1.18; },
   },
   {
-    id: "wide_portal",
-    name: "Wide Portal",
-    description: "Portal trigger radius +30%",
-    category: "performance",
-    apply: (s) => {
-      s.carpetPortalRadiusMult *= 1.30;
-    },
-  },
-  {
     id: "leaf_flourish",
     name: "Leaf Flourish",
     description: "+40% XP from landmark selfie quests",
     category: "economy",
     apply: (s) => { s.carpetSelfieXpMult *= 1.40; },
+  },
+];
+
+/** Removed carpet cards — not drawn, but `apply` must run for restored saves. */
+const LEGACY_CARPET_UPGRADES: UpgradeDefinition[] = [
+  {
+    id: "thermal_surge",
+    name: "Thermal Surge",
+    description: "(removed)",
+    category: "performance",
+    apply: (s) => {
+      s.carpetBoostDurationMult *= 1.35;
+      s.carpetBoostSpeedMult *= 1.10;
+    },
+  },
+  {
+    id: "wide_portal",
+    name: "Wide Portal",
+    description: "(removed)",
+    category: "performance",
+    apply: (s) => { s.carpetPortalRadiusMult *= 1.30; },
   },
 ];
 
@@ -386,6 +388,7 @@ const ALL_POOLS: UpgradeDefinition[][] = [
   CARPET_UPGRADES,
   BOAT_UPGRADES,
   LEGACY_BOAT_UPGRADES,
+  LEGACY_CARPET_UPGRADES,
   LEGACY_ECONOMY_CARDS,
 ];
 
