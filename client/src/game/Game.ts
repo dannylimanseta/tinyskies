@@ -1116,7 +1116,6 @@ export class Game {
           SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
         this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
       }
-      this.awardXP("diamond", xp * comboXpMult);
     };
 
     this.progression.onXPChanged = (xp, xpForNext, xpForCurrent, level) => {
