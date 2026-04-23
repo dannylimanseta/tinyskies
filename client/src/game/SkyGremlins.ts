@@ -298,6 +298,8 @@ export class SkyGremlins {
     private readonly onKingDefeated?: (worldPosition: Vector3) => void,
     /** Called on every local paintball hit that damages a gremlin; `isKill` is true on the killing shot. */
     private readonly onGremlinPaintballHit?: (isKing: boolean, isKill: boolean) => void,
+    /** When a gremlin paintball hits the local player (after slow / splatter). */
+    private readonly onLocalPlayerGremlinHit?: (isKing: boolean) => void,
   ) {
     this.group.visible = false;
     this.scene.add(this.group);
@@ -1322,6 +1324,7 @@ export class SkyGremlins {
       } else {
         this.currentPlayer.applyGremlinSlow();
       }
+      this.onLocalPlayerGremlinHit?.(info.shooterId === GREMLIN_KING_SHOOTER_ID);
       return;
     }
 

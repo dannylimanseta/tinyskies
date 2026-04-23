@@ -372,6 +372,7 @@ export class Game {
   private moonstoneUnionShotSide = new Vector3();
   private moonstoneUnionShotForward = new Vector3();
   private returningToMenuAfterMoon = false;
+  private playerGremlinDeathReturnInProgress = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
   private vehicleHintsEl: HTMLElement | null = null;
@@ -586,6 +587,52 @@ export class Game {
       GREMLIN_HIT_SFX_IDS[(Math.random() * GREMLIN_HIT_SFX_IDS.length) | 0]!;
     const rate = isKing ? GREMLIN_KING_HIT_PLAYBACK_RATE : 1;
     this.audioManager.playSFX(pick, GREMLIN_HIT_SFX_VOLUME, rate);
+  }
+
+  private onLocalPlayerGremlinPaintballHit(isKing: boolean) {
+    if (!(this.localPlayer instanceof Plane)) return;
+    if (this.localPlayer.applyGremlinPaintballDamage(isKing)) {
+      void this.returnToMainMenuAfterPlayerDowned();
+    }
+  }
+
+  /** Gremlin damage emptied the plane HP: fade to black, tear down session, main menu. */
+  private async returnToMainMenuAfterPlayerDowned() {
+    if (this.playerGremlinDeathReturnInProgress) return;
+    this.playerGremlinDeathReturnInProgress = true;
+    this.running = false;
+    this.audioManager.stopLoop("engine_biplane");
+    try {
+      if (this.transitionOverlay) {
+        await this.transitionOverlay.fadeOut();
+      }
+      this.teardownGameplaySession();
+      this.dayNightCycle.moonProgress = 0;
+      this.moonThreat?.reset();
+      this.shouldShowBrazierMoonResume = false;
+      this.applyDayNightPreset();
+      this.gamePhase = "flying";
+      this.moonCinematicStep = "done";
+      this.moonCinematicCamera = null;
+      this.introActive = false;
+      this.vehicleHintsEl = null;
+      this.campsiteHintsEl = null;
+      this.mountLobby();
+      this.previewActive = true;
+      window.addEventListener("resize", this.onPreviewResize);
+      this.onPreviewResize();
+      const previewDt = Math.min(this.clock.getDelta(), 0.05);
+      this.stepPreview(previewDt);
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      requestAnimationFrame(this.previewTick);
+      if (this.transitionOverlay) {
+        await this.transitionOverlay.fadeIn();
+        this.transitionOverlay.dispose();
+        this.transitionOverlay = null;
+      }
+    } finally {
+      this.playerGremlinDeathReturnInProgress = false;
+    }
   }
 
   /* ── Loading overlay ─────────────────────────────────────────────── */
@@ -1191,6 +1238,9 @@ export class Game {
         (isKing, isKill) => {
           if (isKill) this.playGremlinDeathSfx(isKing);
           else this.maybePlayGremlinHitSfx(isKing);
+        },
+        (isKing) => {
+          this.onLocalPlayerGremlinPaintballHit(isKing);
         },
       );
     } else {
@@ -2044,6 +2094,9 @@ export class Game {
       const up = worldUp.clone().lerp(localUp, t).normalize();
       const rollZ = Math.sin(t * Math.PI) * 0.12;
       this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ, up);
+      if (this.localPlayer instanceof Plane) {
+        this.localPlayer.updateGremlinDamageHpBar(dt, this.cameraRig.camera);
+      }
 
       this.globe.update(dt);
       this.moonThreat?.update(dt);
@@ -2275,6 +2328,9 @@ export class Game {
       this.vehicleFeatures.cameraSpeedZoom,
       this.vehicleFeatures.cameraFovBoost,
     );
+    if (this.localPlayer instanceof Plane) {
+      this.localPlayer.updateGremlinDamageHpBar(dt, this.cameraRig.camera);
+    }
 
     this.globe.update(dt);
 

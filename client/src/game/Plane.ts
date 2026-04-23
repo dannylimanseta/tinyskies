@@ -1,10 +1,22 @@
 import {
+  BoxGeometry,
+  Camera,
   Group,
+  Mesh,
+  MeshBasicMaterial,
   Quaternion,
+  Vector3,
   type Scene,
 } from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import type { Vehicle } from "@globefly/shared";
-import { buildPlaneMatrix, moveOnSphere, randomSpawnQuaternionAndHeading, tangentFrame } from "./SphericalMath";
+import {
+  buildPlaneMatrix,
+  cartesianFromSpherical,
+  moveOnSphere,
+  randomSpawnQuaternionAndHeading,
+  tangentFrame,
+} from "./SphericalMath";
 import { createBiplane } from "./BiplaneMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
@@ -24,6 +36,19 @@ const GREMLIN_SLOW_DURATION_SEC = 1.6;
 const GREMLIN_SLOW_MULT = 0.45;
 const GREMLIN_KING_SLOW_DURATION_SEC = 2.5;
 const GREMLIN_KING_SLOW_MULT = 0.28;
+
+/** HP from sky-gremlin paintballs (matches gremlin bar pill geometry). */
+const PL_HP_MAX = 10;
+const PL_HP_BAR_W = 0.135;
+const PL_HP_BAR_H = 0.0145;
+const PL_HP_BAR_D = 0.014;
+const PL_HP_BAR_SEGMENTS = 16;
+const PL_HP_BAR_CORNER_R = 0.0069;
+const PL_HP_BAR_INSET = 0.0025;
+const PL_HP_TWEEN_SPEED = 14;
+const PL_HP_RADIAL_LIFT = 0.16;
+const PL_HP_TRACK = 0x000000;
+const PL_HP_FILL = 0xa8e0ff;
 const ALTITUDE = 0.55;
 const HIGH_ALTITUDE = 1.35;
 /** Minimum clearance above terrain when descending. */
@@ -82,6 +107,17 @@ export class Plane {
   private paintballWobblePhase = 0;
   private paintballWobbleBank = 0;
 
+  /** Survive hits from sky gremlins; at 0 the Game ends the run. */
+  private gremlinHealth = PL_HP_MAX;
+  /** Tween 0–1 for the cockpit HP pill (matches gremlins’ fill animation). */
+  private gremlinHpDisplay = 1;
+  private readonly gremlinHpBarRoot: Group;
+  private readonly gremlinHpFillMesh: Mesh;
+  private readonly gremlinHpBarInnerW: number;
+  private readonly _hpBarUp = new Vector3();
+  private readonly _hpBarPos = new Vector3();
+  private readonly _hpBarCamQ = new Quaternion();
+
   private globeRadius: number;
   private seed: number;
   private terrainType: string;
@@ -98,6 +134,38 @@ export class Plane {
     this.qPosition.copy(spawn.qPosition);
     this.heading = spawn.heading;
     this.applyMatrix();
+
+    const trackGeo = new RoundedBoxGeometry(
+      PL_HP_BAR_W,
+      PL_HP_BAR_H,
+      PL_HP_BAR_D,
+      PL_HP_BAR_SEGMENTS,
+      PL_HP_BAR_CORNER_R,
+    );
+    this.gremlinHpBarInnerW = PL_HP_BAR_W - 2 * PL_HP_BAR_INSET;
+    const fillGeo = new BoxGeometry(1, PL_HP_BAR_H * 0.6, PL_HP_BAR_D * 0.45);
+    const trackMat = new MeshBasicMaterial({
+      color: PL_HP_TRACK,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+    });
+    const fillMat = new MeshBasicMaterial({
+      color: PL_HP_FILL,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    this.gremlinHpBarRoot = new Group();
+    this.gremlinHpBarRoot.visible = false;
+    this.gremlinHpBarRoot.renderOrder = 5;
+    const hpTrack = new Mesh(trackGeo, trackMat);
+    hpTrack.position.z = 0.0001;
+    const hpFill = new Mesh(fillGeo, fillMat);
+    hpFill.position.z = 0.0002;
+    this.gremlinHpFillMesh = hpFill;
+    this.gremlinHpBarRoot.add(hpTrack);
+    this.gremlinHpBarRoot.add(hpFill);
   }
 
   update(
@@ -236,6 +304,44 @@ export class Plane {
     this.speed = Math.max(MIN_SPEED, this.speed * GREMLIN_KING_SLOW_MULT);
   }
 
+  /**
+   * Gremlin paintball damage. Returns true the first time health reaches 0.
+   * @param isKing - king shots deal more damage
+   */
+  applyGremlinPaintballDamage(isKing: boolean): boolean {
+    if (this.gremlinHealth <= 0) return false;
+    const dmg = isKing ? 2 : 1;
+    this.gremlinHealth = Math.max(0, this.gremlinHealth - dmg);
+    return this.gremlinHealth <= 0;
+  }
+
+  /** World-space billboarding for the gremlin-damage bar (call each frame in flight). */
+  updateGremlinDamageHpBar(dt: number, camera: Camera) {
+    const maxH = PL_HP_MAX;
+    const target = this.gremlinHealth <= 0 ? 0 : this.gremlinHealth / maxH;
+    this.gremlinHpDisplay += (target - this.gremlinHpDisplay) * Math.min(1, PL_HP_TWEEN_SPEED * dt);
+
+    const innerW = this.gremlinHpBarInnerW;
+    const r = Math.max(0, Math.min(1, this.gremlinHpDisplay));
+    const show =
+      this.gremlinHealth > 0 && (this.gremlinHealth < maxH || r < 0.998);
+    this.gremlinHpBarRoot.visible = show;
+    if (!show) return;
+
+    const rw = Math.max(0.001, innerW * r);
+    this.gremlinHpFillMesh.scale.set(rw, 1, 1);
+    this.gremlinHpFillMesh.position.x = -innerW * 0.5 + rw * 0.5;
+
+    this._hpBarPos.copy(
+      cartesianFromSpherical(this.qPosition, this.altitude, this.globeRadius),
+    );
+    this._hpBarUp.copy(this._hpBarPos).normalize();
+    this._hpBarPos.addScaledVector(this._hpBarUp, PL_HP_RADIAL_LIFT);
+    this.gremlinHpBarRoot.position.copy(this._hpBarPos);
+    camera.getWorldQuaternion(this._hpBarCamQ);
+    this.gremlinHpBarRoot.quaternion.copy(this._hpBarCamQ);
+  }
+
   speedBoost() {
     const effBoost = Math.min(BOOST_SPEED * this.upgrades.boostSpeedMult, ABSOLUTE_MAX_SPEED);
     this.boostTimer = BOOST_DURATION_SEC * this.upgrades.boostDurationMult;
@@ -275,9 +381,16 @@ export class Plane {
 
   addTo(scene: Scene) {
     scene.add(this.group);
+    scene.add(this.gremlinHpBarRoot);
   }
 
   dispose() {
+    this.gremlinHpBarRoot.removeFromParent();
+    this.gremlinHpBarRoot.traverse((child) => {
+      const m = child as Mesh;
+      m.geometry?.dispose();
+      if (m.material) (m.material as MeshBasicMaterial).dispose();
+    });
     this.group.traverse((child) => {
       if ((child as any).geometry) (child as any).geometry.dispose();
       if ((child as any).material) (child as any).material.dispose();
