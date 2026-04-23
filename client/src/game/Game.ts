@@ -1267,6 +1267,7 @@ export class Game {
         this.cameraRig.shake(0.022, 0.2);
         this.collectVFX.play(worldPos, 0, {
           shardRgb: [1, 0.2, 0.32],
+          isHeart: true,
         });
         this.audioManager.resumeContextIfNeeded();
         const id =

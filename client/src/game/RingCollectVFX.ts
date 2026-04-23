@@ -19,6 +19,8 @@ const DIAMOND_COLOR: [number, number, number] = [0.2, 1.0, 0.8];
 export type RingCollectVFXOptions = {
   /** Additive shard tint; defaults to cold diamond green-cyan. */
   shardRgb?: [number, number, number];
+  /** Whether to use heart shapes instead of diamond shards. */
+  isHeart?: boolean;
 };
 
 const shardVert = `
@@ -53,6 +55,7 @@ interface ShardState {
 interface VFXInstance {
   group: Group;
   shards: InstancedMesh;
+  heartShards: InstancedMesh;
   shardMat: ShaderMaterial;
   states: ShardState[];
   life: number;
@@ -65,6 +68,8 @@ interface VFXInstance {
 
 const _dummy = new Object3D();
 const _pos = new Vector3();
+
+import { createHeartExtrudeGeometry } from "./GremlinHearts";
 
 function createShardGeometry(): BufferGeometry {
   const geo = new BufferGeometry();
@@ -84,16 +89,19 @@ export class RingCollectVFX {
   readonly group = new Group();
   private pool: VFXInstance[] = [];
   private shardGeos: BufferGeometry[] = [];
+  private heartGeos: BufferGeometry[] = [];
 
   constructor() {
     for (let i = 0; i < POOL_SIZE; i++) {
       const geo = createShardGeometry();
+      const heartGeo = createHeartExtrudeGeometry();
       this.shardGeos.push(geo);
-      this.pool.push(this.createInstance(geo));
+      this.heartGeos.push(heartGeo);
+      this.pool.push(this.createInstance(geo, heartGeo));
     }
   }
 
-  private createInstance(shardGeo: BufferGeometry): VFXInstance {
+  private createInstance(shardGeo: BufferGeometry, heartGeo: BufferGeometry): VFXInstance {
     const vfxGroup = new Group();
     vfxGroup.visible = false;
 
@@ -114,6 +122,11 @@ export class RingCollectVFX {
     shards.frustumCulled = false;
     vfxGroup.add(shards);
 
+    const heartShards = new InstancedMesh(heartGeo, shardMat, SHARD_COUNT);
+    heartShards.frustumCulled = false;
+    heartShards.visible = false;
+    vfxGroup.add(heartShards);
+
     this.group.add(vfxGroup);
 
     const states: ShardState[] = [];
@@ -131,6 +144,7 @@ export class RingCollectVFX {
     return {
       group: vfxGroup,
       shards,
+      heartShards,
       shardMat,
       states,
       life: 0,
@@ -150,6 +164,11 @@ export class RingCollectVFX {
     inst.center.copy(worldPos);
     inst.upDir.copy(worldPos).normalize();
     inst.group.visible = true;
+    
+    const isHeart = options?.isHeart ?? false;
+    inst.shards.visible = !isHeart;
+    inst.heartShards.visible = isHeart;
+
     const tint = options?.shardRgb;
     inst.shardTint = tint ? [tint[0], tint[1], tint[2]] : null;
     const base: [number, number, number] = tint ?? DIAMOND_COLOR;
@@ -189,10 +208,11 @@ export class RingCollectVFX {
         Math.random() * Math.PI * 2,
       );
 
+      const baseScale = isHeart ? 0.025 : 0.4;
       s.scaleXYZ.set(
-        0.4 + Math.random() * 1.2,
-        0.4 + Math.random() * 1.2,
-        0.4 + Math.random() * 1.2,
+        baseScale + Math.random() * baseScale * 2,
+        baseScale + Math.random() * baseScale * 2,
+        baseScale + Math.random() * baseScale * 2,
       );
       s.alpha = 0.4 + Math.random() * 0.6;
 
@@ -200,9 +220,17 @@ export class RingCollectVFX {
       _dummy.scale.copy(s.scaleXYZ);
       _dummy.rotation.copy(s.rotation);
       _dummy.updateMatrix();
-      inst.shards.setMatrixAt(i, _dummy.matrix);
+      if (isHeart) {
+        inst.heartShards.setMatrixAt(i, _dummy.matrix);
+      } else {
+        inst.shards.setMatrixAt(i, _dummy.matrix);
+      }
     }
-    inst.shards.instanceMatrix.needsUpdate = true;
+    if (isHeart) {
+      inst.heartShards.instanceMatrix.needsUpdate = true;
+    } else {
+      inst.shards.instanceMatrix.needsUpdate = true;
+    }
   }
 
   update(dt: number) {
@@ -257,17 +285,27 @@ export class RingCollectVFX {
           s.scaleXYZ.z * shrink,
         );
         _dummy.updateMatrix();
-        inst.shards.setMatrixAt(i, _dummy.matrix);
+        if (inst.heartShards.visible) {
+          inst.heartShards.setMatrixAt(i, _dummy.matrix);
+        } else {
+          inst.shards.setMatrixAt(i, _dummy.matrix);
+        }
       }
-      inst.shards.instanceMatrix.needsUpdate = true;
+      if (inst.heartShards.visible) {
+        inst.heartShards.instanceMatrix.needsUpdate = true;
+      } else {
+        inst.shards.instanceMatrix.needsUpdate = true;
+      }
     }
   }
 
   dispose() {
     for (const geo of this.shardGeos) geo.dispose();
+    for (const geo of this.heartGeos) geo.dispose();
     for (const inst of this.pool) {
       inst.shardMat.dispose();
       inst.shards.dispose();
+      inst.heartShards.dispose();
       this.group.remove(inst.group);
     }
     this.pool.length = 0;

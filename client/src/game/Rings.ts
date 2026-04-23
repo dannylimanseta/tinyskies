@@ -78,7 +78,7 @@ function randomPlaneAltitude(): number {
   return LOW_ALTITUDE;
 }
 
-const holoVert = `
+export const holoVert = `
 varying vec3 vWorldPos;
 varying vec3 vNorm;
 varying vec3 vViewDir;
@@ -92,7 +92,7 @@ void main() {
 }
 `;
 
-const holoFrag = `
+export const holoFrag = `
 uniform float time;
 uniform float phaseOffset;
 uniform float spawnScale;
