@@ -220,6 +220,7 @@ export class PackageQuestManager {
   private stringMesh: Mesh;
 
   private readonly _playerNormal = new Vector3();
+  private _allowInteraction = true;
   private spinAngle = 0;
 
   private prevPlayerPos = new Vector3();
@@ -300,10 +301,11 @@ export class PackageQuestManager {
     this.spawnDelay = SPAWN_DELAY_MIN + this.rand() * (SPAWN_DELAY_MAX - SPAWN_DELAY_MIN);
   }
 
-  update(dt: number, playerQPosition: Quaternion, _camera: Camera, playerWorldPos?: Vector3) {
+  update(dt: number, playerQPosition: Quaternion, _camera: Camera, playerWorldPos?: Vector3, allowInteraction = true) {
     this.time += dt;
 
     this._playerNormal.copy(REF_UP).applyQuaternion(playerQPosition).normalize();
+    this._allowInteraction = allowInteraction;
 
     this.updateBeamUniforms();
 
@@ -419,12 +421,12 @@ export class PackageQuestManager {
   /* ── Proximity helpers ───────────────────────────────────────────── */
 
   private inOriginZone(): boolean {
-    if (!this.origin) return false;
+    if (!this.origin || !this._allowInteraction) return false;
     return this._playerNormal.dot(this.origin.normal) > this.origin.enterDot;
   }
 
   private inDestZone(): boolean {
-    if (!this.destination) return false;
+    if (!this.destination || !this._allowInteraction) return false;
     return this._playerNormal.dot(this.destination.normal) > this.destination.enterDot;
   }
 

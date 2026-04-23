@@ -2786,14 +2786,14 @@ export class Game {
       this.jellyfishCaptureRing?.setProgress(moonstoneProgress);
     }
 
-    if (!portalInteractionSuppressed && this.packageQuest && this.moonThreat) {
+    if (this.packageQuest && this.moonThreat) {
       this.packageQuest.moonProgress = this.moonThreat.progress;
     }
-    if (!portalInteractionSuppressed) {
-      this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos);
-      _carpetSelfiePlayerNormal.copy(_carpetSelfieRefUp).applyQuaternion(this.localPlayer.qPosition).normalize();
-      this.carpetLandmarkSelfieQuest?.update(dt, _carpetSelfiePlayerNormal, this.playerVehicle === "carpet");
-    }
+    
+    this.packageQuest?.update(dt, this.localPlayer.qPosition, this.cameraRig.camera, questPlayerPos, !portalInteractionSuppressed);
+    _carpetSelfiePlayerNormal.copy(_carpetSelfieRefUp).applyQuaternion(this.localPlayer.qPosition).normalize();
+    this.carpetLandmarkSelfieQuest?.update(dt, _carpetSelfiePlayerNormal, this.playerVehicle === "carpet" && !portalInteractionSuppressed);
+    
     (this.localPlayer as any).carrying = this.packageQuest?.isCarrying ?? false;
     if (this.packageQuest?.isCarrying) {
       const dm = this.packageQuest.getDeliverySurfaceDistanceMetres(questPlayerPos);
