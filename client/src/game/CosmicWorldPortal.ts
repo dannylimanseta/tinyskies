@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  Camera,
   CircleGeometry,
   DoubleSide,
   Group,
@@ -73,59 +74,70 @@ void main() {
   
   float a = atan(uv.y, uv.x);
 
-  // Swirl angle based on radius and time (center spins faster)
-  float swirlAngle = a - uTime * 1.5 + (1.0 - r) * 6.0;
+  // Gravitational swirl: spins exponentially faster near the center to simulate intense distortion
+  float gravity = 1.0 / (r + 0.15);
+  float swirlAngle = a - uTime * 2.0 - gravity * 3.5;
 
-  // Base deep space color
+  // Base space color
   vec3 col = vec3(0.01, 0.0, 0.03);
 
-  // Nebula / Spiral arms using noise and sine waves
-  float spiral = sin(swirlAngle * 3.0) * 0.5 + 0.5;
+  // Deep Nebula Clouds (low frequency noise for voluminous gas)
+  float n1 = noise(vec2(r * 1.5 - uTime * 0.3, swirlAngle * 1.2));
+  float n2 = noise(vec2(r * 4.0 + uTime * 0.5, swirlAngle * 3.0));
+  float n3 = noise(vec2(r * 8.0 - uTime * 0.8, swirlAngle * 5.0));
   
-  // Add some turbulence to the spiral
-  float turb = noise(vec2(r * 5.0, swirlAngle * 2.0 - uTime));
-  spiral = mix(spiral, turb, 0.4);
-
-  // Focus spiral arms in the mid-range
-  float armMask = smoothstep(0.1, 0.4, r) * smoothstep(0.9, 0.6, r);
-  float arms = pow(spiral, 2.0) * armMask;
+  // Combine noise into a cloudy nebula texture
+  float nebula = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
   
-  // Violet and blue nebula colors
-  col += vec3(0.4, 0.1, 0.9) * arms * 1.2;
-  col += vec3(0.1, 0.6, 1.0) * pow(arms, 2.0) * 1.5;
-  col += vec3(1.0, 0.4, 0.8) * pow(arms, 4.0) * 2.0;
+  // Nebula intensity: glowing near the center, fading into the void
+  float nebulaMask = smoothstep(0.05, 0.35, r) * smoothstep(1.0, 0.2, r);
+  float gas = pow(nebula, 1.2) * nebulaMask;
+  
+  // Voluminous nebula colors (Deep cosmic blues, purples)
+  col += vec3(0.05, 0.1, 0.5) * gas * 2.5;      // Deep dark blue
+  col += vec3(0.3, 0.05, 0.6) * pow(gas, 1.5) * 2.0; // Deep purple mid gas
+  col += vec3(0.5, 0.1, 0.8) * pow(gas, 2.0) * 1.5; // Violet core highlights
 
-  // Stars (using swirling coordinates so they streak and spin)
+  // Accretion disk / sharp spiral arms slicing through the nebula
+  float spiral = sin(swirlAngle * 4.0) * 0.5 + 0.5;
+  float diskMask = smoothstep(0.15, 0.4, r) * smoothstep(0.9, 0.2, r);
+  float disk = pow(spiral * n2, 1.5) * diskMask;
+  
+  // Mix of different shades of purple and dark blue, avoiding blowing out to pure white
+  col += vec3(0.2, 0.05, 0.5) * disk * 1.8;           // Deep purple streaks
+  col += vec3(0.05, 0.1, 0.6) * pow(disk, 2.0) * 1.5; // Dark blue
+  col += vec3(0.4, 0.1, 0.8) * pow(disk, 3.0) * 1.2; // Rich violet core
+
+  // Stars (streaking into the black hole due to the extreme swirl angle)
   vec2 st = vec2(r * cos(swirlAngle), r * sin(swirlAngle));
-  vec2 sCoord = st * 70.0;
+  vec2 sCoord = st * 60.0;
   vec2 cell = floor(sCoord) + 0.5;
   float h = hash12(cell);
   
   // Twinkle
-  float tw = 0.5 + 0.5 * sin(uTime * 4.0 + h * 20.0);
+  float tw = 0.5 + 0.5 * sin(uTime * 5.0 + h * 20.0);
   
-  // Only show brightest stars
-  float star = step(0.96, h) * tw;
+  // Stars get stretched by the swirl naturally
+  float star = step(0.965, h) * tw;
   
-  // Fade stars near center and edge
-  float starMask = smoothstep(0.15, 0.4, r) * smoothstep(0.9, 0.7, r);
+  // Fade stars near center
+  float starMask = smoothstep(0.3, 0.5, r) * smoothstep(0.95, 0.6, r);
   star *= starMask;
   
-  // Give stars a slight color variation
-  vec3 starColor = mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 0.8, 0.9), hash12(cell + 10.0));
-  col += starColor * star * 3.0;
+  // Color the streaking stars (dark blues and purples instead of bright white)
+  vec3 starColor = mix(vec3(0.1, 0.2, 0.8), vec3(0.5, 0.1, 0.9), hash12(cell + 10.0));
+  col += starColor * star * 1.2;
 
-  // Core black hole (pure black in the center)
-  float blackHole = smoothstep(0.12, 0.28, r);
-  col *= blackHole;
+  // Soft tone mapping to prevent any additive colors from blowing out into pure white
+  col = 1.0 - exp(-col * 1.5);
 
-  // Outer glowing accretion ring
-  float ring = smoothstep(0.65, 0.9, r) * smoothstep(1.0, 0.85, r);
-  col += vec3(0.5, 0.2, 1.0) * ring * 0.9;
-  col += vec3(0.2, 0.6, 1.2) * pow(ring, 3.0) * 1.5;
+  // Event Horizon (pure black core)
+  float eventHorizon = smoothstep(0.18, 0.25, r);
+  col *= eventHorizon;
 
-  // Opaque disc; soften the outer rim to blend into the world
-  float edgeA = 1.0 - smoothstep(0.85, 1.0, r);
+  // Extremely soft fade at the outer edge of the portal so it blends into the world invisibly
+  // Starting the fade at r = 0.3 makes the edge highly feathered
+  float edgeA = 1.0 - smoothstep(0.3, 0.9, r);
   
   gl_FragColor = vec4(col, edgeA);
 }
@@ -144,7 +156,6 @@ class CosmicWorldPortalVisual {
 
   constructor(timePhase: number) {
     this.timePhase = timePhase;
-    this.group.matrixAutoUpdate = false;
     this.scaledGroup.scale.set(0.65, 1.25, 1.0);
     this.group.add(this.scaledGroup);
 
@@ -164,20 +175,14 @@ class CosmicWorldPortalVisual {
     this.scaledGroup.add(this.inner);
   }
 
-  applyPose(
-    worldPosition: Vector3,
-    right: Vector3,
-    up: Vector3,
-    forward: Vector3,
-  ) {
-    const m = new Matrix4().makeBasis(right, up, forward);
-    m.setPosition(worldPosition);
-    this.group.matrix.copy(m);
+  applyPose(worldPosition: Vector3) {
+    this.group.position.copy(worldPosition);
     this.group.matrixWorldNeedsUpdate = true;
   }
 
-  update(time: number) {
+  update(time: number, camera: Camera) {
     this.innerMat.uniforms.uTime.value = time + this.timePhase;
+    this.group.quaternion.copy(camera.quaternion);
   }
 
   dispose() {
@@ -231,30 +236,25 @@ export class CosmicWorldPortal {
     globeRadius: number,
     seed: number,
     terrainType: string,
+    index: number,
   ) {
-    const rand = seededUnit(seed + 19023841);
+    const rand = seededUnit(seed + 19023841 + index * 9999);
     const { qPosition, heading, altitude } = pickWorldPose(
       globeRadius,
-      seed,
+      seed + index * 100,
       terrainType,
       rand,
     );
     const worldPosition = cartesianFromSpherical(qPosition, altitude, globeRadius);
-    const frame = tangentFrame(qPosition);
-    const forward = new Vector3()
-      .addScaledVector(frame.north, Math.cos(heading))
-      .addScaledVector(frame.east, Math.sin(heading))
-      .normalize();
-    const right = new Vector3().crossVectors(forward, frame.up).normalize();
 
-    this.visual = new CosmicWorldPortalVisual(seed * 0.0012);
-    this.visual.applyPose(worldPosition, right, frame.up, forward);
+    this.visual = new CosmicWorldPortalVisual(seed * 0.0012 + index * 10);
+    this.visual.applyPose(worldPosition);
     this.group.add(this.visual.group);
   }
 
-  update(dt: number) {
+  update(dt: number, camera: Camera) {
     this.time += dt;
-    this.visual.update(this.time);
+    this.visual.update(this.time, camera);
   }
 
   dispose() {

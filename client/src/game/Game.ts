@@ -272,7 +272,7 @@ export class Game {
   private carpetWake!: CarpetWake;
   private carpetLeaves!: CarpetLeaves;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
-  private cosmicWorldPortal: CosmicWorldPortal | null = null;
+  private cosmicWorldPortals: CosmicWorldPortal[] = [];
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
@@ -422,6 +422,11 @@ export class Game {
   private introStartPos = new Vector3();
   private introEndPos = new Vector3();
   private introEndLookAt = new Vector3();
+  /** Fixed at session start; stops the slerp end from “chasing” a moving target for most of the intro. */
+  private introFrozenEndPos = new Vector3();
+  private introFrozenEndLookAt = new Vector3();
+  private introBlendedEnd = new Vector3();
+  private introBlendedLook = new Vector3();
 
   private hemiLight!: HemisphereLight;
   private ambientLight!: AmbientLight;
@@ -921,6 +926,8 @@ export class Game {
     this.cameraRig = new CameraRig(w / h);
 
     this.computeIntroEndTargets(globeRadius);
+    this.introFrozenEndPos.copy(this.introEndPos);
+    this.introFrozenEndLookAt.copy(this.introEndLookAt);
 
     this.introStartPos.copy(this.previewCamera.position);
 
@@ -1012,11 +1019,14 @@ export class Game {
       });
       this.scene.add(this.carpetPortalSystem.group);
       this.carpetPortalSystem.syncToCarpet(this.localPlayer as Carpet);
-      this.cosmicWorldPortal = new CosmicWorldPortal(globeRadius, seed, terrainType);
-      this.scene.add(this.cosmicWorldPortal.group);
+      for (let i = 0; i < 3; i++) {
+        const portal = new CosmicWorldPortal(globeRadius, seed, terrainType, i);
+        this.cosmicWorldPortals.push(portal);
+        this.scene.add(portal.group);
+      }
     } else {
       this.carpetPortalSystem = null;
-      this.cosmicWorldPortal = null;
+      this.cosmicWorldPortals = [];
     }
 
     this.lensFlare = new LensFlare();
@@ -1517,11 +1527,11 @@ export class Game {
       this.carpetPortalSystem.dispose();
       this.carpetPortalSystem = null;
     }
-    if (this.cosmicWorldPortal) {
-      this.scene.remove(this.cosmicWorldPortal.group);
-      this.cosmicWorldPortal.dispose();
-      this.cosmicWorldPortal = null;
+    for (const portal of this.cosmicWorldPortals) {
+      this.scene.remove(portal.group);
+      portal.dispose();
     }
+    this.cosmicWorldPortals = [];
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
     this.ringManager?.dispose();
@@ -2049,6 +2059,8 @@ export class Game {
   /* ── Main game loop ──────────────────────────────────────────────── */
 
   private static readonly INTRO_DURATION = 5.2;
+  /** Ease the live end target in only in this tail fraction so `snapTo` matches the last frame. */
+  private static readonly INTRO_LIVE_END_BLEND_START = 0.85;
   /** Gremlins stay hidden until this many seconds after the session starts (`gameTime`). */
   private static readonly SKY_GREMLIN_SPAWN_DELAY_SEC = 30;
   /** Tangent-plane heading (rad) for the Home intro camera approach toward the campsite. */
@@ -2092,6 +2104,11 @@ export class Game {
 
   private introDirScratch = new Vector3();
   private introPosScratch = new Vector3();
+  private introStartUnit = new Vector3();
+  private introPathEndUnit = new Vector3();
+  private introUpScratch = new Vector3();
+  private introLookAtResult = new Vector3();
+  private static readonly _introWorldUp = new Vector3(0, 1, 0);
 
   /** Smooth great-circle interpolation between unit directions (stable turn rate vs lerp+normalize). */
   private slerpUnitVectors(a: Vector3, b: Vector3, t: number, out: Vector3): Vector3 {
@@ -2137,28 +2154,46 @@ export class Game {
 
       this.computeIntroEndTargets(globeRadius);
 
-      const startDir = this.introStartPos.clone().normalize();
-      const endDir = this.introEndPos.clone().normalize();
-      const startDist = this.introStartPos.length();
-      const endDist = this.introEndPos.length();
+      // Blend in the *live* end pose only in the last segment so the slerp path is stable, then
+      // the final frame matches `snapTo` (avoids a late corkscrew + a discontinuous first chase frame).
+      const rawBlend = Math.max(0, t - Game.INTRO_LIVE_END_BLEND_START) / (1 - Game.INTRO_LIVE_END_BLEND_START);
+      const wEnd = rawBlend * rawBlend * (3 - 2 * rawBlend);
+      this.introBlendedEnd.copy(this.introFrozenEndPos).lerp(this.introEndPos, wEnd);
+      this.introBlendedLook.copy(this.introFrozenEndLookAt).lerp(this.introEndLookAt, wEnd);
 
-      const dir = this.slerpUnitVectors(startDir, endDir, t, this.introDirScratch);
+      this.introStartUnit.copy(this.introStartPos).normalize();
+      this.introPathEndUnit.copy(this.introBlendedEnd).normalize();
+      const startDist = this.introStartPos.length();
+      const endDist = this.introBlendedEnd.length();
+
+      const dir = this.slerpUnitVectors(
+        this.introStartUnit,
+        this.introPathEndUnit,
+        t,
+        this.introDirScratch,
+      );
       const dist = startDist + (endDist - startDist) * t;
       const pos = this.introPosScratch.copy(dir).multiplyScalar(dist);
 
-      const lookAt = new Vector3().lerpVectors(new Vector3(0, 0, 0), this.introEndLookAt, t);
-      const worldUp = new Vector3(0, 1, 0);
-      const localUp = pos.clone().normalize();
-      const up = worldUp.clone().lerp(localUp, t).normalize();
-      const rollZ = Math.sin(t * Math.PI) * 0.12;
-      this.cameraRig.setPositionAndLookAt(pos, lookAt, rollZ, up);
+      this.introLookAtResult.copy(this.introBlendedLook).multiplyScalar(t);
+      this.introPathEndUnit.copy(pos).normalize();
+      this.introUpScratch
+        .copy(Game._introWorldUp)
+        .lerp(this.introPathEndUnit, t)
+        .normalize();
+      // sin²(πt): zero d/dt at t∈{0,1} so the roll is not “spinning to a stop” at the cut to chase.
+      const sRoll = Math.sin(t * Math.PI);
+      const rollZ = sRoll * sRoll * 0.12;
+      this.cameraRig.setPositionAndLookAt(pos, this.introLookAtResult, rollZ, this.introUpScratch);
       if (this.localPlayer instanceof Plane) {
         this.localPlayer.updateGremlinDamageHpBar(dt, this.cameraRig.camera);
       }
 
       this.globe.update(dt);
       this.moonThreat?.update(dt);
-      this.cosmicWorldPortal?.update(dt);
+      for (const portal of this.cosmicWorldPortals) {
+        portal.update(dt, this.cameraRig.camera);
+      }
       this.remotePlanes.update(dt, this.cameraRig.camera);
       this.applyDayNightPreset();
       this.audioManager.update(dt);
@@ -2274,7 +2309,9 @@ export class Game {
         false,
       );
       this.updateOceanFish(dt, false);
-      this.cosmicWorldPortal?.update(dt);
+      for (const portal of this.cosmicWorldPortals) {
+        portal.update(dt, this.cameraRig.camera);
+      }
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
     }
@@ -2667,7 +2704,9 @@ export class Game {
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
     this.moonThreat?.update(dt);
-    this.cosmicWorldPortal?.update(dt);
+    for (const portal of this.cosmicWorldPortals) {
+      portal.update(dt, this.cameraRig.camera);
+    }
     const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
     this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma, twisterTrauma));
     if (this.moonThreat) {
@@ -2851,7 +2890,9 @@ export class Game {
       this.localPlayer.visibility = 0;
     }
     this.globe.update(dt);
-    this.cosmicWorldPortal?.update(dt);
+    for (const portal of this.cosmicWorldPortals) {
+      portal.update(dt, this.cameraRig.camera);
+    }
 
     if (this.moonThreat) {
       this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
@@ -4584,11 +4625,11 @@ export class Game {
       this.carpetPortalSystem.dispose();
       this.carpetPortalSystem = null;
     }
-    if (this.cosmicWorldPortal) {
-      this.scene?.remove(this.cosmicWorldPortal.group);
-      this.cosmicWorldPortal.dispose();
-      this.cosmicWorldPortal = null;
+    for (const portal of this.cosmicWorldPortals) {
+      this.scene?.remove(portal.group);
+      portal.dispose();
     }
+    this.cosmicWorldPortals = [];
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
     this.starfield?.dispose();
