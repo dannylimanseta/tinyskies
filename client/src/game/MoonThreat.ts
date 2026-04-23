@@ -20,7 +20,9 @@ import {
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const MOON_CYCLE_DURATION = 300; // 5 minutes (testing)
+/** Default approach time if not passed to the constructor (seconds). */
+export const DEFAULT_MOON_APPROACH_DURATION_SEC = 300;
+
 const MOON_START_DISTANCE = 35;
 const MOON_END_DISTANCE = 7;
 const MOON_ROTATION_SPEED = 0.08;
@@ -40,6 +42,16 @@ const DEBRIS_COUNT = 350;
 const CAMERA_ROCK_COUNT = 3;
 const WAVE_COUNT = 3;
 const WAVE_STAGGER = 1.8; // seconds between each wave
+
+/**
+ * Approach time from `completedMoonApproachRunCount` (saved after each full moon → menu).
+ * 1st run: 5 min — 2nd: 7 min — 3rd and later: 10 min.
+ */
+export function moonApproachDurationSec(completedMoonApproachRuns: number): number {
+  if (completedMoonApproachRuns <= 0) return 300;
+  if (completedMoonApproachRuns === 1) return 420;
+  return 600;
+}
 
 const EMBER_COUNT = 1500;
 const EMBER_LIFE_MIN = 0.8;
@@ -94,7 +106,7 @@ export class MoonThreat {
   }
 
   get progress() {
-    return Math.min(this.elapsed / MOON_CYCLE_DURATION, 1);
+    return Math.min(this.elapsed / this.approachDurationSec, 1);
   }
 
   /** True once progress >= 1 and the cinematic should begin. */
@@ -115,13 +127,13 @@ export class MoonThreat {
   /** Debug: skip to just before impact so the cinematic plays naturally. */
   forceImpact() {
     if (this.impacted) return;
-    this.elapsed = MOON_CYCLE_DURATION * 0.995;
+    this.elapsed = this.approachDurationSec * 0.995;
   }
 
   /** Debug: jump to a specific progress (0–1). */
   jumpTo(pct: number) {
     if (this.impacted) return;
-    this.elapsed = MOON_CYCLE_DURATION * Math.min(pct, 0.999);
+    this.elapsed = this.approachDurationSec * Math.min(pct, 0.999);
   }
 
   /** Current approach time (seconds) for save/restore when indefinitely frozen. */
@@ -138,7 +150,7 @@ export class MoonThreat {
     this.permanentlyFrozen = true;
     this.approachPauseRemaining = 0;
     if (elapsedSec != null && Number.isFinite(elapsedSec)) {
-      this.elapsed = Math.max(0, Math.min(elapsedSec, MOON_CYCLE_DURATION * 0.999));
+      this.elapsed = Math.max(0, Math.min(elapsedSec, this.approachDurationSec * 0.999));
     }
     this.applyPreImpactApproach(0, false);
   }
@@ -165,7 +177,13 @@ export class MoonThreat {
     return this.globeRadius * scaleFactor * 0.5;
   }
 
-  constructor(private globeRadius: number) {
+  private readonly approachDurationSec: number;
+
+  constructor(
+    private globeRadius: number,
+    approachDurationSec: number = DEFAULT_MOON_APPROACH_DURATION_SEC,
+  ) {
+    this.approachDurationSec = Math.max(1, approachDurationSec);
     const loader = new GLTFLoader();
     loader.load("/3D/moon.glb", (gltf) => {
       const model = gltf.scene;

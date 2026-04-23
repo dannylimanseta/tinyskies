@@ -89,7 +89,7 @@ import {
 } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
-import { MoonThreat } from "./MoonThreat";
+import { moonApproachDurationSec, MoonThreat } from "./MoonThreat";
 import { MeteorShower } from "./MeteorShower";
 import { TransitionOverlay } from "../ui/TransitionOverlay";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
@@ -789,7 +789,12 @@ export class Game {
     );
     this.globe.addTo(this.scene);
 
-    this.moonThreat = new MoonThreat(this.worldConfig?.globeRadius ?? 5);
+    const completedMoonRuns =
+      ProgressionManager.loadPlayerWorldState().completedMoonApproachRunCount ?? 0;
+    this.moonThreat = new MoonThreat(
+      this.worldConfig?.globeRadius ?? 5,
+      moonApproachDurationSec(completedMoonRuns),
+    );
     this.moonThreat.onShockwaveSpawn = () => {
       this.audioManager.playSFX(EXPLOSION_SFX_NAME, EXPLOSION_SFX_VOLUME);
     };
@@ -4147,6 +4152,8 @@ export class Game {
       moonFrozenByEternalFlames:
         overrides.moonFrozenByEternalFlames ?? prev.moonFrozenByEternalFlames ?? false,
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
+      completedMoonApproachRunCount:
+        overrides.completedMoonApproachRunCount ?? prev.completedMoonApproachRunCount ?? 0,
       ...overrides,
     };
     next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {

@@ -48,6 +48,11 @@ export interface SavedPlayerWorldState {
   moonFrozenByEternalFlames?: boolean;
   /** Saved moon `elapsed` seconds when frozen (restored each run). */
   moonFrozenElapsedSec?: number;
+  /**
+   * How many times the player has completed the full moon impact → menu flow.
+   * Drives approach duration: 0 → 5 min, 1 → 7 min, 2+ → 10 min (see `moonApproachDurationSec`).
+   */
+  completedMoonApproachRunCount?: number;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;
