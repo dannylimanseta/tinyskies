@@ -20,8 +20,10 @@ export class DebugMenu {
 
     this.menu.querySelector("#debug-spawn-eternal-flame")?.addEventListener("click", () => {
       this.onSpawnEternalFlame();
+      this.hide();
     });
 
+    document.addEventListener("pointerdown", this.handlePointerDownOutside, true);
     window.addEventListener("keydown", this.handleKeyDown);
     this.ensureStyles();
   }
@@ -31,6 +33,18 @@ export class DebugMenu {
       this.toggle();
     }
   };
+
+  private handlePointerDownOutside = (e: PointerEvent) => {
+    if (!this.isVisible) return;
+    const t = e.target as Node | null;
+    if (t && this.menu.contains(t)) return;
+    this.hide();
+  };
+
+  private hide() {
+    this.isVisible = false;
+    this.menu.style.display = "none";
+  }
 
   private toggle() {
     this.isVisible = !this.isVisible;
@@ -88,6 +102,7 @@ export class DebugMenu {
   }
 
   dispose() {
+    document.removeEventListener("pointerdown", this.handlePointerDownOutside, true);
     window.removeEventListener("keydown", this.handleKeyDown);
     this.menu.remove();
   }
