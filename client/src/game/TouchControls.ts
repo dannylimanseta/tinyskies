@@ -299,8 +299,8 @@ export class TouchControls {
       }
       .tc-joy-base {
         position: absolute;
-        bottom: max(80px, calc(68px + env(safe-area-inset-bottom)));
-        left: max(24px, env(safe-area-inset-left));
+        bottom: max(96px, calc(84px + env(safe-area-inset-bottom)));
+        left: max(36px, calc(12px + env(safe-area-inset-left)));
         width: 120px;
         height: 120px;
         border-radius: 50%;
@@ -326,7 +326,7 @@ export class TouchControls {
       .tc-descend-btn,
       .tc-action-btn {
         position: absolute;
-        right: max(24px, env(safe-area-inset-right));
+        right: max(36px, calc(12px + env(safe-area-inset-right)));
         width: 56px;
         height: 56px;
         border-radius: 50%;
@@ -348,13 +348,13 @@ export class TouchControls {
         user-select: none;
       }
       .tc-elevate-btn {
-        bottom: max(232px, calc(220px + env(safe-area-inset-bottom)));
+        bottom: max(248px, calc(236px + env(safe-area-inset-bottom)));
       }
       .tc-descend-btn {
-        bottom: max(164px, calc(152px + env(safe-area-inset-bottom)));
+        bottom: max(180px, calc(168px + env(safe-area-inset-bottom)));
       }
       .tc-action-btn {
-        bottom: max(96px, calc(84px + env(safe-area-inset-bottom)));
+        bottom: max(112px, calc(100px + env(safe-area-inset-bottom)));
       }
       .tc-elevate-btn.active,
       .tc-descend-btn.active,

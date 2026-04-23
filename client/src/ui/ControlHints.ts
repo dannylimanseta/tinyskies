@@ -36,8 +36,8 @@ function injectStyles() {
   style.textContent = `
     .control-hints {
       position: absolute;
-      bottom: 24px;
-      right: 24px;
+      bottom: max(36px, calc(28px + env(safe-area-inset-bottom, 0px)));
+      right: max(36px, calc(28px + env(safe-area-inset-right, 0px)));
       z-index: 1;
       pointer-events: none;
       font-family: 'Inter', system-ui, sans-serif;

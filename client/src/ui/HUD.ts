@@ -516,8 +516,8 @@ export class HUD {
 
       .hud-top {
         position: absolute;
-        top: 20px;
-        left: 24px;
+        top: 32px;
+        left: 36px;
         display: flex;
         flex-direction: column;
         gap: 2px;
@@ -544,8 +544,8 @@ export class HUD {
 
       .hud-top-right {
         position: absolute;
-        top: 20px;
-        right: 24px;
+        top: 32px;
+        right: 36px;
         z-index: 1;
         display: flex;
         gap: 8px;
@@ -589,7 +589,7 @@ export class HUD {
 
       .hud-xp-panel {
         position: absolute;
-        bottom: 24px;
+        bottom: max(36px, calc(28px + env(safe-area-inset-bottom, 0px)));
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -1293,12 +1293,12 @@ export class HUD {
 
       @media (max-width: 480px) {
         .hud-top {
-          top: max(12px, env(safe-area-inset-top));
-          left: max(12px, env(safe-area-inset-left));
+          top: max(24px, calc(14px + env(safe-area-inset-top)));
+          left: max(24px, calc(14px + env(safe-area-inset-left)));
         }
         .hud-top-right {
-          top: max(12px, env(safe-area-inset-top));
-          right: max(12px, env(safe-area-inset-right));
+          top: max(24px, calc(14px + env(safe-area-inset-top)));
+          right: max(24px, calc(14px + env(safe-area-inset-right)));
         }
         .hud-campsite-btn,
         .hud-fullscreen-btn,
@@ -1310,7 +1310,7 @@ export class HUD {
         .hud-player-count { font-size: 0.65rem; }
 
         .hud-xp-panel {
-          bottom: max(12px, calc(4px + env(safe-area-inset-bottom)));
+          bottom: max(24px, calc(14px + env(safe-area-inset-bottom)));
           padding: 8px 16px;
           min-width: 140px;
           backdrop-filter: none;

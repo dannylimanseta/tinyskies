@@ -135,8 +135,8 @@ function ensureStyles() {
     }
     .eternal-flame-dock {
       position: fixed;
-      left: max(8px, env(safe-area-inset-left, 0px));
-      bottom: max(8px, env(safe-area-inset-bottom, 0px));
+      left: max(24px, calc(8px + env(safe-area-inset-left, 0px)));
+      bottom: max(24px, calc(8px + env(safe-area-inset-bottom, 0px)));
       height: ${DOCK_PX}px;
       z-index: 25;
       pointer-events: none;
@@ -438,11 +438,14 @@ export class EternalFlameUI {
     this.renderer.setSize(safeW, safeH, false);
     this.camera.aspect = safeW / safeH;
     const n = this.dockFlameCount;
-    this.camera.position.z = 1.12 + Math.max(0, n - 1) * 0.095;
-    // Dock renders are wider-than-tall: nudge the camera so the flame visually sits
-    // a touch higher. Preview is always square, so keep camera perfectly centered.
-    const isWideDock = safeW / safeH > 1.3;
-    this.camera.position.y = isWideDock ? 0.06 : 0;
+    // Dock canvases are short (~72px tall); preview is large and square (~280px).
+    // Pull the camera in closer for the dock so each flame fills its slot snugly.
+    const isDockSize = safeH < 150;
+    this.camera.position.z = isDockSize
+      ? 0.82 + Math.max(0, n - 1) * 0.02
+      : 1.12;
+    const isWideDock = isDockSize && safeW / safeH > 1.3;
+    this.camera.position.y = isWideDock ? 0.04 : 0;
     this.camera.updateProjectionMatrix();
   }
 
@@ -535,12 +538,17 @@ export class EternalFlameUI {
     const loop = () => {
       this.raf = requestAnimationFrame(loop);
       if (!this.scene || !this.camera || !this.renderer || !this.modelRoot) return;
-      const dt = this.clock.getDelta();
-      // Spin each docked flame on its own pivot — rotating the whole group locked them together.
+      this.clock.getDelta(); // advance internal time
+      const t = this.clock.getElapsedTime();
+      // Flame mesh is not radially symmetric — full spins made some flames read narrower
+      // than others at any given moment. A gentle camera-facing wobble keeps them all at
+      // roughly the same apparent width while still feeling alive.
+      const WOBBLE_RAD = 0.45;
+      const WOBBLE_RATE = 0.9;
       for (let i = 0; i < this.modelRoot.children.length; i++) {
         const child = this.modelRoot.children[i]!;
-        const rate = 1.02 + ((i * 0.23) % 0.38);
-        child.rotation.y += dt * rate;
+        const phase = i * 1.37;
+        child.rotation.y = Math.sin(t * WOBBLE_RATE + phase) * WOBBLE_RAD;
       }
       this.renderer.render(this.scene, this.camera);
     };
