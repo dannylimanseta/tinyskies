@@ -18,7 +18,7 @@ export interface UpgradeState {
   carpetBankMult: number;
   /** Trigger-circle radius multiplier for the carpet portal. */
   carpetPortalRadiusMult: number;
-  /** XP awarded on each portal teleport (multiplier on base). */
+  /** Retained for legacy saves; portal teleports no longer award XP. */
   carpetPortalXpMult: number;
   /** XP bonus on landmark selfie quest completions. */
   carpetSelfieXpMult: number;
@@ -258,11 +258,10 @@ const CARPET_UPGRADES: UpgradeDefinition[] = [
   {
     id: "wide_portal",
     name: "Wide Portal",
-    description: "Portal trigger radius +30%, portal teleport XP +25%",
+    description: "Portal trigger radius +30%",
     category: "performance",
     apply: (s) => {
       s.carpetPortalRadiusMult *= 1.30;
-      s.carpetPortalXpMult *= 1.25;
     },
   },
   {

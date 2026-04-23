@@ -448,8 +448,8 @@ export class HUD {
         letterSpacing: "0.5px",
         pointerEvents: "none",
         whiteSpace: "nowrap",
-        border: "1px solid rgba(255,200,100,0.3)",
-        textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+        border: "1px solid rgba(255,255,255,0.28)",
+        textShadow: "none",
       } as CSSStyleDeclaration);
       this.campsitePromptEl.textContent = "Press F to land at camp";
       this.el.appendChild(this.campsitePromptEl);
@@ -536,7 +536,7 @@ export class HUD {
       .hud-fish-count {
         font-size: 0.75rem;
         font-weight: 500;
-        color: rgba(180, 220, 255, 0.85);
+        color: rgba(255, 255, 255, 0.85);
         white-space: nowrap;
         margin-right: 10px;
         pointer-events: none;
@@ -643,10 +643,10 @@ export class HUD {
         bottom: 80px;
         left: 50%;
         transform: translateX(-50%) translateY(0px);
-        font-size: 1.1rem;
+        font-size: 1.25rem;
         font-weight: 700;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 12px rgba(255, 255, 255, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.3s ease-out, transform 0.8s ease-out;
         pointer-events: none;
@@ -675,8 +675,8 @@ export class HUD {
       }
       .hud-xp-popup-bonus {
         color: rgba(255, 255, 255, 1.0);
-        font-size: 1.3rem;
-        text-shadow: 0 0 16px rgba(255, 255, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+        font-size: 1.45rem;
+        text-shadow: none;
       }
 
       .hud-flock-celebration {
@@ -684,11 +684,11 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(180, 220, 255, 0.45), 0 2px 8px rgba(0, 0, 0, 0.45);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.35s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -707,10 +707,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-flock-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(180, 220, 255, 0.55));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-flock-celebration::after {
-        background: linear-gradient(90deg, rgba(180, 220, 255, 0.55), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
       .hud-flock-celebration-animate {
         opacity: 1;
@@ -731,11 +731,11 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(255, 180, 80, 0.5), 0 0 28px rgba(255, 100, 200, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.35s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -754,10 +754,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-rainbow-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 160, 60, 0.55));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-rainbow-celebration::after {
-        background: linear-gradient(90deg, rgba(200, 80, 255, 0.55), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
       .hud-rainbow-celebration-animate {
         opacity: 1;
@@ -780,13 +780,13 @@ export class HUD {
         transform: translate(-50%, calc(-50% - 72px));
         max-width: min(22rem, calc(100% - 32px));
         padding: 0 8px;
-        font-size: 0.92rem;
+        font-size: 1.05rem;
         font-weight: 600;
         letter-spacing: 0.02em;
         line-height: 1.4;
         text-align: center;
-        color: rgba(255, 245, 230, 0.98);
-        text-shadow: 0 0 18px rgba(255, 120, 40, 0.55), 0 2px 10px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.4s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -800,7 +800,7 @@ export class HUD {
       @media (max-width: 768px) {
         .hud-gremlin-king-warning {
           transform: translate(-50%, calc(-50% - 58px));
-          font-size: 0.85rem;
+          font-size: 0.95rem;
         }
         .hud-gremlin-king-warning-animate {
           transform: translate(-50%, calc(-50% - 78px));
@@ -814,13 +814,13 @@ export class HUD {
         transform: translate(-50%, -50%) scale(0.96);
         max-width: min(22rem, calc(100% - 32px));
         padding: 10px 14px;
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.02em;
         line-height: 1.4;
         text-align: center;
-        color: rgba(220, 245, 255, 0.98);
-        text-shadow: 0 0 20px rgba(40, 160, 255, 0.5), 0 2px 10px rgba(0, 0, 0, 0.55);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         z-index: 200000;
         pointer-events: none;
         opacity: 0;
@@ -841,11 +841,11 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(255, 170, 50, 0.6), 0 0 28px rgba(255, 120, 20, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.35s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -864,10 +864,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-lantern-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 180, 60, 0.6));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-lantern-celebration::after {
-        background: linear-gradient(90deg, rgba(255, 140, 30, 0.6), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
       .hud-lantern-celebration-animate {
         opacity: 1;
@@ -888,11 +888,11 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(255, 170, 50, 0.6), 0 0 28px rgba(255, 120, 20, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.3s ease-out, transform 0.6s ease-out;
         pointer-events: none;
@@ -911,10 +911,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-firefly-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(140, 255, 60, 0.6));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-firefly-celebration::after {
-        background: linear-gradient(90deg, rgba(100, 220, 40, 0.6), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
       .hud-firefly-celebration-animate {
         opacity: 1;
@@ -958,11 +958,11 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(255, 100, 20, 0.6), 0 0 28px rgba(255, 50, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.35s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -981,10 +981,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-volcano-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 120, 30, 0.6));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-volcano-celebration::after {
-        background: linear-gradient(90deg, rgba(255, 80, 10, 0.6), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
       .hud-volcano-celebration-animate {
         opacity: 1;
@@ -1044,8 +1044,7 @@ export class HUD {
         fill: white;
         opacity: 1;
         clip-path: inset(100% 0 0 0); /* JS overrides this every tick */
-        filter: drop-shadow(0 0 5px rgba(255, 140, 30, 0.9))
-                drop-shadow(0 0 10px rgba(255, 80, 0, 0.55));
+        filter: none;
       }
 
       /* ── Brazier notification popup ─────────────────────── */
@@ -1054,11 +1053,11 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 600;
         letter-spacing: 0.03em;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(255, 140, 30, 0.65), 0 0 28px rgba(255, 80, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.35s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -1077,10 +1076,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-brazier-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 140, 30, 0.65));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-brazier-celebration::after {
-        background: linear-gradient(90deg, rgba(255, 140, 30, 0.65), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
       .hud-brazier-celebration-animate {
         opacity: 1;
@@ -1100,12 +1099,12 @@ export class HUD {
         position: absolute;
         top: 50%;
         left: 50%;
-        font-size: 0.92rem;
+        font-size: 1.05rem;
         font-weight: 600;
         letter-spacing: 0.03em;
         line-height: 1.35;
-        color: rgba(255, 252, 245, 0.98);
-        text-shadow: 0 0 16px rgba(255, 160, 60, 0.75), 0 0 28px rgba(255, 90, 20, 0.45), 0 2px 8px rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.35s ease-out, transform 0.75s ease-out;
         pointer-events: none;
@@ -1127,10 +1126,10 @@ export class HUD {
         flex-shrink: 0;
       }
       .hud-brazier-eternal-celebration::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 170, 80, 0.75));
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55));
       }
       .hud-brazier-eternal-celebration::after {
-        background: linear-gradient(90deg, rgba(255, 170, 80, 0.75), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
       }
 
       .hud-brazier-moon-slowed {
@@ -1138,12 +1137,12 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.92rem;
+        font-size: 1.05rem;
         font-weight: 600;
         letter-spacing: 0.02em;
         line-height: 1.35;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(255, 200, 120, 0.45), 0 2px 8px rgba(0, 0, 0, 0.45);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.4s ease-out, transform 0.8s ease-out;
         pointer-events: none;
@@ -1161,7 +1160,7 @@ export class HUD {
       @media (max-width: 768px) {
         .hud-brazier-moon-slowed {
           transform: translate(-50%, calc(-50% - 58px));
-          font-size: 0.82rem;
+          font-size: 0.95rem;
         }
         .hud-brazier-moon-slowed-animate {
           transform: translate(-50%, calc(-50% - 78px));
@@ -1173,12 +1172,12 @@ export class HUD {
         top: 50%;
         left: 50%;
         transform: translate(-50%, calc(-50% - 72px));
-        font-size: 0.92rem;
+        font-size: 1.05rem;
         font-weight: 600;
         letter-spacing: 0.02em;
         line-height: 1.35;
-        color: rgba(255, 255, 255, 0.95);
-        text-shadow: 0 0 14px rgba(160, 210, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45);
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
         opacity: 0;
         transition: opacity 0.4s ease-out, transform 0.8s ease-out;
         pointer-events: none;
@@ -1196,7 +1195,7 @@ export class HUD {
       @media (max-width: 768px) {
         .hud-brazier-moon-resumed {
           transform: translate(-50%, calc(-50% - 58px));
-          font-size: 0.82rem;
+          font-size: 0.95rem;
         }
         .hud-brazier-moon-resumed-animate {
           transform: translate(-50%, calc(-50% - 78px));
@@ -1209,7 +1208,7 @@ export class HUD {
         font-size: 2.5rem; font-weight: 800;
         letter-spacing: 0.12em;
         color: rgba(255, 255, 255, 0);
-        text-shadow: 0 0 30px rgba(255, 255, 255, 0.6), 0 0 60px rgba(255, 255, 255, 0.3);
+        text-shadow: none;
         transition: color 0.3s ease-out, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         pointer-events: none;
         display: flex;
@@ -1321,11 +1320,12 @@ export class HUD {
         .hud-xp-level { font-size: 0.6rem; }
         .hud-xp-value { font-size: 0.55rem; }
 
-        .hud-xp-popup { bottom: 120px; font-size: 0.9rem; }
+        .hud-xp-popup { bottom: 120px; font-size: 1.05rem; }
+        .hud-xp-popup-bonus { font-size: 1.2rem; }
         .hud-xp-popup::before, .hud-xp-popup::after { width: 32px; }
 
         .hud-flock-celebration {
-          font-size: 0.82rem;
+          font-size: 0.95rem;
           gap: 8px;
         }
         .hud-flock-celebration::before,
@@ -1335,7 +1335,7 @@ export class HUD {
         }
 
         .hud-rainbow-celebration {
-          font-size: 0.82rem;
+          font-size: 0.95rem;
           gap: 8px;
         }
         .hud-rainbow-celebration::before,
@@ -1345,7 +1345,7 @@ export class HUD {
         }
 
         .hud-lantern-celebration {
-          font-size: 0.82rem;
+          font-size: 0.95rem;
           gap: 8px;
         }
         .hud-lantern-celebration::before,
@@ -1355,7 +1355,7 @@ export class HUD {
         }
 
         .hud-firefly-celebration {
-          font-size: 0.82rem;
+          font-size: 0.95rem;
           gap: 8px;
         }
         .hud-firefly-celebration::before,
@@ -1365,13 +1365,30 @@ export class HUD {
         }
 
         .hud-volcano-celebration {
-          font-size: 0.82rem;
+          font-size: 0.95rem;
           gap: 8px;
         }
         .hud-volcano-celebration::before,
         .hud-volcano-celebration::after { width: 24px; }
         .hud-volcano-celebration-animate {
           transform: translate(-50%, calc(-50% - 78px));
+        }
+
+        .hud-gremlin-king-warning {
+          font-size: 0.95rem;
+        }
+        .hud-ocean-mystery-toast {
+          font-size: 0.95rem;
+        }
+        .hud-brazier-celebration {
+          font-size: 0.95rem;
+        }
+        .hud-brazier-eternal-celebration {
+          font-size: 0.95rem;
+        }
+        .hud-brazier-moon-slowed,
+        .hud-brazier-moon-resumed {
+          font-size: 0.95rem;
         }
 
         .hud-levelup { font-size: 1.8rem; }

@@ -384,7 +384,7 @@ export class Lobby {
         line-height: 1.1;
         letter-spacing: 0.08em;
         color: rgba(255, 255, 255, 0.88);
-        text-shadow: 0 0 18px rgba(255, 255, 255, 0.22);
+        text-shadow: none;
       }
       .lobby-title {
         font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
@@ -393,7 +393,7 @@ export class Lobby {
         margin: 0;
         line-height: 1;
         color: white;
-        text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        text-shadow: none;
         display: inline-flex;
         flex-wrap: wrap;
         justify-content: center;
@@ -679,7 +679,7 @@ export class Lobby {
         margin: 0 0 10px;
         letter-spacing: 0.02em;
         color: #ffffff;
-        text-shadow: 0 0 24px rgba(255, 255, 255, 0.2);
+        text-shadow: none;
       }
       .lobby-unlock-body {
         font-size: 0.94rem;

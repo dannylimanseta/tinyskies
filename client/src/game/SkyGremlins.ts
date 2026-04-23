@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -11,8 +12,12 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshPhongMaterial,
+  Points,
+  PointsMaterial,
+  CanvasTexture,
   Quaternion,
   SphereGeometry,
+  SRGBColorSpace,
   Vector3,
   type Scene,
 } from "three";
@@ -91,6 +96,44 @@ const GREMLIN_MUZZLE_FORWARD = 0.12;
 const GREMLIN_MUZZLE_UP = -0.01;
 const GREMLIN_AIM_SIDE_SPREAD = 0.24;
 
+/** Embers at the Gremlin King trident prongs (local space, parented to trident). */
+const KING_TRIDENT_EMBER_N = 44;
+
+let kingTridentEmberSprite: CanvasTexture | null = null;
+
+function getKingTridentEmberSprite(): CanvasTexture {
+  if (kingTridentEmberSprite) return kingTridentEmberSprite;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext("2d");
+  if (!ctx) {
+    const tex = new CanvasTexture(c);
+    kingTridentEmberSprite = tex;
+    return tex;
+  }
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 31.5);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.45, "rgba(255,255,255,0.5)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  kingTridentEmberSprite = tex;
+  return tex;
+}
+
+type KingTridentEmberVfx = {
+  points: Points;
+  mat: PointsMaterial;
+  geometry: BufferGeometry;
+  pos: Float32Array;
+  life: Float32Array;
+  seed: Float32Array;
+  alpha: Float32Array;
+};
+
 type GremlinMode = "alive" | "falling" | "respawning" | "dormant";
 
 type GremlinState = {
@@ -132,6 +175,7 @@ type GremlinState = {
   hpBarRoot: Group;
   hpFillMesh: Mesh;
   hpBarInnerW: number;
+  tridentEmberVfx: KingTridentEmberVfx | null;
 };
 
 export class SkyGremlins {
@@ -252,8 +296,8 @@ export class SkyGremlins {
     private readonly onShotDown: (worldPosition: Vector3) => void,
     private readonly onGremlinKingSpawn?: () => void,
     private readonly onKingDefeated?: (worldPosition: Vector3) => void,
-    /** Called on every local paintball hit that damages a gremlin (including killing shot). */
-    private readonly onGremlinPaintballHit?: (isKing: boolean) => void,
+    /** Called on every local paintball hit that damages a gremlin; `isKill` is true on the killing shot. */
+    private readonly onGremlinPaintballHit?: (isKing: boolean, isKill: boolean) => void,
   ) {
     this.group.visible = false;
     this.scene.add(this.group);
@@ -437,6 +481,9 @@ export class SkyGremlins {
     if (this.gremlinKing) {
       this.scene.remove(this.gremlinKing.trail.mesh);
       this.gremlinKing.trail.dispose();
+      if (this.gremlinKing.tridentEmberVfx) {
+        SkyGremlins.disposeKingTridentEmberVfx(this.gremlinKing.tridentEmberVfx);
+      }
       this.gremlinKing = null;
     }
     this.bodyGeo.dispose();
@@ -473,11 +520,128 @@ export class SkyGremlins {
     this.crownGemGeo.dispose();
   }
 
+  private createKingTridentEmberVfx(rnd: () => number): KingTridentEmberVfx {
+    const n = KING_TRIDENT_EMBER_N;
+    const pos = new Float32Array(n * 3);
+    const life = new Float32Array(n);
+    const seed = new Float32Array(n);
+    const alpha = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      seed[i] = rnd();
+      life[i] = rnd() * 0.22;
+      this.resetKingTridentEmberParticle(pos, i, rnd);
+      alpha[i] = 1;
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute("position", new BufferAttribute(pos, 3));
+    geometry.setAttribute("emberAlpha", new BufferAttribute(alpha, 1));
+    const mat = new PointsMaterial({
+      color: 0xffaa55,
+      map: getKingTridentEmberSprite(),
+      size: 0.038,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      sizeAttenuation: true,
+    });
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+        attribute float emberAlpha;
+        varying float vEmberAlpha;`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vEmberAlpha = emberAlpha;`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+        varying float vEmberAlpha;`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        diffuseColor.a *= vEmberAlpha;`,
+      );
+    };
+    const points = new Points(geometry, mat);
+    points.frustumCulled = false;
+    points.renderOrder = 8;
+    return { points, mat, geometry, pos, life, seed, alpha };
+  }
+
+  private resetKingTridentEmberParticle(
+    pos: Float32Array,
+    i: number,
+    rnd: () => number,
+  ) {
+    const prong = i % 3;
+    const bx = prong === 0 ? 0 : prong === 1 ? -0.011 : 0.011;
+    pos[i * 3] = bx + (rnd() - 0.5) * 0.014;
+    pos[i * 3 + 1] = 0.088 + rnd() * 0.042;
+    pos[i * 3 + 2] = (rnd() - 0.5) * 0.007;
+  }
+
+  private updateKingTridentEmberVfx(
+    vfx: KingTridentEmberVfx,
+    dt: number,
+    rnd: () => number,
+  ) {
+    vfx.points.visible = true;
+    const { pos, life, seed, alpha } = vfx;
+    const t = this.time;
+    const n = KING_TRIDENT_EMBER_N;
+    const posAttr = vfx.geometry.attributes.position as BufferAttribute;
+    const alphaAttr = vfx.geometry.attributes.emberAlpha as BufferAttribute;
+    for (let i = 0; i < n; i++) {
+      const maxLife = 0.3 + seed[i] * 0.2;
+      life[i] += dt;
+      if (life[i] >= maxLife) {
+        life[i] = 0;
+        this.resetKingTridentEmberParticle(pos, i, rnd);
+        alpha[i] = 1;
+      } else {
+        const s = seed[i] * 50;
+        const u = life[i] / maxLife;
+        // Fade: strong at start, goes to 0 at end (smooth)
+        alpha[i] = 1.0 - u * u * (3.0 - 2.0 * u);
+
+        pos[i * 3 + 1] += 0.52 * dt;
+        // Drift
+        pos[i * 3] += Math.sin(t * 7 + s) * 0.02 * dt;
+        pos[i * 3 + 2] += Math.cos(t * 5 + s * 0.7) * 0.016 * dt;
+        // Jitter: small erratic nudges
+        const j = 0.11 * dt;
+        pos[i * 3] += (rnd() - 0.5) * j;
+        pos[i * 3 + 1] += (rnd() - 0.5) * j * 0.35;
+        pos[i * 3 + 2] += (rnd() - 0.5) * j;
+        // High-frequency wobble
+        const ph = t * 35 + s * 2.1;
+        pos[i * 3] += Math.sin(ph) * 0.0009;
+        pos[i * 3 + 2] += Math.cos(ph * 0.86 + 1.2) * 0.00075;
+        pos[i * 3 + 1] += Math.sin(ph * 1.1) * 0.0004;
+      }
+    }
+    posAttr.needsUpdate = true;
+    alphaAttr.needsUpdate = true;
+  }
+
+  private static disposeKingTridentEmberVfx(vfx: KingTridentEmberVfx) {
+    vfx.mat.dispose();
+    vfx.geometry.dispose();
+    vfx.points.removeFromParent();
+  }
+
   private createGremlin(index: number, king = false): GremlinState {
     const bodyMat = king ? this.kingBodyMaterial : this.bodyMaterial;
     const bellyMat = king ? this.kingBellyMaterial : this.bellyMaterial;
     const wingMat = king ? this.kingWingMaterial : this.wingMaterial;
     const baseRigScale = king ? 1.4 : 0.7;
+    let tridentEmberVfx: KingTridentEmberVfx | null = null;
 
     const root = new Group();
     root.matrixAutoUpdate = false;
@@ -680,6 +844,11 @@ export class SkyGremlins {
       flame.position.set(0, 0.13, 0);
       trident.add(flame);
 
+      tridentEmberVfx = this.createKingTridentEmberVfx(
+        seededRandom(this.seed + index * 104729 + 55117),
+      );
+      trident.add(tridentEmberVfx.points);
+
       rig.add(trident);
     }
 
@@ -742,6 +911,7 @@ export class SkyGremlins {
       trail: king
         ? new Trail(32, 0.038, 0xff6600)
         : new Trail(16, 0.015, 0x88aa88),
+      tridentEmberVfx,
     };
   }
 
@@ -809,6 +979,9 @@ export class SkyGremlins {
     gremlin.downTimer = 0;
     gremlin.root.visible = true;
     gremlin.trail.mesh.visible = true;
+    if (gremlin.isKing && gremlin.tridentEmberVfx) {
+      gremlin.tridentEmberVfx.points.visible = true;
+    }
     gremlin.rig.position.set(0, 0, 0);
     gremlin.rig.rotation.set(0, 0, 0);
     gremlin.rig.scale.setScalar(gremlin.baseRigScale);
@@ -984,9 +1157,20 @@ export class SkyGremlins {
     } else {
       gremlin.aimTimer = 0;
     }
+
+    if (gremlin.isKing && gremlin.tridentEmberVfx) {
+      this.updateKingTridentEmberVfx(
+        gremlin.tridentEmberVfx,
+        dt,
+        gremlin.random,
+      );
+    }
   }
 
   private updateFallingGremlin(gremlin: GremlinState, dt: number) {
+    if (gremlin.isKing && gremlin.tridentEmberVfx) {
+      gremlin.tridentEmberVfx.points.visible = false;
+    }
     gremlin.hpBarRoot.visible = false;
     gremlin.downTimer = Math.max(0, gremlin.downTimer - dt);
     
@@ -1171,8 +1355,9 @@ export class SkyGremlins {
       this.paintballSystem.playImpactAtGroup(gremlin.root, info.color, false);
 
       gremlin.health--;
-      this.onGremlinPaintballHit?.(gremlin.isKing === true);
-      if (gremlin.health <= 0) {
+      const isKill = gremlin.health <= 0;
+      this.onGremlinPaintballHit?.(gremlin.isKing === true, isKill);
+      if (isKill) {
         gremlin.mode = "falling";
         gremlin.downTimer = GREMLIN_FALL_SEC;
         if (gremlin.isKing) {

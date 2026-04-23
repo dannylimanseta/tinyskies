@@ -87,11 +87,8 @@ function ensureStyles() {
       letter-spacing: 0.02em;
       line-height: 1.45;
       text-align: center;
-      color: rgba(240, 248, 255, 0.96);
-      text-shadow:
-        0 0 18px rgba(80, 160, 255, 0.55),
-        0 0 32px rgba(40, 100, 220, 0.35),
-        0 2px 10px rgba(0, 0, 0, 0.55);
+      color: rgba(255, 255, 255, 1);
+      text-shadow: none;
       transition: opacity 0.25s ease;
     }
     .eternal-flame-loot-message--out {

@@ -37,16 +37,16 @@ export class CircularProgressRing {
     this.element.className = "pkg-progress";
 
     const size = 72;
-    const stroke = 4;
+    const stroke = 6;
     const radius = (size - stroke) / 2;
     this.circumference = 2 * Math.PI * radius;
 
     this.element.innerHTML = `
       <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
         <circle cx="${size / 2}" cy="${size / 2}" r="${radius}"
-          fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${stroke}" />
+          fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="${stroke}" />
         <circle class="pkg-progress-ring" cx="${size / 2}" cy="${size / 2}" r="${radius}"
-          fill="none" stroke="rgba(255,255,255,0.70)" stroke-width="${stroke}"
+          fill="none" stroke="rgba(255,255,255,1)" stroke-width="${stroke}"
           stroke-linecap="round"
           stroke-dasharray="${this.circumference}"
           stroke-dashoffset="${this.circumference}"

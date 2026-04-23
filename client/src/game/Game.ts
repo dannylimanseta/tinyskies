@@ -169,16 +169,12 @@ const SELFIE_CAMERA_SFX_VOLUME = 0.55;
 const PORTAL_TELEPORT_SFX_VOLUME = 0.5;
 const PORTAL_OPEN_SFX_VOLUME = 0.52;
 
-/** Base XP granted per carpet portal teleport (before Wide Portal + Night Owl scaling). */
-const PORTAL_TELEPORT_XP = 5;
-
 /** XP source categories used by awardXP() for per-source scaling. */
 type XpSource =
   | "diamond"
   | "gremlin"
   | "delivery"
   | "selfie"
-  | "portal"
   | "flock"
   | "rainbow"
   | "lantern"
@@ -569,6 +565,16 @@ export class Game {
       },
     });
     this.lobby.show();
+  }
+
+  /** Always plays (no random / min-gap throttling) — use for gremlin + king kill feedback. */
+  private playGremlinDeathSfx(isKing: boolean) {
+    const now = performance.now();
+    this.lastGremlinHitSfxAt = now;
+    const pick =
+      GREMLIN_HIT_SFX_IDS[(Math.random() * GREMLIN_HIT_SFX_IDS.length) | 0]!;
+    const rate = isKing ? GREMLIN_KING_HIT_PLAYBACK_RATE : 1;
+    this.audioManager.playSFX(pick, GREMLIN_HIT_SFX_VOLUME, rate);
   }
 
   private maybePlayGremlinHitSfx(isKing: boolean) {
@@ -1182,8 +1188,9 @@ export class Game {
             }, KING_ETERNAL_FLAME_REWARD_DELAY_MS);
           }
         },
-        (isKing) => {
-          this.maybePlayGremlinHitSfx(isKing);
+        (isKing, isKill) => {
+          if (isKill) this.playGremlinDeathSfx(isKing);
+          else this.maybePlayGremlinHitSfx(isKing);
         },
       );
     } else {
@@ -3792,7 +3799,6 @@ export class Game {
 
     this.audioManager.resumeContextIfNeeded();
     this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
-    this.awardXP("portal", PORTAL_TELEPORT_XP);
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
@@ -4094,7 +4100,7 @@ export class Game {
 
   /**
    * Single XP chokepoint so global modifiers (Night Owl) and per-source
-   * modifiers (Wide Portal XP, Selfie XP, Delivery XP) stay consistent.
+   * modifiers (Selfie XP, Delivery XP) stay consistent.
    *
    * Diamonds already have their per-source multipliers applied inside
    * RingManager (diamondXpMult, frequentFlyer, wake_rider highSpeedMult) so
@@ -4145,9 +4151,6 @@ export class Game {
         break;
       case "selfie":
         amt *= s.carpetSelfieXpMult;
-        break;
-      case "portal":
-        amt *= s.carpetPortalXpMult;
         break;
       case "fish":
         amt *= s.fishXpMult;
