@@ -149,6 +149,9 @@ const RUMBLE_MAX_VOL = 0.42;
 /** Boat: ambient ocean waves (looping while flying). */
 const OCEAN_WAVES_LOOP_NAME = "ocean_waves_1";
 const OCEAN_WAVES_LOOP_VOL = 0.16;
+/** One twister debuff burst (forced spin + slow); must not re-arm every frame while still inside. */
+const TWISTER_SPIN_DURATION_SEC = 1.5;
+const TWISTER_SPIN_COOLDOWN_SEC = 5;
 
 const EXPLOSION_SFX_NAME = "explosion_1";
 const EXPLOSION_SFX_VOLUME = 0.48;
@@ -297,6 +300,8 @@ export class Game {
   private fireflyClusters: FireflyCluster[] = [];
   private waterSpouts: WaterSpouts | null = null;
   private twisterSpinTimer = 0;
+  /** After a spin burst ends, no new spin until this reaches 0 (prevents infinite spin when stuck in a twister). */
+  private twisterSpinCooldown = 0;
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
   private skyGremlins: SkyGremlins | null = null;
@@ -2164,27 +2169,39 @@ export class Game {
     let { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
 
-    // Twister Spin Effect
+    // Twister spin: one burst per engagement, then cooldown (collision was re-arming every frame → infinite spin).
+    if (this.twisterSpinCooldown > 0) {
+      this.twisterSpinCooldown = Math.max(0, this.twisterSpinCooldown - dt);
+    }
     if (this.waterSpouts) {
       const playerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
-      if (this.waterSpouts.checkCollision(playerPos, 0.45)) {
-        this.twisterSpinTimer = 1.5; // 1.5 seconds of spinning
+      if (
+        this.waterSpouts.checkCollision(playerPos, 0.45) &&
+        this.twisterSpinTimer <= 0 &&
+        this.twisterSpinCooldown <= 0
+      ) {
+        this.twisterSpinTimer = TWISTER_SPIN_DURATION_SEC;
       }
     }
     if (this.twisterSpinTimer > 0) {
       this.twisterSpinTimer -= dt;
-      
+      if (this.twisterSpinTimer <= 0) {
+        this.twisterSpinTimer = 0;
+        this.twisterSpinCooldown = TWISTER_SPIN_COOLDOWN_SEC;
+      }
+
+      const spinT = Math.max(0, this.twisterSpinTimer);
       let spinInput = 8.0; // Plane
       if (this.localPlayer.vehicle === "carpet") spinInput = 8.0;
       else if (this.localPlayer.vehicle === "boat") spinInput = 7.0;
 
       // Start fast, slow down at the end
-      const spinDecay = Math.max(0, this.twisterSpinTimer / 1.5);
+      const spinDecay = spinT / TWISTER_SPIN_DURATION_SEC;
       spinInput *= Math.pow(spinDecay, 0.5);
 
       turnRate = spinInput; // Force spin
       forward = false; // Kill forward input
-      brake = true;    // Force brake
+      brake = true; // Force brake
     }
 
     this.localPlayer.visibility = 1;
