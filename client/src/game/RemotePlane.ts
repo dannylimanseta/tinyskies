@@ -426,6 +426,13 @@ export class RemotePlaneManager {
     rp.pushState(state);
   }
 
+  setVisible(visible: boolean) {
+    for (const rp of this.planes.values()) {
+      rp.group.visible = visible;
+      rp.beacon.mesh.visible = visible;
+    }
+  }
+
   update(dt: number, camera?: Camera) {
     for (const [, rp] of this.planes) {
       rp.update(dt);

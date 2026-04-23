@@ -273,6 +273,7 @@ export class Game {
   private carpetLeaves!: CarpetLeaves;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
+  private inCosmicVoid = false;
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
@@ -1336,6 +1337,8 @@ export class Game {
         eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
       });
       this.eternalFlameUI?.playKingLootSequence();
+    }, () => {
+      if (this.inCosmicVoid) void this.exitCosmicVoid();
     });
 
     const landmarkRegistry = new LandmarkRegistry();
@@ -2192,7 +2195,7 @@ export class Game {
       this.globe.update(dt);
       this.moonThreat?.update(dt);
       for (const portal of this.cosmicWorldPortals) {
-        portal.update(dt, this.cameraRig.camera);
+        portal.update(dt, this.cameraRig.camera, 0); // Hide during intro
       }
       this.remotePlanes.update(dt, this.cameraRig.camera);
       this.applyDayNightPreset();
@@ -2310,7 +2313,7 @@ export class Game {
       );
       this.updateOceanFish(dt, false);
       for (const portal of this.cosmicWorldPortals) {
-        portal.update(dt, this.cameraRig.camera);
+        portal.update(dt, this.cameraRig.camera, 1.0);
       }
       this.renderer.render(this.scene, this.cameraRig.camera);
       return;
@@ -2376,7 +2379,7 @@ export class Game {
     this.localPlayer.visibility = 1;
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, paintball, descend);
 
-    if (specialAction && this.localPlayer instanceof Carpet && this.carpetPortalSystem) {
+    if (specialAction && this.localPlayer instanceof Carpet && this.carpetPortalSystem && !this.inCosmicVoid) {
       this.carpetPortalSystem.placePortal(this.localPlayer);
     }
 
@@ -2391,7 +2394,17 @@ export class Game {
       this.paintballSystem.tryLocalFire(this.localPlayer);
     }
 
-    const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0;
+    const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0 || this.inCosmicVoid;
+
+    if (!portalInteractionSuppressed && this.localPlayer instanceof Carpet) {
+      const pPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      for (const portal of this.cosmicWorldPortals) {
+        if (pPos.distanceTo(portal.worldPosition) < 0.35) {
+          void this.doEnterCosmicVoid();
+          break;
+        }
+      }
+    }
 
     if (this.moonThreat && !this.moonThreat.hasImpacted) {
       this.localPlayer.group.updateMatrixWorld(true);
@@ -2690,7 +2703,7 @@ export class Game {
       );
     }
 
-    if (portalInteractionSuppressed) {
+    if (portalInteractionSuppressed || this.inCosmicVoid) {
       this.landmarkHUD.hide();
     } else {
       this.landmarkDetector.update(this.localPlayer.qPosition);
@@ -2704,8 +2717,11 @@ export class Game {
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
     this.moonThreat?.update(dt);
+    
+    // Fade in portals over 2 seconds after the intro sequence ends
+    const portalOpacity = Math.max(0, Math.min(1, (this.gameTime - Game.INTRO_DURATION) / 2.0));
     for (const portal of this.cosmicWorldPortals) {
-      portal.update(dt, this.cameraRig.camera);
+      portal.update(dt, this.cameraRig.camera, portalOpacity);
     }
     const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
     this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma, twisterTrauma));
@@ -2827,11 +2843,11 @@ export class Game {
     );
 
     this.renderer.render(this.scene, this.cameraRig.camera);
-    if (this.vehicleFeatures.speedLines) {
+    if (this.vehicleFeatures.speedLines && !this.inCosmicVoid) {
       this.speedLines.render(this.renderer);
     }
-    this.lensFlare?.render(this.renderer);
-    this.rainOverlay?.render(this.renderer);
+    if (!this.inCosmicVoid) this.lensFlare?.render(this.renderer);
+    if (!this.inCosmicVoid) this.rainOverlay?.render(this.renderer);
   };
 
   /* ── Moon impact cinematic ────────────────────────────────────── */
@@ -2891,7 +2907,7 @@ export class Game {
     }
     this.globe.update(dt);
     for (const portal of this.cosmicWorldPortals) {
-      portal.update(dt, this.cameraRig.camera);
+      portal.update(dt, this.cameraRig.camera, 1.0);
     }
 
     if (this.moonThreat) {
@@ -3954,6 +3970,110 @@ export class Game {
     if (CAMPSITE_HOME_ENABLED) this.hud.setCampsiteButtonVisible(true);
   }
 
+  private setPortalHintVisible(visible: boolean) {
+    if (!this.vehicleHintsEl) return;
+    const rows = this.vehicleHintsEl.querySelectorAll(".control-hints-row");
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] as HTMLElement;
+      if (row.textContent?.includes("Portal")) {
+        row.style.display = visible ? "" : "none";
+      }
+    }
+  }
+
+  private async doEnterCosmicVoid() {
+    if (!this.transitionOverlay || this.inCosmicVoid) return;
+    this.gamePhase = "transitioning";
+    this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
+
+    this.audioManager.resumeContextIfNeeded();
+    this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
+
+    await this.transitionOverlay.fadeOut();
+    this.inCosmicVoid = true;
+    this.stateSync?.stop();
+    this.remotePlanes.setVisible(false);
+    this.remotePlayerNameLabels.setVisible(false);
+
+    this.globe.group.visible = false;
+    this.ringManager.group.visible = false;
+    if (this.waterSpouts) this.waterSpouts.group.visible = false;
+    if (this.meteorShower) this.meteorShower.group.visible = false;
+    if (this.oceanFish) this.oceanFish.group.visible = false;
+    if (this.skyJellyfish) this.skyJellyfish.group.visible = false;
+    if (this.campsiteMarker) this.campsiteMarker.group.visible = false;
+    for (const portal of this.cosmicWorldPortals) portal.group.visible = false;
+    if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = false;
+    if (this.carpetTrail) this.carpetTrail.group.visible = false;
+    if (this.carpetWake) this.carpetWake.group.visible = false;
+    if (this.carpetLeaves) this.carpetLeaves.group.visible = false;
+    for (const fb of this.birdFlocks) fb.group.visible = false;
+    for (const ra of this.rainbowArches) ra.group.visible = false;
+    for (const fl of this.lanternClusters) fl.group.visible = false;
+    for (const fc of this.fireflyClusters) fc.group.visible = false;
+    for (const v of this.volcanoes) v.group.visible = false;
+    if (this.braziers) this.braziers.setVisible(false);
+    if (this.moonThreat) this.moonThreat.group.visible = false;
+    if (this.gremlinHearts) this.gremlinHearts.group.visible = false;
+    if (this.packageQuest) this.packageQuest.group.visible = false;
+    if (this.collectVFX) this.collectVFX.group.visible = false;
+    
+    this.packageQuestHUD.hideBubble();
+    this.packageQuestHUD.hideDeliveryTarget();
+    this.setPortalHintVisible(false);
+
+    this.applyDayNightPreset();
+
+    await this.transitionOverlay.fadeIn();
+    this.gamePhase = "flying";
+  }
+
+  public async exitCosmicVoid() {
+    if (!this.transitionOverlay || !this.inCosmicVoid) return;
+    this.gamePhase = "transitioning";
+    this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
+
+    this.audioManager.resumeContextIfNeeded();
+    this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
+
+    await this.transitionOverlay.fadeOut();
+    this.inCosmicVoid = false;
+    this.socketClient?.disconnect();
+    this.remotePlanes.dispose();
+    this.initNetworking(this.worldSlug); // Restart stateSync and socket
+    this.remotePlanes.setVisible(true);
+    this.remotePlayerNameLabels.setVisible(true);
+
+    this.globe.group.visible = true;
+    this.ringManager.group.visible = true;
+    if (this.waterSpouts) this.waterSpouts.group.visible = true;
+    if (this.meteorShower) this.meteorShower.group.visible = true;
+    if (this.oceanFish) this.oceanFish.group.visible = true;
+    if (this.skyJellyfish) this.skyJellyfish.group.visible = true;
+    if (this.campsiteMarker) this.campsiteMarker.group.visible = true;
+    for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
+    if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
+    if (this.carpetTrail) this.carpetTrail.group.visible = true;
+    if (this.carpetWake) this.carpetWake.group.visible = true;
+    if (this.carpetLeaves) this.carpetLeaves.group.visible = true;
+    for (const fb of this.birdFlocks) fb.group.visible = true;
+    for (const ra of this.rainbowArches) ra.group.visible = true;
+    for (const fl of this.lanternClusters) fl.group.visible = true;
+    for (const fc of this.fireflyClusters) fc.group.visible = true;
+    for (const v of this.volcanoes) v.group.visible = true;
+    if (this.braziers) this.braziers.setVisible(true);
+    if (this.moonThreat) this.moonThreat.group.visible = true;
+    if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
+    if (this.packageQuest) this.packageQuest.group.visible = true;
+    if (this.collectVFX) this.collectVFX.group.visible = true;
+    this.setPortalHintVisible(true);
+
+    this.applyDayNightPreset();
+
+    await this.transitionOverlay.fadeIn();
+    this.gamePhase = "flying";
+  }
+
   private handleCarpetPortalTeleport() {
     if (!(this.localPlayer instanceof Carpet)) return;
 
@@ -4033,6 +4153,45 @@ export class Game {
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
     const p = this.dayNightCycle.getPreset();
     const fogScale = this.mobile ? 0.7 : 1;
+
+    if (this.inCosmicVoid) {
+      this.updateSkyGradient([
+        { stop: 0.0, color: "#010003" },
+        { stop: 0.3, color: "#020005" },
+        { stop: 0.6, color: "#040008" },
+        { stop: 1.0, color: "#060010" },
+      ]); // Deep space colors
+      const fog = this.scene.fog as Fog;
+      fog.color.set(0x010003);
+      fog.near = p.fogNear * fogScale;
+      fog.far = p.fogFar * fogScale;
+
+      this.hemiLight.color.set(0x111122);
+      this.hemiLight.groundColor.set(0x000000);
+      this.hemiLight.intensity = 0.5;
+      
+      this.ambientLight.color.set(0x221144);
+      this.ambientLight.intensity = 0.4;
+      
+      this.sunLight.color.set(0x4422ff);
+      this.sunLight.intensity = 0.8;
+      
+      if (this.starfield) {
+        this.starfield.group.visible = true;
+        this.starfield.setOpacity(1.0);
+      }
+      if (this.aurora) {
+        this.aurora.group.visible = false;
+        this.aurora.setOpacity(0);
+      }
+      this.audioManager.setLoopVolume(RAIN_LOOP_NAME, 0);
+      this.audioManager.setLoopVolume("crickets_loop", 0);
+      this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, 0);
+      this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
+      this.audioManager.setWeights(0, 0, 0);
+      this.audioManager.setEndTimesWeight(0);
+      return;
+    }
 
     this.updateSkyGradient(p.skyGradient);
 

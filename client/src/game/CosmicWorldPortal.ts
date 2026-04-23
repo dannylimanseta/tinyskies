@@ -48,6 +48,7 @@ void main() {
 
 const cosmicInnerFrag = /* glsl */ `
 uniform float uTime;
+uniform float uOpacity;
 varying vec2 vUv;
 
 // Pseudo-random noise
@@ -139,7 +140,7 @@ void main() {
   // Starting the fade at r = 0.3 makes the edge highly feathered
   float edgeA = 1.0 - smoothstep(0.3, 0.9, r);
   
-  gl_FragColor = vec4(col, edgeA);
+  gl_FragColor = vec4(col, edgeA * uOpacity);
 }
 `;
 
@@ -160,7 +161,10 @@ class CosmicWorldPortalVisual {
     this.group.add(this.scaledGroup);
 
     this.innerMat = new ShaderMaterial({
-      uniforms: { uTime: { value: 0 } },
+      uniforms: { 
+        uTime: { value: 0 },
+        uOpacity: { value: 0 },
+      },
       vertexShader: cosmicInnerVert,
       fragmentShader: cosmicInnerFrag,
       transparent: true,
@@ -180,8 +184,9 @@ class CosmicWorldPortalVisual {
     this.group.matrixWorldNeedsUpdate = true;
   }
 
-  update(time: number, camera: Camera) {
+  update(time: number, camera: Camera, opacity: number) {
     this.innerMat.uniforms.uTime.value = time + this.timePhase;
+    this.innerMat.uniforms.uOpacity.value = opacity;
     this.group.quaternion.copy(camera.quaternion);
   }
 
@@ -213,7 +218,7 @@ function pickWorldPose(
 
     const minAlt =
       surfaceAltitudeAt(worldSeed, terrainType, frame.up.x, frame.up.y, frame.up.z) + CARPET_HOVER_HEIGHT;
-    const altitude = Math.max(minAlt + portalHalfHeight + safePad, minAlt);
+    const altitude = Math.max(minAlt + 0.15, minAlt);
     const heading = rand() * Math.PI * 2;
     return { qPosition: finalQ, heading, altitude };
   }
@@ -229,6 +234,7 @@ function pickWorldPose(
  */
 export class CosmicWorldPortal {
   readonly group = new Group();
+  readonly worldPosition = new Vector3();
   private time = 0;
   private readonly visual: CosmicWorldPortalVisual;
 
@@ -245,16 +251,16 @@ export class CosmicWorldPortal {
       terrainType,
       rand,
     );
-    const worldPosition = cartesianFromSpherical(qPosition, altitude, globeRadius);
+    this.worldPosition.copy(cartesianFromSpherical(qPosition, altitude, globeRadius));
 
     this.visual = new CosmicWorldPortalVisual(seed * 0.0012 + index * 10);
-    this.visual.applyPose(worldPosition);
+    this.visual.applyPose(this.worldPosition);
     this.group.add(this.visual.group);
   }
 
-  update(dt: number, camera: Camera) {
+  update(dt: number, camera: Camera, opacity: number) {
     this.time += dt;
-    this.visual.update(this.time, camera);
+    this.visual.update(this.time, camera, opacity);
   }
 
   dispose() {

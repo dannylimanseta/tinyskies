@@ -3,10 +3,12 @@ export class DebugMenu {
   private menu: HTMLElement;
   private isVisible = false;
   private onSpawnEternalFlame: () => void;
+  private onExitCosmicVoid: () => void;
 
-  constructor(container: HTMLElement, onSpawnEternalFlame: () => void) {
+  constructor(container: HTMLElement, onSpawnEternalFlame: () => void, onExitCosmicVoid: () => void) {
     this.container = container;
     this.onSpawnEternalFlame = onSpawnEternalFlame;
+    this.onExitCosmicVoid = onExitCosmicVoid;
 
     this.menu = document.createElement("div");
     this.menu.className = "debug-menu";
@@ -14,12 +16,18 @@ export class DebugMenu {
     this.menu.innerHTML = `
       <h3>Debug Menu</h3>
       <button id="debug-spawn-eternal-flame">Spawn Eternal Flame</button>
+      <button id="debug-exit-cosmic-void">Exit Cosmic Void</button>
     `;
 
     this.container.appendChild(this.menu);
 
     this.menu.querySelector("#debug-spawn-eternal-flame")?.addEventListener("click", () => {
       this.onSpawnEternalFlame();
+      this.hide();
+    });
+
+    this.menu.querySelector("#debug-exit-cosmic-void")?.addEventListener("click", () => {
+      this.onExitCosmicVoid();
       this.hide();
     });
 

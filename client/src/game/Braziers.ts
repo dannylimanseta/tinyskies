@@ -984,6 +984,16 @@ export class Braziers {
 
   /* ── Dispose ─────────────────────────────────────────────────── */
 
+  setVisible(visible: boolean) {
+    for (const slot of this.states) {
+      if (visible) {
+        slot.group.visible = this.revealComplete;
+      } else {
+        slot.group.visible = false;
+      }
+    }
+  }
+
   dispose() {
     this.ironGeo.dispose();
     this.bowlGeo.dispose();

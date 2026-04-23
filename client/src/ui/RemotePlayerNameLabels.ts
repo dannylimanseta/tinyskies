@@ -29,6 +29,10 @@ export class RemotePlayerNameLabels {
     this.injectStyles();
   }
 
+  setVisible(visible: boolean) {
+    this.container.style.display = visible ? "" : "none";
+  }
+
   private injectStyles() {
     if (document.getElementById("remote-player-name-styles")) return;
     const style = document.createElement("style");
