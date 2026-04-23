@@ -2275,7 +2275,7 @@ export class Game {
     if (this.localPlayer instanceof Plane && this.skyGremlins) {
       if (this.gameTime >= Game.SKY_GREMLIN_SPAWN_DELAY_SEC) {
         this.skyGremlins.setSuspended(false);
-        this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0, this.cameraRig.camera.position);
+        this.skyGremlins.update(dt, this.localPlayer, this.moonThreat?.progress ?? 0, this.cameraRig.camera);
       } else {
         this.skyGremlins.setSuspended(true);
       }

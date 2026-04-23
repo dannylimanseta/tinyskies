@@ -538,7 +538,7 @@ export class HUD {
         font-weight: 500;
         color: rgba(180, 220, 255, 0.85);
         white-space: nowrap;
-        margin-right: 4px;
+        margin-right: 10px;
         pointer-events: none;
       }
 
@@ -1003,7 +1003,7 @@ export class HUD {
       /* ── Brazier status tracker ─────────────────────────── */
       .hud-brazier-tracker {
         position: absolute;
-        top: 22px;
+        top: 32px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -1299,6 +1299,9 @@ export class HUD {
         .hud-top-right {
           top: max(24px, calc(14px + env(safe-area-inset-top)));
           right: max(24px, calc(14px + env(safe-area-inset-right)));
+        }
+        .hud-brazier-tracker {
+          top: max(24px, calc(14px + env(safe-area-inset-top)));
         }
         .hud-campsite-btn,
         .hud-fullscreen-btn,

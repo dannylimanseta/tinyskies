@@ -2,18 +2,21 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
+  Camera,
   ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   Group,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshPhongMaterial,
   Quaternion,
   SphereGeometry,
   Vector3,
   type Scene,
 } from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { PAINTBALL_COLOR_PALETTE } from "@globefly/shared";
 import type { Plane } from "./Plane";
 import type { PaintballSystem, ProjectileStepInfo } from "./PaintballSystem";
@@ -38,6 +41,24 @@ export const SKY_GREMLIN_KING_XP = 120;
 const GREMLIN_SHOOTER_PREFIX = "gremlin:";
 const GREMLIN_KING_SHOOTER_ID = "gremlin:king";
 const GREMLINS_KILLED_BEFORE_KING = 5;
+const GREMLIN_HP_MAX = 3;
+const GREMLIN_KING_HP_MAX = 10;
+const HP_BAR_W = 0.135;
+/** Slightly thick strip; corner radius is just under H/2 for smooth stadium / pill ends. */
+const HP_BAR_H = 0.0145;
+/**
+ * RoundedBoxGeometry clamps fillet radius to min(w,h,d)/2 — depth must be large enough
+ * that d/2 allows the pill-radius above; otherwise corners look "sharp" / cut off.
+ */
+const HP_BAR_D = 0.014;
+/** Higher = smoother fillets (less faceted / “sharp” rounded corners). */
+const HP_BAR_SEGMENTS = 16;
+const HP_BAR_CORNER_R = 0.0069;
+const HP_BAR_INSET = 0.0025;
+const HP_TWEEN_SPEED = 14;
+/** World-space lift above root along planet radial, scaled with rig. */
+const HP_BAR_RADIAL_LIFT = 0.12;
+const HP_RIG_BASE = 0.7;
 const GREMLIN_SURFACE_CLEARANCE = 0.2;
 const GREMLIN_ALTITUDE_MIN = 0.52;
 const GREMLIN_ALTITUDE_MAX = 0.65;
@@ -105,6 +126,12 @@ type GremlinState = {
   worldPosition: Vector3;
   mode: GremlinMode;
   trail: Trail;
+  maxHealth: number;
+  /** Smoothed 0–1 HP (tweened toward health / maxHealth). */
+  hpDisplay: number;
+  hpBarRoot: Group;
+  hpFillMesh: Mesh;
+  hpBarInnerW: number;
 };
 
 export class SkyGremlins {
@@ -202,7 +229,14 @@ export class SkyGremlins {
   private readonly directionScratch = new Vector3();
   private readonly tmpMatrix = new Matrix4();
   private readonly currentPlayerWorldPos = new Vector3();
+  private readonly hpBarPosScratch = new Vector3();
+  private readonly hpBarUpScratch = new Vector3();
+  private readonly hpBarCamQuat = new Quaternion();
   private currentPlayer: Plane | null = null;
+  private readonly hpBarTrackGeo: RoundedBoxGeometry;
+  private readonly hpBarFillGeo: BoxGeometry;
+  private readonly hpBarTrackMat: MeshBasicMaterial;
+  private readonly hpBarFillMat: MeshBasicMaterial;
   private readonly removeProjectileStepListener: () => void;
   private time = 0;
   private suspended = true;
@@ -284,6 +318,27 @@ export class SkyGremlins {
     this.outerRightWingGeo.setIndex(orIndices);
     this.outerRightWingGeo.computeVertexNormals();
 
+    this.hpBarTrackGeo = new RoundedBoxGeometry(
+      HP_BAR_W,
+      HP_BAR_H,
+      HP_BAR_D,
+      HP_BAR_SEGMENTS,
+      HP_BAR_CORNER_R,
+    );
+    this.hpBarFillGeo = new BoxGeometry(1, HP_BAR_H * 0.6, HP_BAR_D * 0.45);
+    this.hpBarTrackMat = new MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+    });
+    this.hpBarFillMat = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+
     for (let i = 0; i < GREMLIN_MAX_COUNT; i++) {
       const gremlin = this.createGremlin(i);
       this.gremlins.push(gremlin);
@@ -311,7 +366,7 @@ export class SkyGremlins {
     }
   }
 
-  update(dt: number, player: Plane, moonPhase: number, cameraPos: Vector3) {
+  update(dt: number, player: Plane, moonPhase: number, camera: Camera) {
     this.currentPlayer = player;
     this.currentPlayerWorldPos.copy(
       cartesianFromSpherical(player.qPosition, player.altitude, this.globeRadius),
@@ -319,6 +374,7 @@ export class SkyGremlins {
     if (this.suspended) return;
 
     const activeCount = moonPhase >= 0.75 ? GREMLIN_MAX_COUNT : GREMLIN_BASE_COUNT;
+    const cameraPos = camera.position;
 
     this.time += dt;
     for (let i = 0; i < this.gremlins.length; i++) {
@@ -349,7 +405,7 @@ export class SkyGremlins {
         this.updateFallingGremlin(gremlin, dt);
         continue;
       }
-      this.updateAliveGremlin(gremlin, dt, player);
+      this.updateAliveGremlin(gremlin, dt, player, camera);
     }
 
     if (this.gremlinKing && this.gremlinKing.mode !== "dormant") {
@@ -364,7 +420,7 @@ export class SkyGremlins {
         if (g.mode === "falling") {
           this.updateFallingGremlin(g, dt);
         } else if (g.mode === "alive") {
-          this.updateAliveGremlin(g, dt, player);
+          this.updateAliveGremlin(g, dt, player, camera);
         }
       }
     }
@@ -410,6 +466,10 @@ export class SkyGremlins {
     this.kingWingMaterial.dispose();
     this.crownMaterial.dispose();
     this.crownGemMaterial.dispose();
+    this.hpBarTrackGeo.dispose();
+    this.hpBarFillGeo.dispose();
+    this.hpBarTrackMat.dispose();
+    this.hpBarFillMat.dispose();
     this.crownGemGeo.dispose();
   }
 
@@ -623,6 +683,21 @@ export class SkyGremlins {
       rig.add(trident);
     }
 
+    const maxHealth = king ? GREMLIN_KING_HP_MAX : GREMLIN_HP_MAX;
+    const innerW = HP_BAR_W - 2 * HP_BAR_INSET;
+
+    const hpBarRoot = new Group();
+    const hpTrack = new Mesh(this.hpBarTrackGeo, this.hpBarTrackMat);
+    hpTrack.position.z = 0.0001;
+    hpTrack.renderOrder = 6;
+    const hpFillMesh = new Mesh(this.hpBarFillGeo, this.hpBarFillMat);
+    hpFillMesh.position.z = 0.0002;
+    hpFillMesh.renderOrder = 7;
+    hpBarRoot.add(hpTrack);
+    hpBarRoot.add(hpFillMesh);
+    hpBarRoot.visible = false;
+    this.group.add(hpBarRoot);
+
     const random = seededRandom(this.seed + index * 104729 + 17);
     return {
       index,
@@ -651,7 +726,12 @@ export class SkyGremlins {
       turnPhase: random() * Math.PI * 2,
       fireCooldown: GREMLIN_FIRE_COOLDOWN_MIN,
       aimTimer: 0,
-      health: king ? 10 : 3,
+      health: maxHealth,
+      maxHealth,
+      hpDisplay: 1,
+      hpBarRoot,
+      hpFillMesh,
+      hpBarInnerW: innerW,
       hitWobbleAmp: 0,
       hitWobblePhase: 0,
       respawnSalt: 0,
@@ -721,7 +801,8 @@ export class SkyGremlins {
       (initial ? 0.5 : GREMLIN_FIRE_COOLDOWN_MIN) +
       gremlin.random() * (GREMLIN_FIRE_COOLDOWN_MAX - GREMLIN_FIRE_COOLDOWN_MIN);
     gremlin.aimTimer = 0;
-    gremlin.health = gremlin.isKing ? 10 : 3;
+    gremlin.health = gremlin.maxHealth;
+    gremlin.hpDisplay = 1;
     gremlin.hitWobbleAmp = 0;
     gremlin.hitWobblePhase = 0;
     gremlin.mode = "alive";
@@ -734,7 +815,7 @@ export class SkyGremlins {
     this.updateGremlinTransform(gremlin, 0);
   }
 
-  private updateAliveGremlin(gremlin: GremlinState, dt: number, player: Plane) {
+  private updateAliveGremlin(gremlin: GremlinState, dt: number, player: Plane, camera: Camera) {
     gremlin.fireCooldown = Math.max(0, gremlin.fireCooldown - dt);
 
     this.worldPosScratch.copy(
@@ -850,6 +931,7 @@ export class SkyGremlins {
     }
 
     this.updateGremlinTransform(gremlin, dt);
+    this.updateGremlinHpBar(gremlin, dt, camera);
 
     this.directionScratch
       .copy(this.currentPlayerWorldPos)
@@ -905,6 +987,7 @@ export class SkyGremlins {
   }
 
   private updateFallingGremlin(gremlin: GremlinState, dt: number) {
+    gremlin.hpBarRoot.visible = false;
     gremlin.downTimer = Math.max(0, gremlin.downTimer - dt);
     
     if (gremlin.downTimer < 0.2) {
@@ -948,6 +1031,35 @@ export class SkyGremlins {
       gremlin.root.visible = false;
       gremlin.trail.mesh.visible = false;
     }
+  }
+
+  private updateGremlinHpBar(gremlin: GremlinState, dt: number, camera: Camera) {
+    const maxH = gremlin.maxHealth;
+    const target = gremlin.health <= 0 ? 0 : gremlin.health / maxH;
+    gremlin.hpDisplay += (target - gremlin.hpDisplay) * Math.min(1, HP_TWEEN_SPEED * dt);
+
+    const innerW = gremlin.hpBarInnerW;
+    const r = Math.max(0, Math.min(1, gremlin.hpDisplay));
+
+    const show =
+      gremlin.mode === "alive" &&
+      gremlin.health > 0 &&
+      (gremlin.health < maxH || r < 0.998);
+    gremlin.hpBarRoot.visible = show;
+    if (!show) return;
+
+    const rw = Math.max(0.001, innerW * r);
+    gremlin.hpFillMesh.scale.set(rw, 1, 1);
+    gremlin.hpFillMesh.position.x = -innerW * 0.5 + rw * 0.5;
+
+    const lift = HP_BAR_RADIAL_LIFT * (gremlin.baseRigScale / HP_RIG_BASE);
+    this.hpBarUpScratch.copy(gremlin.worldPosition).normalize();
+    this.hpBarPosScratch
+      .copy(gremlin.worldPosition)
+      .addScaledVector(this.hpBarUpScratch, lift);
+    gremlin.hpBarRoot.position.copy(this.hpBarPosScratch);
+    camera.getWorldQuaternion(this.hpBarCamQuat);
+    gremlin.hpBarRoot.quaternion.copy(this.hpBarCamQuat);
   }
 
   private updateGremlinTransform(gremlin: GremlinState, bankScale: number) {

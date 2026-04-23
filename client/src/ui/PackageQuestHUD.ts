@@ -165,7 +165,7 @@ export class PackageQuestHUD {
     style.textContent = `
       .pkg-bubble {
         position: absolute;
-        top: 80px;
+        top: 90px;
         left: 50%;
         transform: translate(-50%, -6px);
         display: flex;
@@ -210,7 +210,7 @@ export class PackageQuestHUD {
         font-size: 1.0rem;
         font-weight: 500;
         color: rgba(255, 255, 255, 0.85);
-        padding: 10px 16px;
+        padding: 12px 18px;
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 4px 14px 14px 14px;
@@ -223,8 +223,8 @@ export class PackageQuestHUD {
 
       .pkg-banner {
         position: absolute;
-        top: 28px;
-        right: calc(var(--hud-top-right-reserved, 120px) + 8px);
+        top: 32px;
+        right: calc(var(--hud-top-right-reserved, 120px) + 12px);
         font-size: 0.95rem;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.5);
@@ -234,7 +234,7 @@ export class PackageQuestHUD {
         pointer-events: none;
         z-index: 11;
         white-space: nowrap;
-        max-width: calc(100vw - var(--hud-top-right-reserved, 120px) - 48px);
+        max-width: calc(100vw - var(--hud-top-right-reserved, 120px) - 56px);
         overflow: hidden;
         text-overflow: ellipsis;
         text-align: right;
@@ -251,7 +251,7 @@ export class PackageQuestHUD {
 
       .pkg-whisper {
         position: absolute;
-        top: 80px;
+        top: 90px;
         left: 50%;
         transform: translate(-50%, -6px);
         max-width: 400px;
@@ -263,7 +263,7 @@ export class PackageQuestHUD {
         color: rgba(255, 255, 255, 0.80);
         letter-spacing: 0.01em;
         line-height: 1.4;
-        padding: 10px 16px;
+        padding: 12px 18px;
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 14px;
@@ -276,14 +276,14 @@ export class PackageQuestHUD {
       @media (max-width: 768px) {
         .pkg-whisper {
           position: fixed;
-          top: max(63px, calc(55px + env(safe-area-inset-top)));
+          top: max(88px, calc(24px + env(safe-area-inset-top) + 52px));
           left: 10vw;
           right: auto;
           width: 80vw;
           max-width: 80vw;
           transform: translateY(-6px);
           font-size: 0.9rem;
-          padding: 10px 12px;
+          padding: 12px 16px;
           backdrop-filter: none;
           box-sizing: border-box;
         }
@@ -296,7 +296,7 @@ export class PackageQuestHUD {
       @media (max-width: 768px) {
         .pkg-bubble {
           position: fixed;
-          top: max(63px, calc(55px + env(safe-area-inset-top)));
+          top: max(88px, calc(24px + env(safe-area-inset-top) + 52px));
           left: 10vw;
           right: auto;
           width: 80vw;
@@ -308,12 +308,12 @@ export class PackageQuestHUD {
         .pkg-bubble-npc { font-size: 0.6rem; }
         .pkg-bubble-text {
           font-size: 0.9rem;
-          padding: 10px 12px;
+          padding: 12px 16px;
           backdrop-filter: none;
         }
         .pkg-banner {
-          top: max(20px, calc(8px + env(safe-area-inset-top)));
-          right: max(60px, calc(60px + env(safe-area-inset-right)));
+          top: max(24px, calc(14px + env(safe-area-inset-top)));
+          right: calc(var(--hud-top-right-reserved, 120px) + 12px);
           font-size: 0.8rem;
         }
       }
