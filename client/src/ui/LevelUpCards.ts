@@ -112,6 +112,7 @@ const UPGRADE_ICONS: Record<string, string> = {
   tight_turn: "🌀",
   sharpshooter: "🎯",
   double_tap: "💥",
+  long_shot: "🔭",
   hull_reinforced: "🛡️",
   bountiful_hearts: "❤️",
   heart_orchard: "🫀",

@@ -194,9 +194,16 @@ const PLANE_UPGRADES: UpgradeDefinition[] = [
     apply: (s) => { s.paintballDoubleTapEnabled = true; },
   },
   {
+    id: "long_shot",
+    name: "Long Shot",
+    description: "+20% biplane paintball range",
+    category: "performance",
+    apply: (s) => { s.paintballRangeMult *= 1.2; },
+  },
+  {
     id: "hull_reinforced",
     name: "Reinforced Hull",
-    description: "+20% max paintball / gremlin HP",
+    description: "+20% max biplane HP (gremlin damage)",
     category: "performance",
     apply: (s) => { s.planeGremlinHpMaxMult *= 1.2; },
   },

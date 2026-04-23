@@ -61,10 +61,11 @@ export const PAINTBALL_BURST_WINDOW_MS = 700;
 /** Projectile travel speed in world units per second. */
 export const PAINTBALL_SPEED = 7;
 /** Max travel distance = globeRadius * this factor. */
-export const PAINTBALL_RANGE_FACTOR = 1.0;
+export const PAINTBALL_RANGE_FACTOR = 0.85;
 /** Upper bounds on client-supplied paintball upgrade multipliers (anti-cheat clamp). */
 export const PAINTBALL_SPEED_MULT_MAX = 1.5;
-export const PAINTBALL_RANGE_MULT_MAX = 1.5;
+/** High enough for Sharpshooter + Long Shot (and further stacks) after clamp. */
+export const PAINTBALL_RANGE_MULT_MAX = 1.65;
 /**
  * Hit test: max distance from shot ray to the **victim’s globe position point** (not full mesh).
  * Wider than a true hull but much smaller than 0.22 — tune feel vs. “free” hits.
