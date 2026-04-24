@@ -13,9 +13,12 @@ import { holoVert } from "./Rings";
 const SHIELD_MAX_HP = 12;
 const COLLISION_RADIUS = 0.34;
 const HIT_BOOST_SMOOTH = 11;
-const HIT_FLASH_DECAY = 12.0;
+/** ~60% slower white hit / pulse than 12.0 (longer, calmer flash). */
+const HIT_FLASH_DECAY = 4.8;
 /** Subtle “breath” when HP is 1 or 2 (same logic as uLowHpPulse < 3 in JS). */
 const LOW_HP_PULSE_HZ = 3.6;
+/** Scales shader time + mesh spin; ~40% speed = ~60% slower anim than unscaled. */
+const SHIELD_TIME_SCALE = 0.4;
 
 /**
  * Holo look aligned with `Rings` diamonds, but lower saturation/brightness, plus
@@ -125,7 +128,7 @@ export class VoidFlameShield {
 
   update(dt: number) {
     this.mesh.visible = this.hitPoints > 0.01;
-    this.shaderTime += dt;
+    this.shaderTime += dt * SHIELD_TIME_SCALE;
     this.mat.uniforms.time.value = this.shaderTime;
     this.hitBoost += (1 - this.hitBoost) * (1 - Math.exp(-HIT_BOOST_SMOOTH * dt));
     if (this.hitBoost < 1.0005) this.hitBoost = 1;
@@ -148,8 +151,8 @@ export class VoidFlameShield {
     }
     (this.mat.uniforms.uLowHpPulse as { value: number }).value = pulse;
 
-    this.mesh.rotation.y += dt * 0.55;
-    this.mesh.rotation.x += dt * 0.12;
+    this.mesh.rotation.y += dt * 0.55 * SHIELD_TIME_SCALE;
+    this.mesh.rotation.x += dt * 0.12 * SHIELD_TIME_SCALE;
   }
 
   dispose() {

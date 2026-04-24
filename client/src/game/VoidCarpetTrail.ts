@@ -22,11 +22,14 @@ const HALF_WIDTH = 0.042;
 const vert = `
 attribute float alpha;
 attribute float aU;
+attribute float aAlong;
 varying float vAlpha;
 varying float vU;
+varying float vAlong;
 void main() {
   vAlpha = alpha;
   vU = aU;
+  vAlong = aAlong;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -35,14 +38,19 @@ const frag = `
 uniform float uSpeedAlpha;
 varying float vAlpha;
 varying float vU;
+varying float vAlong;
 void main() {
   float t = abs(vU);
   float core = exp(-t * t * 1.1);
   float halo = exp(-t * t * 0.28) * 0.45;
   float a = vAlpha * uSpeedAlpha * (core * 0.9 + halo);
   if (a < 0.012) discard;
-  vec3 col = vec3(1.0) * (0.72 + 0.28 * core);
-  gl_FragColor = vec4(col, a);
+  // Bluish (leading) to purple (trailing) along the ribbon, bright at core
+  vec3 cBlue = vec3(0.32, 0.62, 0.98);
+  vec3 cPurp = vec3(0.58, 0.28, 0.95);
+  vec3 grad = mix(cBlue, cPurp, vAlong);
+  float edge = 0.78 + 0.22 * core;
+  gl_FragColor = vec4(grad * edge, a);
 }
 `;
 
@@ -57,6 +65,7 @@ class WhiteRibbon {
   private posAttr: BufferAttribute;
   private alphaAttr: BufferAttribute;
   private aUAttr: BufferAttribute;
+  private aAlongAttr: BufferAttribute;
   private geometry: BufferGeometry;
   readonly mesh: Mesh;
   readonly material: ShaderMaterial;
@@ -66,19 +75,26 @@ class WhiteRibbon {
     const posArray = new Float32Array(vertCount * 3);
     const alphaArray = new Float32Array(vertCount);
     const aU = new Float32Array(vertCount);
+    const aAlong = new Float32Array(vertCount);
+    const n1 = TRAIL_LENGTH - 1;
     for (let i = 0; i < TRAIL_LENGTH; i++) {
+      const al = n1 > 0 ? i / n1 : 0.0;
       aU[i * 2] = -1;
       aU[i * 2 + 1] = 1;
+      aAlong[i * 2] = al;
+      aAlong[i * 2 + 1] = al;
     }
 
     this.posAttr = new BufferAttribute(posArray, 3);
     this.alphaAttr = new BufferAttribute(alphaArray, 1);
     this.aUAttr = new BufferAttribute(aU, 1);
+    this.aAlongAttr = new BufferAttribute(aAlong, 1);
 
     this.geometry = new BufferGeometry();
     this.geometry.setAttribute("position", this.posAttr);
     this.geometry.setAttribute("alpha", this.alphaAttr);
     this.geometry.setAttribute("aU", this.aUAttr);
+    this.geometry.setAttribute("aAlong", this.aAlongAttr);
 
     const indices: number[] = [];
     for (let i = 0; i < TRAIL_LENGTH - 1; i++) {
@@ -112,8 +128,13 @@ class WhiteRibbon {
     const alphas = this.alphaAttr.array as Float32Array;
     const count = this.points.length;
     const halfW = HALF_WIDTH;
+    const aAlongBuf = this.aAlongAttr.array as Float32Array;
+    const nSeg = TRAIL_LENGTH - 1;
 
     for (let i = 0; i < TRAIL_LENGTH; i++) {
+      const along = nSeg > 0 ? i / nSeg : 0;
+      aAlongBuf[i * 2] = along;
+      aAlongBuf[i * 2 + 1] = along;
       const p = this.points[i];
       if (!p) {
         positions[i * 6] = 0;
@@ -168,6 +189,7 @@ class WhiteRibbon {
 
     this.posAttr.needsUpdate = true;
     this.alphaAttr.needsUpdate = true;
+    this.aAlongAttr.needsUpdate = true;
   }
 
   reset() {
