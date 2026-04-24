@@ -176,8 +176,8 @@ export class CapybaraFlameShots {
 
     this.emitReadyBursts(performance.now());
 
-    if (audio?.hasSFX("shoot_1")) {
-      audio.playSFX("shoot_1", 0.28, 0.9 + Math.random() * 0.08);
+    if (audio?.hasSFX("shoot_2")) {
+      audio.playSFX("shoot_2", 0.28, 0.9 + Math.random() * 0.08);
     }
   }
 

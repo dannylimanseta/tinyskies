@@ -65,6 +65,7 @@ import { CapybaraFlameShots } from "./CapybaraFlameShots";
 import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { EternalFlameWorld } from "./EternalFlameWorld";
 import { VoidMothsManager } from "./VoidMoths";
+import { VoidFlameShield } from "./VoidFlameShield";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -253,6 +254,16 @@ const GREMLIN_HIT_SFX_MIN_MS = 400;
 const GREMLIN_KING_HIT_PLAYBACK_RATE = 0.4;
 /** Max gain for rewind SFX loop; multiplied by scene alpha during moon rewind. */
 const REWIND_LOOP_VOLUME = 0.38;
+/** Cosmic void: ease chase cam toward a higher, slightly tighter framing (top-down). */
+const VOID_CAMERA_BLEND_SPEED = 4.2;
+const VOID_CAMERA_EXTRA_HEIGHT = 0.62;
+const VOID_CAMERA_DIST_DELTA = -0.18;
+const VOID_CAMERA_TILT_DAMP = 0.45;
+/** Looping ambient in cosmic void; same buffer path pattern as `AudioManager` music. */
+const VOID_MUSIC_LOOP_NAME = "void_1";
+const VOID_MUSIC_LOOP_MAX_VOL = 0.3;
+const SHIELD_IMPACT_ENERGY_SFX = "impact_energy_1";
+const SHIELD_IMPACT_ENERGY_SFX_VOL = 0.58;
 
 export class Game {
   private container: HTMLElement;
@@ -281,10 +292,14 @@ export class Game {
   /** 3D eternal-flame in front of the player while in the cosmic void (carpet). */
   private voidEternalFlame: EternalFlameWorld | null = null;
   private voidMoths: VoidMothsManager | null = null;
+  private voidFlameShield: VoidFlameShield | null = null;
+  private voidAmbientMusicActive = false;
   /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
   private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
   private coastCarpetDuringCosmicTransition = false;
+  /** 0 = normal chase cam, 1 = void framing; smoothed per frame. */
+  private voidCameraBlend = 0;
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
@@ -516,6 +531,7 @@ export class Game {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
       this.audioManager.loadSFX("shoot_1", "/audio/sfx/shoot_1.mp3");
+      this.audioManager.loadSFX("shoot_2", "/audio/sfx/shoot_2.mp3");
       for (const id of ["impact_1", "impact_2", "impact_3"] as const) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
@@ -532,6 +548,8 @@ export class Game {
       for (const id of GREMLIN_HIT_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      this.audioManager.loadSFX(VOID_MUSIC_LOOP_NAME, "/audio/music/void_1.mp3");
+      this.audioManager.loadSFX(SHIELD_IMPACT_ENERGY_SFX, "/audio/sfx/impact_energy_1.mp3");
     });
     this.playerName = ProgressionManager.loadPlayerName() ?? generateWhimsicalName();
     ProgressionManager.savePlayerName(this.playerName);
@@ -2143,6 +2161,15 @@ export class Game {
     return out.copy(a).multiplyScalar(w0).addScaledVector(b, w1).normalize();
   }
 
+  private getChaseCameraRigParams() {
+    const v = this.voidCameraBlend;
+    return {
+      followDist: this.vehicleFeatures.cameraFollowDistance + v * VOID_CAMERA_DIST_DELTA,
+      followHeight: this.vehicleFeatures.cameraFollowHeight + v * VOID_CAMERA_EXTRA_HEIGHT,
+      tiltScale: this.vehicleFeatures.cameraTiltScale * (1 - VOID_CAMERA_TILT_DAMP * v),
+    };
+  }
+
   private tick = () => {
     if (!this.running) return;
     requestAnimationFrame(this.tick);
@@ -2152,6 +2179,8 @@ export class Game {
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     /** Twister collision/audio uses world position; the mesh is only hidden in void, so we must also disable logic. */
     const twisterSuppressed = this.inCosmicVoid || this.coastCarpetDuringCosmicTransition;
+    const voidCamTarget = this.inCosmicVoid || this.voidEntryInProgress ? 1 : 0;
+    this.voidCameraBlend += (voidCamTarget - this.voidCameraBlend) * (1 - Math.exp(-VOID_CAMERA_BLEND_SPEED * dt));
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
     if (this.localPlayer instanceof Boat && this.progression) {
@@ -2320,6 +2349,7 @@ export class Game {
       this.skyGremlins?.setSuspended(true);
       if (this.coastCarpetDuringCosmicTransition && this.localPlayer instanceof Carpet) {
         this.localPlayer.update(dt, 0, false, false, false, false, false, { maintainSpeed: true });
+        const voidCam = this.getChaseCameraRigParams();
         this.cameraRig.update(
           dt,
           this.localPlayer.qPosition,
@@ -2328,9 +2358,9 @@ export class Game {
           globeRadius,
           0,
           this.localPlayer.speedRatio,
-          this.vehicleFeatures.cameraTiltScale,
-          this.vehicleFeatures.cameraFollowDistance,
-          this.vehicleFeatures.cameraFollowHeight,
+          voidCam.tiltScale,
+          voidCam.followDist,
+          voidCam.followHeight,
           this.vehicleFeatures.cameraSpeedZoom,
           this.vehicleFeatures.cameraFovBoost,
         );
@@ -2487,6 +2517,7 @@ export class Game {
       }
     }
 
+    const voidCam = this.getChaseCameraRigParams();
     this.cameraRig.update(
       dt,
       this.localPlayer.qPosition,
@@ -2495,9 +2526,9 @@ export class Game {
       globeRadius,
       turnRate,
       this.localPlayer.speedRatio,
-      this.vehicleFeatures.cameraTiltScale,
-      this.vehicleFeatures.cameraFollowDistance,
-      this.vehicleFeatures.cameraFollowHeight,
+      voidCam.tiltScale,
+      voidCam.followDist,
+      voidCam.followHeight,
       this.vehicleFeatures.cameraSpeedZoom,
       this.vehicleFeatures.cameraFovBoost,
     );
@@ -2791,6 +2822,7 @@ export class Game {
     }
       if (this.inCosmicVoid) {
         this.voidEternalFlame?.update(dt, this.cameraRig.camera);
+        this.voidFlameShield?.update(dt);
         if (this.voidEternalFlame && this.localPlayer instanceof Carpet) {
           this.localPlayer.group.updateMatrixWorld(true);
           this.voidMoths?.update(
@@ -2803,6 +2835,7 @@ export class Game {
             ),
             this.cameraRig.camera,
             this.capybaraFlameShots,
+            this.voidFlameShield,
           );
         }
       }
@@ -4078,11 +4111,36 @@ export class Game {
     }
   }
 
+  private startVoidAmbientMusic() {
+    void this.audioManager
+      .loadSFX(VOID_MUSIC_LOOP_NAME, "/audio/music/void_1.mp3")
+      .then(() => {
+        if (!this.inCosmicVoid) return;
+        this.audioManager.startLoop(VOID_MUSIC_LOOP_NAME, 0);
+        this.audioManager.setLoopVolume(VOID_MUSIC_LOOP_NAME, VOID_MUSIC_LOOP_MAX_VOL);
+        this.voidAmbientMusicActive = true;
+      });
+  }
+
+  private stopVoidAmbientMusic() {
+    if (!this.voidAmbientMusicActive) return;
+    this.audioManager.stopLoop(VOID_MUSIC_LOOP_NAME);
+    this.voidAmbientMusicActive = false;
+  }
+
   private removeVoidEternalFlame() {
+    this.stopVoidAmbientMusic();
     if (this.voidMoths) {
       this.voidMoths.group.removeFromParent();
       this.voidMoths.dispose();
       this.voidMoths = null;
+    }
+    if (this.voidFlameShield) {
+      if (this.voidEternalFlame) {
+        this.voidEternalFlame.group.remove(this.voidFlameShield.group);
+      }
+      this.voidFlameShield.dispose();
+      this.voidFlameShield = null;
     }
     if (!this.voidEternalFlame) return;
     this.voidEternalFlame.group.removeFromParent();
@@ -4158,7 +4216,14 @@ export class Game {
         vf.setWorldPosition(p.x, p.y, p.z);
         vf.alignToCamera(this.cameraRig.camera);
         this.voidEternalFlame = vf;
+        this.voidFlameShield = new VoidFlameShield(
+          this.audioManager,
+          SHIELD_IMPACT_ENERGY_SFX,
+          SHIELD_IMPACT_ENERGY_SFX_VOL,
+        );
+        this.voidEternalFlame.group.add(this.voidFlameShield.group);
         this.scene.add(vf.group);
+        this.startVoidAmbientMusic();
 
         this.voidMoths = new VoidMothsManager(
           this.paintballSystem,

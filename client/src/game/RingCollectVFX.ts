@@ -43,6 +43,52 @@ void main() {
 }
 `;
 
+/** Non-instanced mesh; same lighting model as `shardFrag` with hit flash. */
+const meshEnergyVert = `
+varying vec3 vNorm;
+void main() {
+  vNorm = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const meshEnergyShieldFrag = `
+uniform vec3 color;
+uniform float globalAlpha;
+uniform float uHitFlash;
+varying vec3 vNorm;
+void main() {
+  float light = 0.7 + 0.3 * abs(dot(vNorm, normalize(vec3(1.0, 2.0, 0.5))));
+  vec3 c = color * light * 2.5;
+  c = mix(c, vec3(1.0), uHitFlash);
+  float a = globalAlpha;
+  a = min(1.0, a + uHitFlash * 0.55);
+  gl_FragColor = vec4(c, a);
+}
+`;
+
+/**
+ * Procedural “energy” shell for void flame (same look as collect-VFX diamond/heart shards).
+ */
+export function createCollectibleEnergyShieldMaterial(
+  color: [number, number, number] = DIAMOND_COLOR,
+  baseAlpha = 0.3,
+) {
+  return new ShaderMaterial({
+    vertexShader: meshEnergyVert,
+    fragmentShader: meshEnergyShieldFrag,
+    uniforms: {
+      color: { value: color },
+      globalAlpha: { value: baseAlpha },
+      uHitFlash: { value: 0 },
+    },
+    transparent: true,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    depthWrite: false,
+  });
+}
+
 interface ShardState {
   velocity: Vector3;
   rotVelocity: Euler;

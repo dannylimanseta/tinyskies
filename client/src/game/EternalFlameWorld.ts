@@ -8,6 +8,7 @@ import {
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
+  Vector3,
 } from "three";
 import {
   applyEternalFlameGlow,
@@ -17,6 +18,11 @@ import {
 } from "./EternalFlameModel";
 
 const SPIN_RAD = 0.32;
+
+const _radUp = new Vector3();
+const _tangent = new Vector3();
+const _lookTarget = new Vector3();
+const _camPlane = new Vector3();
 
 /** Tight + wide radial textures for layered additive halos (not flat discs). */
 let glowCoreTex: CanvasTexture | null = null;
@@ -92,8 +98,8 @@ function getPoolGlowTexture(): CanvasTexture {
 
 /**
  * 3D eternal-flame for cosmic void: emissive mesh, blue point lights, layered additive glow,
- * slow spin. World position is set once by the caller (fixed beacon, does not follow the player);
- * each frame the group billboards to the camera like {@link CosmicWorldPortal}.
+ * slow spin. World position is set once by the caller (fixed beacon). The mesh stays “upright”
+ * on the globe tangent (local +Y ≈ radial outward); glow {@link Sprite}s still face the camera.
  */
 export class EternalFlameWorld {
   readonly group = new Group();
@@ -176,15 +182,30 @@ export class EternalFlameWorld {
   }
 
   /**
-   * Match the camera’s facing immediately so the first frame is not built with the default
-   * identity rotation (the mesh can read ~90° off until the first `update`).
+   * Match the upright tangent frame immediately (first frame before `update` runs).
    */
   alignToCamera(camera: Camera) {
-    this.group.quaternion.copy(camera.quaternion);
+    this.update(0, camera);
   }
 
   update(dt: number, camera: Camera) {
-    this.group.quaternion.copy(camera.quaternion);
+    const p = this.group.position;
+    _radUp.copy(p).normalize();
+    this.group.up.copy(_radUp);
+    _tangent.set(0, 1, 0).cross(_radUp);
+    if (_tangent.lengthSq() < 1e-6) _tangent.set(1, 0, 0).cross(_radUp);
+    _tangent.normalize();
+    _camPlane.copy(camera.position).sub(p);
+    if (_camPlane.lengthSq() > 1e-6) {
+      _camPlane.addScaledVector(_radUp, -_camPlane.dot(_radUp));
+      if (_camPlane.lengthSq() > 1e-6) {
+        _camPlane.normalize();
+        _tangent.lerp(_camPlane, 0.42);
+        _tangent.normalize();
+      }
+    }
+    _lookTarget.copy(p).add(_tangent);
+    this.group.lookAt(_lookTarget);
     this.spin += dt * SPIN_RAD;
     this.flameModel.rotation.y = this.spin;
   }

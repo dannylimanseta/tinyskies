@@ -15,6 +15,7 @@ import {
 } from "three";
 import type { CapybaraFlameShots } from "./CapybaraFlameShots";
 import type { PaintballSystem } from "./PaintballSystem";
+import type { VoidFlameShield } from "./VoidFlameShield";
 
 const WING_SPEED = 28;
 const FLIGHT_SPEED = 0.3;
@@ -372,6 +373,7 @@ export class VoidMothsManager {
   private moths: VoidMoth[] = [];
   private time = 0;
   private spawnTimer = 0;
+  private readonly _shieldCenter = new Vector3();
 
   constructor(
     private readonly paintballSystem: PaintballSystem | null,
@@ -395,6 +397,7 @@ export class VoidMothsManager {
     carpetWorldPos: Vector3,
     camera: Camera,
     capybara: CapybaraFlameShots | null,
+    voidShield: VoidFlameShield | null = null,
   ) {
     this.time += dt;
     this.spawnTimer -= dt;
@@ -430,6 +433,25 @@ export class VoidMothsManager {
           mothShellR,
           camera,
         );
+      }
+    }
+
+    if (voidShield && voidShield.canBlock() && targetPos) {
+      voidShield.getWorldPosition(this._shieldCenter);
+      const r = voidShield.getCollisionRadius();
+      for (const moth of this.moths) {
+        if (moth.isDead) continue;
+        if (moth.group.position.distanceTo(this._shieldCenter) < r) {
+          voidShield.registerMothImpact();
+          moth.isDead = true;
+          this.paintballSystem?.playImpactAtGroup(moth.group, 0x99ccff, false);
+          this.onMothStruck(true);
+        }
+      }
+    }
+
+    for (const moth of this.moths) {
+      if (!moth.isDead && targetPos) {
         moth.updateHpBar(dt, camera);
       }
     }
