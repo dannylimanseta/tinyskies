@@ -17,7 +17,7 @@ import {
   loadEternalFlameModelOnce,
 } from "./EternalFlameModel";
 
-const SPIN_RAD = 0.32;
+const SPIN_RAD = 1.1; // rad/s — one full revolution every ~5.7 s
 
 const _radUp = new Vector3();
 const _tangent = new Vector3();

@@ -96,106 +96,109 @@ float noise(vec2 p) {
 
 void main() {
   vec2 uv = vUv - 0.5;
-  float r = length(uv) * 2.0; // 0 at center, 1 at edge
-  if (r > 1.0) discard;
-  
+  float rRaw = length(uv) * 2.0; // 0 at center, 1 at edge
   float a = atan(uv.y, uv.x);
 
-  // Gravitational swirl: spins exponentially faster near the center to simulate intense distortion
+  // ── Edge distortion: spinning noise warps the portal silhouette ──────────
+  // Sample two noise octaves driven by the angle and time so the rim churns.
+  float edgeNoise1 = noise(vec2(a * 2.5 + uTime * 1.8, uTime * 0.7)) * 0.5 + 0.5;
+  float edgeNoise2 = noise(vec2(a * 5.0 - uTime * 2.4, uTime * 1.1)) * 0.5 + 0.5;
+  // Distortion is strongest at the rim and fades inward.
+  float edgeDist = (edgeNoise1 * 0.6 + edgeNoise2 * 0.4 - 0.5) * 0.18 * smoothstep(0.55, 1.0, rRaw);
+  float r = rRaw + edgeDist;
+
+  // Discard outside the (now irregular) boundary
+  if (r > 1.02) discard;
+
+  // Gravitational swirl: spins exponentially faster near the center
   float gravity = 1.0 / (r + 0.15);
-  float swirlAngle = a - uTime * 2.0 - gravity * 3.5;
+  float swirlAngle = a - uTime * 4.5 - gravity * 6.0;
 
   // Base space color
   vec3 col = vec3(0.01, 0.0, 0.03);
 
-  // Deep Nebula Clouds (low frequency noise for voluminous gas)
+  // Deep Nebula Clouds
   float n1 = noise(vec2(r * 1.5 - uTime * 0.3, swirlAngle * 1.2));
   float n2 = noise(vec2(r * 4.0 + uTime * 0.5, swirlAngle * 3.0));
   float n3 = noise(vec2(r * 8.0 - uTime * 0.8, swirlAngle * 5.0));
-  
-  // Combine noise into a cloudy nebula texture
   float nebula = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
-  
-  // Nebula intensity: glowing near the center, fading into the void
   float nebulaMask = smoothstep(0.05, 0.35, r) * smoothstep(1.0, 0.2, r);
   float gas = pow(nebula, 1.2) * nebulaMask;
-  
-  // Voluminous nebula colors (Deep cosmic blues, purples)
-  col += vec3(0.05, 0.1, 0.5) * gas * 2.5;      // Deep dark blue
-  col += vec3(0.3, 0.05, 0.6) * pow(gas, 1.5) * 2.0; // Deep purple mid gas
-  col += vec3(0.5, 0.1, 0.8) * pow(gas, 2.0) * 1.5; // Violet core highlights
+  col += vec3(0.05, 0.1, 0.5) * gas * 2.5;
+  col += vec3(0.3, 0.05, 0.6) * pow(gas, 1.5) * 2.0;
+  col += vec3(0.5, 0.1, 0.8) * pow(gas, 2.0) * 1.5;
 
-  // Accretion disk / sharp spiral arms slicing through the nebula
-  float spiral = sin(swirlAngle * 4.0) * 0.5 + 0.5;
-  float diskMask = smoothstep(0.15, 0.4, r) * smoothstep(0.9, 0.2, r);
-  float disk = pow(spiral * n2, 1.5) * diskMask;
-  
-  // Mix of different shades of purple and dark blue, avoiding blowing out to pure white
-  col += vec3(0.2, 0.05, 0.5) * disk * 1.8;           // Deep purple streaks
-  col += vec3(0.05, 0.1, 0.6) * pow(disk, 2.0) * 1.5; // Dark blue
-  col += vec3(0.4, 0.1, 0.8) * pow(disk, 3.0) * 1.2; // Rich violet core
+  // Wide disk mask so streaks cover the full face of the portal
+  float diskMask = smoothstep(0.10, 0.28, r) * smoothstep(0.98, 0.15, r);
 
-  // Second spiral: 7 arms, counter-rotating (electric cyan / violet)
-  float swirlAngle2 = a + uTime * 1.8 - gravity * 2.0;
-  float spiral2 = sin(swirlAngle2 * 7.0) * 0.5 + 0.5;
-  float disk2 = pow(spiral2 * n2, 1.8) * diskMask;
-  col += vec3(0.0, 0.5, 1.0) * disk2 * 1.8;
-  col += vec3(0.7, 0.0, 1.0) * pow(disk2, 2.0) * 1.4;
+  // Spiral 1 — 3 arms, co-rotating, deep purple/blue
+  // Lower pow = wider/thicker streak cross-section
+  float spiral1 = sin(swirlAngle * 3.0) * 0.5 + 0.5;
+  float disk1 = pow(spiral1 * n2, 0.7) * diskMask;
+  col += vec3(0.2, 0.05, 0.5) * disk1 * 2.2;
+  col += vec3(0.05, 0.1, 0.6) * pow(disk1, 1.2) * 1.8;
+  col += vec3(0.4, 0.1, 0.8) * pow(disk1, 1.8) * 1.5;
 
-  // Energy tendrils (plasma wisps)
-  float n4 = noise(vec2(r * 14.0 - uTime * 1.4, swirlAngle * 9.0));
-  float n5 = noise(vec2(r * 22.0 + uTime * 2.1, swirlAngle * 14.0));
-  float tendrils = pow(n4 * n5, 1.4) * smoothstep(0.05, 0.3, r) * smoothstep(0.8, 0.1, r);
-  col += vec3(0.1, 0.7, 1.0) * tendrils * 4.0;
+  // Spiral 2 — 5 arms, counter-rotating, cyan/violet
+  float swirlAngle2 = a + uTime * 3.5 - gravity * 4.0;
+  float spiral2 = sin(swirlAngle2 * 5.0) * 0.5 + 0.5;
+  float disk2 = pow(spiral2 * n2, 0.8) * diskMask;
+  col += vec3(0.0, 0.5, 1.0) * disk2 * 2.2;
+  col += vec3(0.7, 0.0, 1.0) * pow(disk2, 1.2) * 1.8;
 
-  // Pulsing inner corona — blue / blue-violet gradient that spins (phase subtracts uTime * speed)
-  float pulse = 0.8 + 0.2 * sin(uTime * 1.3);
-  float corona = exp(-pow((r - 0.24) * 14.0, 2.0));
-  float cGrad = 0.5 + 0.5 * sin(a * 3.0 - uTime * 2.2);
-  vec3 coronaCol = mix(vec3(0.1, 0.42, 1.0), vec3(0.42, 0.1, 0.9), cGrad);
-  col += coronaCol * corona * 3.5 * pulse;
+  // Spiral 3 — 2 very broad arms, fast co-rotating, warm magenta accent
+  float swirlAngle3 = a - uTime * 6.0 - gravity * 8.0;
+  float spiral3 = sin(swirlAngle3 * 2.0) * 0.5 + 0.5;
+  float disk3 = pow(spiral3 * n1, 0.6) * diskMask;
+  col += vec3(0.9, 0.1, 0.4) * disk3 * 1.6;
+  col += vec3(1.0, 0.4, 0.1) * pow(disk3, 1.0) * 1.2;
 
-  // Outer lensing ring — same idea, slightly different spin rate
+  // Spiral 4 — 8 arms, counter-rotating, electric blue (outer emphasis)
+  float outerDiskMask = smoothstep(0.32, 0.50, r) * smoothstep(0.98, 0.40, r);
+  float swirlAngle4 = a + uTime * 5.2 - gravity * 2.5;
+  float spiral4 = sin(swirlAngle4 * 8.0) * 0.5 + 0.5;
+  float disk4 = pow(spiral4, 2.0) * outerDiskMask;
+  col += vec3(0.0, 0.8, 1.0) * disk4 * 2.8;
+  col += vec3(0.5, 0.0, 1.0) * pow(disk4, 1.4) * 2.0;
+
+  // Energy tendrils — broad whipping strands across the whole disc
+  float n4 = noise(vec2(r * 10.0 - uTime * 2.8, swirlAngle * 7.0));
+  float n5 = noise(vec2(r * 16.0 + uTime * 4.0, swirlAngle * 10.0));
+  float tendrils = pow(n4 * n5, 0.9) * smoothstep(0.05, 0.22, r) * smoothstep(0.96, 0.08, r);
+  col += vec3(0.1, 0.7, 1.0) * tendrils * 5.5;
+
+  // Filigree threads — slightly thickened so they read over the nebula
+  float n6 = noise(vec2(r * 22.0 - uTime * 5.5, swirlAngle * 15.0));
+  float n7 = noise(vec2(r * 30.0 + uTime * 7.0, swirlAngle * 20.0));
+  float filigree = pow(n6 * n7, 1.3) * smoothstep(0.1, 0.28, r) * smoothstep(0.92, 0.12, r);
+  col += vec3(0.4, 0.9, 1.0) * filigree * 4.0;
+
+  // Outer lensing ring
   float lensRing = exp(-pow((r - 0.88) * 30.0, 2.0));
-  float lGrad = 0.5 + 0.5 * sin(a * 2.0 - uTime * 1.65);
+  float lGrad = 0.5 + 0.5 * sin(a * 2.0 - uTime * 3.8);
   vec3 lensCol = mix(vec3(0.0, 0.55, 1.0), vec3(0.38, 0.2, 0.95), lGrad);
   col += lensCol * lensRing * 2.0;
 
-  // Deep blue rim (blurred outer edge)
-  vec3 rim = vec3(0.0, 0.06, 0.35);
-  col += rim * smoothstep(0.5, 0.98, r) * 2.5;
+  // Deep blue rim fill
+  col += vec3(0.0, 0.06, 0.35) * smoothstep(0.5, 0.98, r) * 2.5;
 
-  // Stars (streaking into the black hole due to the extreme swirl angle)
+  // Stars streaking with the swirl
   vec2 st = vec2(r * cos(swirlAngle), r * sin(swirlAngle));
-  vec2 sCoord = st * 60.0;
-  vec2 cell = floor(sCoord) + 0.5;
+  vec2 cell = floor(st * 60.0) + 0.5;
   float h = hash12(cell);
-  
-  // Twinkle
   float tw = 0.5 + 0.5 * sin(uTime * 5.0 + h * 20.0);
-  
-  // Stars get stretched by the swirl naturally
-  float star = step(0.94, h) * tw;
-  
-  // Fade stars near center
-  float starMask = smoothstep(0.3, 0.5, r) * smoothstep(0.95, 0.6, r);
-  star *= starMask;
-  
-  // Color the streaking stars (dark blues and purples instead of bright white)
-  vec3 starColor = mix(vec3(0.1, 0.2, 0.8), vec3(0.5, 0.1, 0.9), hash12(cell + 10.0));
-  col += starColor * star * 1.2;
+  float star = step(0.94, h) * tw * smoothstep(0.3, 0.5, r) * smoothstep(0.95, 0.6, r);
+  col += mix(vec3(0.1, 0.2, 0.8), vec3(0.5, 0.1, 0.9), hash12(cell + 10.0)) * star * 1.2;
 
-  // Soft tone mapping to prevent any additive colors from blowing out into pure white
+  // Tone mapping
   col = 1.0 - exp(-col * 1.5);
 
   // Event Horizon (pure black core)
-  float eventHorizon = smoothstep(0.18, 0.25, r);
-  col *= eventHorizon;
+  col *= smoothstep(0.18, 0.25, r);
 
-  // Extremely soft fade at the outer edge of the portal so it blends into the world invisibly
-  // Starting the fade at r = 0.3 makes the edge highly feathered
+  // Edge alpha — uses distorted r so the fade follows the churning silhouette
   float edgeA = 1.0 - smoothstep(0.3, 0.9, r);
-  
+
   gl_FragColor = vec4(col, edgeA * uOpacity);
 }
 `;

@@ -9,7 +9,7 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
       { keys: ["S"], label: "Slow" },
       { keys: ["A", "D"], label: "Turn" },
       { keys: ["↑"], label: "Climb" },
-      { keys: ["Space"], label: "Paintball" },
+      { keys: ["Space"], label: "Shoot" },
     ];
   }
   if (vehicle === "carpet") {
@@ -18,7 +18,7 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
       { keys: ["S"], label: "Slow" },
       { keys: ["A", "D"], label: "Turn" },
       { keys: ["↑"], label: "Climb" },
-      { keys: ["E"], label: "Portal" },
+      { keys: ["Space"], label: "Portal" },
     ];
   }
   const base: Row[] = [

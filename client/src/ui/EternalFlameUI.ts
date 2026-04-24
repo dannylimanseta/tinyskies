@@ -430,20 +430,14 @@ export class EternalFlameUI {
   private startLoop() {
     if (this.loopRunning) return;
     this.loopRunning = true;
+    const SPIN_RATE = 1.1; // rad/s — one full revolution every ~5.7 s
     const loop = () => {
       this.raf = requestAnimationFrame(loop);
       if (!this.scene || !this.camera || !this.renderer || !this.modelRoot) return;
-      this.clock.getDelta(); // advance internal time
-      const t = this.clock.getElapsedTime();
-      // Flame mesh is not radially symmetric — full spins made some flames read narrower
-      // than others at any given moment. A gentle camera-facing wobble keeps them all at
-      // roughly the same apparent width while still feeling alive.
-      const WOBBLE_RAD = 0.45;
-      const WOBBLE_RATE = 0.9;
+      const dt = this.clock.getDelta();
       for (let i = 0; i < this.modelRoot.children.length; i++) {
         const child = this.modelRoot.children[i]!;
-        const phase = i * 1.37;
-        child.rotation.y = Math.sin(t * WOBBLE_RATE + phase) * WOBBLE_RAD;
+        child.rotation.y += dt * SPIN_RATE;
       }
       this.renderer.render(this.scene, this.camera);
     };

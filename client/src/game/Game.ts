@@ -2598,10 +2598,11 @@ export class Game {
 
     const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0 || this.inCosmicVoid;
 
+    // Auto-enter cosmic void portal on proximity — no key press needed, just fly into it.
     if (!portalInteractionSuppressed && this.localPlayer instanceof Carpet) {
       const pPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
       for (const portal of this.cosmicWorldPortals) {
-        if (pPos.distanceTo(portal.worldPosition) < 0.35) {
+        if (pPos.distanceTo(portal.worldPosition) < 0.45) {
           void this.doEnterCosmicVoid();
           break;
         }
