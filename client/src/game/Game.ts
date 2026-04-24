@@ -67,7 +67,6 @@ import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { EternalFlameWorld } from "./EternalFlameWorld";
 import { VoidMothsManager, type VoidMothPlaneContext } from "./VoidMoths";
 import { VoidFlameShield } from "./VoidFlameShield";
-import { VoidHearts } from "./VoidHearts";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -98,6 +97,7 @@ import {
   VOID_WAVE_BETWEEN_DIALOGUE,
   VOID_SHIELD_LOW_HP_DIALOGUE,
   VOID_FLAME_SHATTER_DIALOGUE,
+  VOID_VICTORY_DIALOGUE,
 } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
@@ -306,7 +306,6 @@ export class Game {
   private voidEternalFlame: EternalFlameWorld | null = null;
   private voidMoths: VoidMothsManager | null = null;
   private voidFlameShield: VoidFlameShield | null = null;
-  private voidHearts: VoidHearts | null = null;
   private voidAmbientMusicActive = false;
   /** Timeouts for eternal-flame intro bubbles + moth spawn unlock; cleared on void exit. */
   private voidEternalFlameIntroTimeouts: ReturnType<typeof setTimeout>[] = [];
@@ -320,6 +319,7 @@ export class Game {
   private voidShieldWarnedCritical = false;
   /** Set to true once the flame shatter sequence begins; prevents re-entry. */
   private voidFlameShattered = false;
+  private voidVictoryTriggered = false;
   /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
   private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
@@ -1428,6 +1428,10 @@ export class Game {
       this.eternalFlameUI?.playKingLootSequence();
     }, () => {
       if (this.inCosmicVoid) void this.exitCosmicVoid();
+    }, () => {
+      void this.handleVoidVictory();
+    }, () => {
+      this.voidFlameShield?.deplete();
     });
 
     const landmarkRegistry = new LandmarkRegistry();
@@ -2937,9 +2941,6 @@ export class Game {
         this.updateVoidFlameArrow();
         this.updateVoidEnemyArrows();
         this.updateVoidWaveController();
-        if (this.voidHearts && this.localPlayer instanceof Carpet && this.localPlayer.isVoidPlaneFlight) {
-          this.voidHearts.update(dt, this.localPlayer.getVoidPlaneWorldPos(this._carpetVoidWorldScratch));
-        }
         if (this.voidEternalFlame && this.localPlayer instanceof Carpet) {
           this.localPlayer.group.updateMatrixWorld(true);
           const c = this.localPlayer;
@@ -4331,6 +4332,17 @@ export class Game {
       }
     }
 
+    // Victory: final wave cleared
+    if (
+      this.voidWave === Game.VOID_WAVE_CONFIGS.length &&
+      !this.voidVictoryTriggered &&
+      !this.voidFlameShattered &&
+      this.voidMoths.isWaveCleared()
+    ) {
+      void this.handleVoidVictory();
+      return;
+    }
+
     // Wave transition
     if (
       this.voidWave > 0 &&
@@ -4391,8 +4403,7 @@ export class Game {
     this.socketClient?.disconnect();
     this.remotePlanes.dispose();
 
-    this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
-    this.hud.setPlayerCountVisible(true);
+    this.restoreWorldVisibilityFromVoid();
 
     this.teardownGameplaySession();
     this.dayNightCycle.moonProgress = 0;
@@ -4420,6 +4431,42 @@ export class Game {
     }
   }
 
+  /** All three waves survived — eternal flame thanks player and returns them to the world. */
+  private async handleVoidVictory() {
+    if (this.voidVictoryTriggered) return;
+    this.voidVictoryTriggered = true;
+
+    // Stop any remaining moths and spawning
+    this.voidMoths?.setMothSpawningEnabled(false);
+
+    // Dramatic pause before the flame speaks
+    await new Promise<void>((r) => setTimeout(r, 1800));
+    if (!this.inCosmicVoid) return;
+
+    // Line 1 — gratitude
+    this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, VOID_VICTORY_DIALOGUE[0]);
+    await new Promise<void>((r) => setTimeout(r, 5200));
+    if (!this.inCosmicVoid) return;
+
+    // Line 2 — willing sacrifice / reveal of purpose
+    this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, VOID_VICTORY_DIALOGUE[1]);
+    await new Promise<void>((r) => setTimeout(r, 5500));
+    if (!this.inCosmicVoid) return;
+
+    this.stopVoidAmbientMusic();
+
+    // Fade to black and return to the world
+    await this.exitCosmicVoid();
+
+    // Award the eternal flame — save +1 then play the full starburst loot sequence
+    const prev = ProgressionManager.loadPlayerWorldState();
+    this.savePlayerWorldState({ eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1 });
+    this.eternalFlameUI?.syncFromSave();
+    // Brief delay so the world has a moment to settle before the overlay appears
+    await new Promise<void>((r) => setTimeout(r, 600));
+    this.eternalFlameUI?.playKingLootSequence();
+  }
+
   private removeVoidEternalFlame() {
     if (this.localPlayer instanceof Carpet) {
       this.localPlayer.exitVoidPlaneFlight();
@@ -4430,6 +4477,7 @@ export class Game {
     this.voidShieldWarnedHalf = false;
     this.voidShieldWarnedCritical = false;
     this.voidFlameShattered = false;
+    this.voidVictoryTriggered = false;
     this.stopVoidAmbientMusic();
     if (this.voidMoths) {
       this.voidMoths.group.removeFromParent();
@@ -4442,11 +4490,6 @@ export class Game {
       }
       this.voidFlameShield.dispose();
       this.voidFlameShield = null;
-    }
-    if (this.voidHearts) {
-      this.voidHearts.group.removeFromParent();
-      this.voidHearts.dispose();
-      this.voidHearts = null;
     }
     if (!this.voidEternalFlame) return;
     this.voidEternalFlame.group.removeFromParent();
@@ -4716,23 +4759,6 @@ export class Game {
       if (this.voidMoths) {
         this.scheduleCosmicVoidEternalFlameIntro();
       }
-      // Spawn void hearts using the carpet's current plane vectors
-      if (this.localPlayer instanceof Carpet && this.localPlayer.isVoidPlaneFlight && this.voidEternalFlame) {
-        const c = this.localPlayer;
-        const vh = new VoidHearts(
-          this.voidEternalFlame.group.position,
-          c.getVoidPlaneUp(),
-          c.getVoidPlaneNorth(),
-          c.getVoidPlaneEast(),
-        );
-        vh.onCollect = (heal) => {
-          if (this.voidFlameShield && this.voidFlameShield.getHitPoints() > 0) {
-            this.voidFlameShield.heal(heal);
-          }
-        };
-        this.voidHearts = vh;
-        this.scene.add(vh.group);
-      }
     } finally {
       this.coastCarpetDuringCosmicTransition = false;
       this.voidEntryInProgress = false;
@@ -4758,40 +4784,7 @@ export class Game {
       this.remotePlanes.setVisible(true);
       this.remotePlayerNameLabels.setVisible(true);
 
-      this.globe.group.visible = true;
-      this.ringManager.group.visible = true;
-      if (this.waterSpouts) this.waterSpouts.group.visible = true;
-      if (this.meteorShower) this.meteorShower.group.visible = true;
-      if (this.oceanFish) this.oceanFish.group.visible = true;
-      if (this.skyJellyfish) this.skyJellyfish.group.visible = true;
-      if (this.campsiteMarker) this.campsiteMarker.group.visible = true;
-      for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
-      if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
-      if (this.carpetTrail) this.carpetTrail.group.visible = true;
-      if (this.voidCarpetTrail) {
-        this.voidCarpetTrail.group.visible = false;
-        this.voidCarpetTrail.reset();
-      }
-      if (this.carpetWake) this.carpetWake.group.visible = true;
-      if (this.carpetLeaves) this.carpetLeaves.group.visible = true;
-      for (const fb of this.birdFlocks) fb.group.visible = true;
-      for (const ra of this.rainbowArches) ra.group.visible = true;
-      for (const fl of this.lanternClusters) fl.group.visible = true;
-      for (const fc of this.fireflyClusters) fc.group.visible = true;
-      for (const v of this.volcanoes) v.group.visible = true;
-      if (this.braziers) this.braziers.setVisible(true);
-      if (this.moonThreat) {
-        this.moonThreat.group.visible = true;
-        this.moonThreat.setSceneMoonVfxVisible(true);
-      }
-      if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
-      if (this.packageQuest) this.packageQuest.group.visible = true;
-      if (this.collectVFX) this.collectVFX.group.visible = true;
-      this.setPortalHintVisible(true);
-
-      this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
-      this.hud.setPlayerCountVisible(true);
-
+      this.restoreWorldVisibilityFromVoid();
       this.applyDayNightPreset();
 
       await this.transitionOverlay.fadeIn();
@@ -4799,6 +4792,42 @@ export class Game {
     } finally {
       this.coastCarpetDuringCosmicTransition = false;
     }
+  }
+
+  /** Restore all scene objects that were hidden when entering the cosmic void. */
+  private restoreWorldVisibilityFromVoid() {
+    this.globe.group.visible = true;
+    this.ringManager.group.visible = true;
+    if (this.waterSpouts) this.waterSpouts.group.visible = true;
+    if (this.meteorShower) this.meteorShower.group.visible = true;
+    if (this.oceanFish) this.oceanFish.group.visible = true;
+    if (this.skyJellyfish) this.skyJellyfish.group.visible = true;
+    if (this.campsiteMarker) this.campsiteMarker.group.visible = true;
+    for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
+    if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
+    if (this.carpetTrail) this.carpetTrail.group.visible = true;
+    if (this.voidCarpetTrail) {
+      this.voidCarpetTrail.group.visible = false;
+      this.voidCarpetTrail.reset();
+    }
+    if (this.carpetWake) this.carpetWake.group.visible = true;
+    if (this.carpetLeaves) this.carpetLeaves.group.visible = true;
+    for (const fb of this.birdFlocks) fb.group.visible = true;
+    for (const ra of this.rainbowArches) ra.group.visible = true;
+    for (const fl of this.lanternClusters) fl.group.visible = true;
+    for (const fc of this.fireflyClusters) fc.group.visible = true;
+    for (const v of this.volcanoes) v.group.visible = true;
+    if (this.braziers) this.braziers.setVisible(true);
+    if (this.moonThreat) {
+      this.moonThreat.group.visible = true;
+      this.moonThreat.setSceneMoonVfxVisible(true);
+    }
+    if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
+    if (this.packageQuest) this.packageQuest.group.visible = true;
+    if (this.collectVFX) this.collectVFX.group.visible = true;
+    this.setPortalHintVisible(true);
+    this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
+    this.hud.setPlayerCountVisible(true);
   }
 
   private handleCarpetPortalTeleport() {

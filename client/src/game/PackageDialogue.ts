@@ -93,6 +93,15 @@ export const VOID_FLAME_SHATTER_DIALOGUE =
   "No... the moths have taken the light. I am... gone.";
 
 /**
+ * Spoken by the Eternal Flame after the player survives all three waves.
+ * Index 0 = gratitude, index 1 = willing sacrifice / purpose revealed.
+ */
+export const VOID_VICTORY_DIALOGUE: readonly [string, string] = [
+  "You held the light when all others fled. I have waited centuries for a guardian such as you. Thank you.",
+  "I am ready. Carry my flame to the five ancient braziers — all five. It is the only thing that can stop what falls from the sky. This is what I was born for.",
+];
+
+/**
  * Pickup lines by moon phase — each pool uses **items that fit the tone**:
  * - Calm: everyday cosy parcels (jam, gifts, hobbies).
  * - Urgent: deadlines, warnings, important documents (handwritten letter, medicine, sealed orders).

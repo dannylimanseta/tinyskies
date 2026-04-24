@@ -56,10 +56,6 @@ void main() {
   vec3 base = mix(rainbow, cool, 0.76) * (0.64 + fresnel * 0.44) * glint * pulse;
   base *= 0.82;
 
-  // Rim lighting: crisp blue-white glow at silhouette edges
-  float rim = pow(max(0.0, fresnel), 1.8) * 2.2;
-  vec3 rimColor = vec3(0.4, 0.82, 1.0) * rim;
-
   // Shimmer: two crossing scan lines that loop across the surface
   float sh1 = sin(vWorldPos.x * 9.0 + time * 2.4 + vWorldPos.y * 5.0) * 0.5 + 0.5;
   float sh2 = sin(vWorldPos.z * 7.0 - time * 1.8 + vWorldPos.y * 3.5) * 0.5 + 0.5;
@@ -68,7 +64,7 @@ void main() {
 
   vec3 col = mix(base, vec3(1.0), fresnel * 0.28);
   col = mix(col, vec3(1.0), uHitFlash * 0.92);
-  col += rimColor + shimmerCol;
+  col += shimmerCol;
 
   float a = (0.24 + fresnel * 0.45) * pulse * glint * spawnScale * 0.92;
   a *= uLowHpPulse;
@@ -134,6 +130,11 @@ export class VoidFlameShield {
   /** Restore up to `amount` HP, capped at max. */
   heal(amount: number) {
     this.hitPoints = Math.min(SHIELD_MAX_HP, this.hitPoints + amount);
+  }
+
+  /** Instantly drain the shield to 0 HP (debug use). */
+  deplete() {
+    this.hitPoints = 0;
   }
 
   getCollisionRadius(): number {
