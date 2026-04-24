@@ -46,6 +46,8 @@ export class CameraRig {
   }
 
   /**
+   * @param voidChase When set (cosmic void flat plane), skip spherical math: chase in a fixed
+   * world tangent plane; `up` is the plane normal (carpet “out” from the void floor).
    * @param tiltScale Multiplier for banking tilt when turning (0 = no tilt, 1 = default).
    */
   update(
@@ -61,7 +63,27 @@ export class CameraRig {
     followHeight: number = FOLLOW_HEIGHT,
     speedZoom: number = 1,
     fovBoost: number = 20,
+    voidChase: {
+      worldPos: Vector3;
+      forward: Vector3;
+      up: Vector3;
+    } | null = null,
   ) {
+    if (voidChase) {
+      this.updateVoidFlatChase(
+        dt,
+        voidChase,
+        turnRate,
+        speedRatio,
+        tiltScale,
+        followDist,
+        followHeight,
+        speedZoom,
+        fovBoost,
+      );
+      return;
+    }
+
     const frame = tangentFrame(planeQPosition);
     const planeWorldPos = cartesianFromSpherical(
       planeQPosition,
@@ -124,6 +146,77 @@ export class CameraRig {
 
     const camUp = this.currentPos.clone().normalize();
     this.camera.up.copy(camUp);
+    this.camera.lookAt(this.currentLookAt);
+
+    const tiltDamp = MathUtils.clamp(0.45 + 0.55 * closeDamp, 0, 1);
+    const targetTilt = -turnRate * MAX_TILT * tiltScale * tiltDamp;
+    this.currentTilt += (targetTilt - this.currentTilt) * Math.min(1, TILT_SMOOTH * dt);
+    if (Math.abs(this.currentTilt) > 0.0001) {
+      this.camera.rotateZ(this.currentTilt);
+    }
+  }
+
+  private updateVoidFlatChase(
+    dt: number,
+    v: { worldPos: Vector3; forward: Vector3; up: Vector3 },
+    turnRate: number,
+    speedRatio: number,
+    tiltScale: number,
+    followDist: number,
+    followHeight: number,
+    speedZoom: number,
+    fovBoost: number,
+  ) {
+    const planeWorldPos = v.worldPos;
+    const forward = v.forward;
+    const frameUp = v.up;
+
+    this.currentZoom += (speedRatio - this.currentZoom) * Math.min(1, ZOOM_SMOOTH * dt);
+    let dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom * speedZoom;
+    dist = Math.max(MIN_CHASE_DISTANCE, dist);
+    const height = followHeight + FOLLOW_HEIGHT_BOOST * this.currentZoom * speedZoom;
+
+    const targetFov = BASE_FOV + fovBoost * this.currentZoom;
+    if (Math.abs(this.camera.fov - targetFov) > 0.01) {
+      this.camera.fov = targetFov;
+      this.camera.updateProjectionMatrix();
+    }
+
+    this.targetPos
+      .copy(planeWorldPos)
+      .addScaledVector(forward, -dist)
+      .addScaledVector(frameUp, height);
+
+    this.targetLookAt.copy(planeWorldPos).addScaledVector(forward, 0.5);
+
+    const closeDamp = MathUtils.clamp(dist / 0.95, 0.36, 1.0);
+    const posFactor = 1 - Math.exp(-POSITION_SMOOTH * closeDamp * dt);
+    const lookFactor = 1 - Math.exp(-LOOKAT_SMOOTH * closeDamp * 0.78 * dt);
+
+    this.currentPos.lerp(this.targetPos, posFactor);
+    this.currentLookAt.lerp(this.targetLookAt, lookFactor);
+
+    this.camera.position.copy(this.currentPos);
+    this.camera.up.copy(frameUp);
+
+    if (this.shakeTimer < this.shakeDuration) {
+      this.shakeTimer += dt;
+      const decay = 1 - this.shakeTimer / this.shakeDuration;
+      const amp = this.shakeIntensity * decay * decay;
+      this.camera.position.x += (Math.random() - 0.5) * 2 * amp;
+      this.camera.position.y += (Math.random() - 0.5) * 2 * amp;
+      this.camera.position.z += (Math.random() - 0.5) * 2 * amp;
+    }
+
+    if (this.trauma > 0.001) {
+      this.traumaTime += dt;
+      const amp = this.trauma * this.trauma * 0.06;
+      const t = this.traumaTime;
+      this.camera.position.x += Math.sin(t * 23.1 + 1.7) * amp;
+      this.camera.position.y += Math.sin(t * 17.3 + 4.2) * amp;
+      this.camera.position.z += Math.cos(t * 19.7 + 2.9) * amp;
+    }
+
     this.camera.lookAt(this.currentLookAt);
 
     const tiltDamp = MathUtils.clamp(0.45 + 0.55 * closeDamp, 0, 1);

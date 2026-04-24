@@ -2,12 +2,15 @@ import {
   Group,
   Object3D,
   Quaternion,
+  Vector3,
   type IUniform,
   type Scene,
 } from "three";
 import type { Vehicle } from "@globefly/shared";
 import {
+  buildCarpetMatrixVoidPlane,
   buildPlaneMatrix,
+  cartesianFromSpherical,
   moveOnSphere,
   randomSpawnQuaternionAndHeading,
   tangentFrame,
@@ -93,6 +96,69 @@ export class Carpet {
   private elevateBlend = 0;
   /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
   private boostTimer = 0;
+
+  /**
+   * Cosmic void: fly on a fixed world tangent plane (flat floor) with u/v in north×east, not
+   * great-circle movement on the globe. `qPosition` is frozen for the session until exit.
+   */
+  private voidPlaneActive = false;
+  private readonly voidPlaneO = new Vector3();
+  private readonly voidPlaneN = new Vector3();
+  private readonly voidPlaneE = new Vector3();
+  private readonly voidPlaneUp = new Vector3();
+  private voidPlaneU = 0;
+  private voidPlaneV = 0;
+  private readonly _voidPosScratch = new Vector3();
+
+  /** True while the player is in void flat-plane mode (enemies + carpet share the same “floor”). */
+  get isVoidPlaneFlight() {
+    return this.voidPlaneActive;
+  }
+
+  /** World position in the void plane: O + north*u + east*v. */
+  getVoidPlaneWorldPos(out: Vector3) {
+    return out
+      .copy(this.voidPlaneO)
+      .addScaledVector(this.voidPlaneN, this.voidPlaneU)
+      .addScaledVector(this.voidPlaneE, this.voidPlaneV);
+  }
+
+  getVoidPlaneNorth() {
+    return this.voidPlaneN;
+  }
+  getVoidPlaneEast() {
+    return this.voidPlaneE;
+  }
+  getVoidPlaneUp() {
+    return this.voidPlaneUp;
+  }
+  getVoidFlameTargetWorld(out: Vector3) {
+    this.getVoidPlaneWorldPos(out);
+    this._voidPosScratch
+      .set(0, 0, 0)
+      .addScaledVector(this.voidPlaneN, Math.cos(this.heading))
+      .addScaledVector(this.voidPlaneE, Math.sin(this.heading))
+      .normalize();
+    return out.addScaledVector(this._voidPosScratch, 1.22);
+  }
+
+  /** Call once on cosmic void entry (before any `await` in the same frame) after `removeVoidEternalFlame`. */
+  enterVoidPlaneFlight(globeRadius: number) {
+    this.voidPlaneActive = true;
+    this.voidPlaneU = 0;
+    this.voidPlaneV = 0;
+    const p = cartesianFromSpherical(this.qPosition, this.altitude, globeRadius);
+    this.voidPlaneO.copy(p);
+    const frame = tangentFrame(this.qPosition);
+    this.voidPlaneN.copy(frame.north).normalize();
+    this.voidPlaneE.copy(frame.east).normalize();
+    this.voidPlaneUp.copy(this.voidPlaneN).cross(this.voidPlaneE).normalize();
+    this.applyMatrix();
+  }
+
+  exitVoidPlaneFlight() {
+    this.voidPlaneActive = false;
+  }
 
   /** Active upgrade multipliers; updated by Game.propagateUpgrades() after each pick. */
   upgrades = {
@@ -184,43 +250,50 @@ export class Carpet {
     this.heading += this.turnInputSmoothed * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
-    const arcAngle = (this.speed * dt) / this.globeRadius;
-    this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
-
-    const up = tangentFrame(this.qPosition).up;
-    this.isOverWater = !isLand(this.seed, this.terrainType, up.x, up.y, up.z);
-    const surfaceAlt = surfaceAltitudeAt(
-      this.seed, this.terrainType, up.x, up.y, up.z,
-    );
-    const elevateTarget = elevate ? 1 : 0;
-    this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
-    const clearance = CARPET_HOVER_HEIGHT + (BOOST_HEIGHT - CARPET_HOVER_HEIGHT) * this.elevateBlend;
-    const terrainDrop = Math.max(0, this.prevSurfaceAltitude - surfaceAlt);
-    const glideTarget = Math.min(
-      CLIFF_GLIDE_MAX,
-      terrainDrop * CLIFF_GLIDE_GAIN * (0.35 + 0.65 * Math.min(1, this.speedRatio)),
-    );
-    if (glideTarget > this.cliffGlideBonus) {
-      this.cliffGlideBonus = glideTarget;
+    if (this.voidPlaneActive) {
+      this.voidPlaneU += Math.cos(this.heading) * this.speed * dt;
+      this.voidPlaneV += Math.sin(this.heading) * this.speed * dt;
+      this.isOverWater = false;
+      this.pitch += (0 - this.pitch) * Math.min(1, 5.0 * dt);
     } else {
-      this.cliffGlideBonus += (0 - this.cliffGlideBonus) * Math.min(1, CLIFF_GLIDE_DECAY * dt);
+      const arcAngle = (this.speed * dt) / this.globeRadius;
+      this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
+
+      const up = tangentFrame(this.qPosition).up;
+      this.isOverWater = !isLand(this.seed, this.terrainType, up.x, up.y, up.z);
+      const surfaceAlt = surfaceAltitudeAt(
+        this.seed, this.terrainType, up.x, up.y, up.z,
+      );
+      const elevateTarget = elevate ? 1 : 0;
+      this.elevateBlend += (elevateTarget - this.elevateBlend) * (1 - Math.exp(-ELEVATE_INPUT_SMOOTH * dt));
+      const clearance = CARPET_HOVER_HEIGHT + (BOOST_HEIGHT - CARPET_HOVER_HEIGHT) * this.elevateBlend;
+      const terrainDrop = Math.max(0, this.prevSurfaceAltitude - surfaceAlt);
+      const glideTarget = Math.min(
+        CLIFF_GLIDE_MAX,
+        terrainDrop * CLIFF_GLIDE_GAIN * (0.35 + 0.65 * Math.min(1, this.speedRatio)),
+      );
+      if (glideTarget > this.cliffGlideBonus) {
+        this.cliffGlideBonus = glideTarget;
+      } else {
+        this.cliffGlideBonus += (0 - this.cliffGlideBonus) * Math.min(1, CLIFF_GLIDE_DECAY * dt);
+      }
+      this.prevSurfaceAltitude = surfaceAlt;
+
+      const targetAlt = surfaceAlt + clearance + this.cliffGlideBonus;
+      const altitudeLerp = targetAlt >= this.altitude ? ALTITUDE_RISE_LERP : ALTITUDE_FALL_LERP;
+      this.altitude += (targetAlt - this.altitude) * Math.min(1, altitudeLerp * dt);
+
+      const hardFloor = surfaceAlt + CARPET_HOVER_HEIGHT;
+      if (this.altitude < hardFloor) this.altitude = hardFloor;
+
+      const altDelta = (this.altitude - this.prevAltitude) / Math.max(dt, 1e-4);
+      this.prevAltitude = this.altitude;
+      
+      // Pitch up when climbing, level out when stable
+      const climbRate = Math.max(-1, Math.min(1, altDelta * 1.5));
+      const targetPitch = -CLIMB_PITCH_MAX * Math.max(0, climbRate);
+      this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
     }
-    this.prevSurfaceAltitude = surfaceAlt;
-
-    const targetAlt = surfaceAlt + clearance + this.cliffGlideBonus;
-    const altitudeLerp = targetAlt >= this.altitude ? ALTITUDE_RISE_LERP : ALTITUDE_FALL_LERP;
-    this.altitude += (targetAlt - this.altitude) * Math.min(1, altitudeLerp * dt);
-
-    const hardFloor = surfaceAlt + CARPET_HOVER_HEIGHT;
-    if (this.altitude < hardFloor) this.altitude = hardFloor;
-
-    const altDelta = (this.altitude - this.prevAltitude) / Math.max(dt, 1e-4);
-    this.prevAltitude = this.altitude;
-    
-    // Pitch up when climbing, level out when stable
-    const climbRate = Math.max(-1, Math.min(1, altDelta * 1.5));
-    const targetPitch = -CLIMB_PITCH_MAX * Math.max(0, climbRate);
-    this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
 
     const targetBank = Math.max(-MAX_BANK, Math.min(MAX_BANK, -this.turnInputSmoothed * MAX_BANK * 0.5));
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * this.upgrades.bankMult * dt);
@@ -265,15 +338,31 @@ export class Carpet {
   }
 
   applyMatrix() {
-    const m = buildPlaneMatrix(
-      this.qPosition,
-      this.heading,
-      this.pitch,
-      this.bankAngle + this.rollAngle,
-      this.altitude,
-      this.globeRadius,
-    );
-    this.group.matrix.copy(m);
+    if (this.voidPlaneActive) {
+      this.getVoidPlaneWorldPos(this._voidPosScratch);
+      const m = buildCarpetMatrixVoidPlane(
+        this._voidPosScratch,
+        this.voidPlaneN,
+        this.voidPlaneE,
+        this.voidPlaneUp,
+        this.heading,
+        this.pitch,
+        this.bankAngle,
+        this.rollAngle,
+      );
+      this.group.matrix.copy(m);
+    } else {
+      this.group.matrix.copy(
+        buildPlaneMatrix(
+          this.qPosition,
+          this.heading,
+          this.pitch,
+          this.bankAngle + this.rollAngle,
+          this.altitude,
+          this.globeRadius,
+        ),
+      );
+    }
     this.group.matrixWorldNeedsUpdate = true;
   }
 

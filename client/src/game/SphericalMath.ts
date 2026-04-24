@@ -175,6 +175,38 @@ export function buildPlaneMatrix(
 }
 
 /**
+ * Carpet in the cosmic void: a fixed 2D “floor” in world space (tangent plane at void entry,
+ * u/v in north/east), no spherical drift.
+ */
+export function buildCarpetMatrixVoidPlane(
+  worldPos: Vector3,
+  voidNorth: Vector3,
+  voidEast: Vector3,
+  voidUp: Vector3,
+  heading: number,
+  pitch: number,
+  bankAngle: number,
+  rollExtra: number,
+): Matrix4 {
+  const forward = new Vector3()
+    .addScaledVector(voidNorth, Math.cos(heading))
+    .addScaledVector(voidEast, Math.sin(heading))
+    .normalize();
+  const right = new Vector3().crossVectors(forward, voidUp).normalize();
+  const pitchQ = _q.setFromAxisAngle(right, -pitch);
+  const pitchedForward = forward.clone().applyQuaternion(pitchQ).normalize();
+  const pitchedUp = voidUp.clone().applyQuaternion(pitchQ).normalize();
+  const totalRoll = bankAngle + rollExtra;
+  const bankQ = new Quaternion().setFromAxisAngle(pitchedForward, totalRoll);
+  const bankedRight = right.clone().applyQuaternion(bankQ).normalize();
+  const bankedUp = pitchedUp.clone().applyQuaternion(bankQ).normalize();
+  const m = new Matrix4();
+  m.makeBasis(bankedRight, bankedUp, pitchedForward.negate());
+  m.setPosition(worldPos);
+  return m;
+}
+
+/**
  * Hull on the tangent plane with small pitch/roll for bobbing — +Z forward in local space.
  */
 export function buildBoatMatrix(
