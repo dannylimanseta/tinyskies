@@ -50,6 +50,7 @@ import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
 import { WaterSpouts } from "./WaterSpouts";
 import { CarpetTrail } from "./CarpetTrail";
+import { VoidCarpetTrail } from "./VoidCarpetTrail";
 import { CarpetWake } from "./CarpetWake";
 import { CarpetLeaves } from "./CarpetLeaves";
 import { LensFlare } from "./LensFlare";
@@ -155,7 +156,8 @@ const RUMBLE_MAX_VOL = 0.42;
 
 /** Boat: ambient ocean waves (looping while flying). */
 const OCEAN_WAVES_LOOP_NAME = "ocean_waves_1";
-const OCEAN_WAVES_LOOP_VOL = 0.16;
+/** Ambient ocean loop; keep competitive with music (~0.35) so it reads over open water. */
+const OCEAN_WAVES_LOOP_VOL = 0.32;
 /** One twister debuff burst (forced spin + slow); must not re-arm every frame while still inside. */
 const TWISTER_SPIN_DURATION_SEC = 1.5;
 const TWISTER_SPIN_COOLDOWN_SEC = 5;
@@ -286,6 +288,8 @@ export class Game {
   private contrails!: Contrails;
   private wakeTrail!: WakeTrail;
   private carpetTrail!: CarpetTrail;
+  /** Wide white glow ribbon — only when `vehicle === "carpet"`; visible in cosmic void only. */
+  private voidCarpetTrail: VoidCarpetTrail | null = null;
   private carpetWake!: CarpetWake;
   private carpetLeaves!: CarpetLeaves;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
@@ -1078,10 +1082,13 @@ export class Game {
         this.scene.add(portal.group);
       }
       this.capybaraFlameShots = new CapybaraFlameShots(this.scene, globeRadius);
+      this.voidCarpetTrail = new VoidCarpetTrail();
+      this.scene.add(this.voidCarpetTrail.group);
     } else {
       this.carpetPortalSystem = null;
       this.cosmicWorldPortals = [];
       this.capybaraFlameShots = null;
+      this.voidCarpetTrail = null;
     }
 
     this.lensFlare = new LensFlare();
@@ -1577,6 +1584,8 @@ export class Game {
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
     this.carpetTrail?.dispose();
+    this.voidCarpetTrail?.dispose();
+    this.voidCarpetTrail = null;
     this.carpetWake?.dispose();
     this.carpetLeaves?.dispose();
     if (this.carpetPortalSystem) {
@@ -2799,6 +2808,13 @@ export class Game {
         this.cameraRig.camera,
         this.localPlayer.speedRatio,
       );
+      if (this.inCosmicVoid && this.voidCarpetTrail && this.localPlayer instanceof Carpet) {
+        this.voidCarpetTrail.update(
+          this.localPlayer.group.matrixWorld,
+          this.cameraRig.camera,
+          this.localPlayer.speedRatio,
+        );
+      }
       this.carpetWake.update(
         dt,
         this.localPlayer.qPosition,
@@ -2963,7 +2979,7 @@ export class Game {
         this.inCosmicVoid || this.voidEntryInProgress
           ? 0
           : carpet.isOverWater
-            ? OCEAN_WAVES_LOOP_VOL * 0.8
+            ? OCEAN_WAVES_LOOP_VOL
             : 0;
       this.audioManager.setLoopVolume(OCEAN_WAVES_LOOP_NAME, targetVol);
     }
@@ -4112,6 +4128,7 @@ export class Game {
     if (this.localPlayer instanceof Carpet && this.carpetPortalSystem) {
       this.carpetPortalSystem.syncToCarpet(this.localPlayer);
       this.carpetTrail.reset();
+      this.voidCarpetTrail?.reset();
       this.carpetWake.reset();
       this.carpetLeaves.reset();
     }
@@ -4202,6 +4219,10 @@ export class Game {
       for (const portal of this.cosmicWorldPortals) portal.group.visible = false;
       if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = false;
       if (this.carpetTrail) this.carpetTrail.group.visible = false;
+      if (this.voidCarpetTrail) {
+        this.voidCarpetTrail.group.visible = true;
+        this.voidCarpetTrail.reset();
+      }
       if (this.carpetWake) this.carpetWake.group.visible = false;
       if (this.carpetLeaves) this.carpetLeaves.group.visible = false;
       for (const fb of this.birdFlocks) fb.group.visible = false;
@@ -4297,6 +4318,10 @@ export class Game {
       for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
       if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
       if (this.carpetTrail) this.carpetTrail.group.visible = true;
+      if (this.voidCarpetTrail) {
+        this.voidCarpetTrail.group.visible = false;
+        this.voidCarpetTrail.reset();
+      }
       if (this.carpetWake) this.carpetWake.group.visible = true;
       if (this.carpetLeaves) this.carpetLeaves.group.visible = true;
       for (const fb of this.birdFlocks) fb.group.visible = true;
@@ -4335,6 +4360,7 @@ export class Game {
     this.hud.showCampsitePrompt(false);
 
     this.carpetTrail.reset();
+    this.voidCarpetTrail?.reset();
     this.carpetWake.reset();
     this.carpetLeaves.reset();
     this.localPlayer.group.updateMatrixWorld(true);
@@ -5039,6 +5065,8 @@ export class Game {
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
     this.carpetTrail?.dispose();
+    this.voidCarpetTrail?.dispose();
+    this.voidCarpetTrail = null;
     this.carpetWake?.dispose();
     this.carpetLeaves?.dispose();
     if (this.carpetPortalSystem) {

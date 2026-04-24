@@ -374,6 +374,7 @@ export class VoidMothsManager {
   private time = 0;
   private spawnTimer = 0;
   private readonly _shieldCenter = new Vector3();
+  private readonly _mothImpactPos = new Vector3();
 
   constructor(
     private readonly paintballSystem: PaintballSystem | null,
@@ -384,7 +385,10 @@ export class VoidMothsManager {
   }
 
   private orbHitMoth(m: VoidMoth) {
-    this.paintballSystem?.playImpactAtGroup(m.group, 0x88aaff, false);
+    m.group.updateMatrixWorld(true);
+    this.paintballSystem?.playMothSparkAtWorld(
+      this._mothImpactPos.setFromMatrixPosition(m.group.matrixWorld),
+    );
     m.applyDamage();
     if (!m.isDead) m.takeHitWobble();
     this.onMothStruck(m.isDead);
@@ -444,7 +448,10 @@ export class VoidMothsManager {
         if (moth.group.position.distanceTo(this._shieldCenter) < r) {
           voidShield.registerMothImpact();
           moth.isDead = true;
-          this.paintballSystem?.playImpactAtGroup(moth.group, 0x99ccff, false);
+          moth.group.updateMatrixWorld(true);
+          this.paintballSystem?.playMothSparkAtWorld(
+            this._mothImpactPos.setFromMatrixPosition(moth.group.matrixWorld),
+          );
           this.onMothStruck(true);
         }
       }
