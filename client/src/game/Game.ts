@@ -252,6 +252,9 @@ const GREMLIN_HIT_SFX_CHANCE = 0.24;
 const GREMLIN_HIT_SFX_MIN_MS = 400;
 /** Deeper than normal gremlin hits (`AudioManager.playSFX` allows down to 0.35). */
 const GREMLIN_KING_HIT_PLAYBACK_RATE = 0.4;
+/** Cosmic void moths: random one-shot; same throttle idea as non-kill gremlin hits. */
+const MOTH_HIT_SFX_IDS = ["moth_1", "moth_2", "moth_3"] as const;
+const MOTH_HIT_SFX_VOLUME = 0.5;
 /** Max gain for rewind SFX loop; multiplied by scene alpha during moon rewind. */
 const REWIND_LOOP_VOLUME = 0.38;
 /** Cosmic void: ease chase cam toward a higher, slightly tighter framing (top-down). */
@@ -335,6 +338,7 @@ export class Game {
   private skyGremlins: SkyGremlins | null = null;
   private gremlinHearts: GremlinHearts | null = null;
   private lastGremlinHitSfxAt = 0;
+  private lastVoidMothHitSfxAt = 0;
   private kingEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private jellyfishEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
   private packageThirdEternalFlameRewardTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -548,6 +552,9 @@ export class Game {
       for (const id of GREMLIN_HIT_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      for (const id of MOTH_HIT_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
       this.audioManager.loadSFX(VOID_MUSIC_LOOP_NAME, "/audio/music/void_1.mp3");
       this.audioManager.loadSFX(SHIELD_IMPACT_ENERGY_SFX, "/audio/sfx/impact_energy_1.mp3");
     });
@@ -627,6 +634,22 @@ export class Game {
       GREMLIN_HIT_SFX_IDS[(Math.random() * GREMLIN_HIT_SFX_IDS.length) | 0]!;
     const rate = isKing ? GREMLIN_KING_HIT_PLAYBACK_RATE : 1;
     this.audioManager.playSFX(pick, GREMLIN_HIT_SFX_VOLUME, rate);
+  }
+
+  /** Replaces gremlin SFX in the cosmic void: random `moth_1` — `moth_3`. */
+  private playVoidMothStruckSfx(isKill: boolean) {
+    if (isKill) {
+      this.lastVoidMothHitSfxAt = performance.now();
+    } else {
+      const now = performance.now();
+      if (now - this.lastVoidMothHitSfxAt < GREMLIN_HIT_SFX_MIN_MS) return;
+      if (Math.random() > GREMLIN_HIT_SFX_CHANCE) return;
+      this.lastVoidMothHitSfxAt = now;
+    }
+    const pick =
+      MOTH_HIT_SFX_IDS[(Math.random() * MOTH_HIT_SFX_IDS.length) | 0]!;
+    if (!this.audioManager.hasSFX(pick)) return;
+    this.audioManager.playSFX(pick, MOTH_HIT_SFX_VOLUME);
   }
 
   private onLocalPlayerGremlinPaintballHit(isKing: boolean) {
@@ -1584,6 +1607,7 @@ export class Game {
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
     this.lastGremlinHitSfxAt = 0;
+    this.lastVoidMothHitSfxAt = 0;
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
       this.kingEternalFlameRewardTimeout = null;
@@ -4230,11 +4254,7 @@ export class Game {
           (isKill) => {
             this.cameraRig.shake(isKill ? 0.055 : 0.045, isKill ? 0.3 : 0.25);
             this.vehicleFlashTimer = 0.14;
-            if (isKill) {
-              this.playGremlinDeathSfx(false);
-            } else {
-              this.maybePlayGremlinHitSfx(false);
-            }
+            this.playVoidMothStruckSfx(isKill);
           },
         );
         this.scene.add(this.voidMoths.group);
@@ -4986,6 +5006,7 @@ export class Game {
       this.gremlinHearts = null;
     }
     this.lastGremlinHitSfxAt = 0;
+    this.lastVoidMothHitSfxAt = 0;
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
       this.kingEternalFlameRewardTimeout = null;
