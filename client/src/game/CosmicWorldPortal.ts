@@ -30,7 +30,7 @@ const R = BASE_PORTAL_RADIUS * COSMIC_WORLD_PORTAL_SCALE;
 const T = BASE_TUBE_RADIUS * COSMIC_WORLD_PORTAL_SCALE;
 
 /** Extra altitude above surface + {@link CARPET_HOVER_HEIGHT} so the rim always floats above the terrain. */
-const PORTAL_CLEARANCE_ABOVE_HOVER = 0.065;
+const PORTAL_CLEARANCE_ABOVE_HOVER = 0.22;
 
 function seededUnit(seed: number): () => number {
   let s = seed;
@@ -278,10 +278,13 @@ function pickWorldPose(
   worldSeed: number,
   terrainType: string,
   rand: () => number,
+  /** Bias the starting heading to a 120°-wide sector so portals spread across the globe. */
+  sectorAngle = 0,
 ): { qPosition: Quaternion; heading: number; altitude: number } {
   for (let k = 0; k < 500; k++) {
     const q = new Quaternion();
-    const h0 = rand() * Math.PI * 2;
+    // Restrict start heading to ±60° of the sector centre so each portal lives in its own third.
+    const h0 = sectorAngle + (rand() - 0.5) * ((Math.PI * 2) / 3);
     const a0 = 0.35 + rand() * 2.2;
     const q1 = moveOnSphere(q, h0, a0);
     const h1 = rand() * Math.PI * 2;
@@ -324,11 +327,13 @@ export class CosmicWorldPortal {
     index: number,
   ) {
     const rand = seededUnit(seed + 19023841 + index * 9999);
+    const sectorAngle = (index / 3) * Math.PI * 2;
     const { qPosition, heading, altitude } = pickWorldPose(
       globeRadius,
       seed + index * 100,
       terrainType,
       rand,
+      sectorAngle,
     );
     this.worldPosition.copy(cartesianFromSpherical(qPosition, altitude, globeRadius));
 

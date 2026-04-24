@@ -36,6 +36,8 @@ const MAX_BANK = Math.PI / 4;
 const BANK_RESPONSIVENESS = 4;
 /** Yaw input catch-up (1/s); matches plane. */
 const TURN_INPUT_SMOOTH = 8;
+/** Multiplier on steering input (yaw) so the carpet feels more responsive. */
+const CARPET_TURN_MULT = 1.45;
 /** Space (climb) ramps 0→1; matches plane. */
 const ELEVATE_INPUT_SMOOTH = 6;
 
@@ -246,7 +248,9 @@ export class Carpet {
       }
     }
 
-    this.turnInputSmoothed += (turnRate - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
+    const turnTarget = turnRate * CARPET_TURN_MULT;
+    this.turnInputSmoothed +=
+      (turnTarget - this.turnInputSmoothed) * (1 - Math.exp(-TURN_INPUT_SMOOTH * dt));
     this.heading += this.turnInputSmoothed * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 

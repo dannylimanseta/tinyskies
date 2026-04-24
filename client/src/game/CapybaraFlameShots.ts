@@ -15,17 +15,18 @@ import type { AudioManager } from "../audio/AudioManager";
 import type { Carpet } from "./Carpet";
 import { paintballRayFromPlaneState } from "./SphericalMath";
 
-/** 40% slower than the original 3.5. */
-const SHOT_SPEED = 2.1;
+const SHOT_SPEED = 2.2;
 /** Cooldown after each burst completes. */
 const COOLDOWN_MS = 300;
+/** Cosmic void: auto-aim orbs (no spacebar). */
+const VOID_AUTOFIRE_COOLDOWN_MS = 1000;
 const SHOTS_PER_BURST = 1;
 export const CAPYBARA_BALL_RADIUS = 0.0104;
 const BALL_RADIUS = CAPYBARA_BALL_RADIUS;
 /** Linear (world) max travel from muzzle before fade-out. */
-const RANGE_FACTOR = 0.36;
-/** Radial (up) offset from carpet center to capybara muzzle (bodyH/2 + model.position.y). */
-const MUZZLE_UP = 0.026;
+const RANGE_FACTOR = 0.14;
+/** Radial (down) offset from carpet center to capybara muzzle — fires from under the carpet. */
+const MUZZLE_UP = -0.022;
 /** Forward offset from carpet center to capybara snout along the tangent plane. */
 const MUZZLE_FORWARD = 0.1;
 /** Optional yaw jitter on the single shot (radians). */
@@ -119,6 +120,7 @@ function wRotated(
 export class CapybaraFlameShots {
   private orbs: Orb[] = [];
   private lastBurstEndMs = -COOLDOWN_MS;
+  private lastVoidAutofireMs = -VOID_AUTOFIRE_COOLDOWN_MS;
   private activeBurst: ActiveBurst | null = null;
   private readonly _a = new Vector3();
   private readonly _b = new Vector3();
@@ -133,8 +135,14 @@ export class CapybaraFlameShots {
     this.globeRadius = r;
   }
 
+  /** World-space distance an orb travels before fading — use for range-check before auto-firing. */
+  get voidMaxRange(): number {
+    return this.globeRadius * RANGE_FACTOR;
+  }
+
   tryFire(carpet: Carpet, audio: AudioManager | null) {
     if (!carpet.hasCapybara) return;
+    if (carpet.isVoidPlaneFlight) return;
     if (this.activeBurst) return;
 
     const now = performance.now();
@@ -149,26 +157,7 @@ export class CapybaraFlameShots {
       deltas.push(j());
     }
 
-    if (carpet.isVoidPlaneFlight) {
-      carpet.getVoidPlaneWorldPos(this._a);
-      this._b
-        .set(0, 0, 0)
-        .addScaledVector(carpet.getVoidPlaneNorth(), Math.cos(carpet.heading))
-        .addScaledVector(carpet.getVoidPlaneEast(), Math.sin(carpet.heading))
-        .normalize();
-      const muzzle = this._c
-        .copy(this._a)
-        .addScaledVector(carpet.getVoidPlaneUp(), MUZZLE_UP)
-        .addScaledVector(this._b, MUZZLE_FORWARD);
-      this.activeBurst = {
-        muzzle: muzzle.clone(),
-        w0: this._b.clone(),
-        rotAxis: carpet.getVoidPlaneUp().clone(),
-        atMs,
-        next: 0,
-        deltas,
-      };
-    } else {
+    {
       const ray = paintballRayFromPlaneState(
         carpet.qPosition,
         carpet.heading,
@@ -202,8 +191,68 @@ export class CapybaraFlameShots {
 
     this.emitReadyBursts(performance.now());
 
-    if (audio?.hasSFX("shoot_2")) {
-      audio.playSFX("shoot_2", 0.28, 0.9 + Math.random() * 0.08);
+    const sfxId = (["shoot_2", "shoot_3", "shoot_4"] as const)[Math.floor(Math.random() * 3)]!;
+    if (audio?.hasSFX(sfxId)) {
+      audio.playSFX(sfxId, 0.28, 0.9 + Math.random() * 0.08);
+    }
+  }
+
+  /**
+   * Cosmic void only: auto-fire on cooldown toward `aimAt` (world). No shot if `aimAt` is null
+   * (e.g. no moths). Direction is projected onto the void tangent plane.
+   */
+  tryFireVoidAutofire(
+    carpet: Carpet,
+    audio: AudioManager | null,
+    aimAt: Vector3 | null,
+  ) {
+    if (!carpet.hasCapybara) return;
+    if (!carpet.isVoidPlaneFlight) return;
+    if (this.activeBurst) return;
+    if (!aimAt) return;
+    const now = performance.now();
+    if (now - this.lastVoidAutofireMs < VOID_AUTOFIRE_COOLDOWN_MS) return;
+
+    const t0 = now;
+    const atMs: number[] = [];
+    const deltas: number[] = [];
+    for (let s = 0; s < SHOTS_PER_BURST; s++) {
+      atMs.push(t0 + s * BURST_SPACING_MS);
+      deltas.push(0);
+    }
+
+    carpet.getVoidPlaneWorldPos(this._a);
+    this._b
+      .set(0, 0, 0)
+      .addScaledVector(carpet.getVoidPlaneNorth(), Math.cos(carpet.heading))
+      .addScaledVector(carpet.getVoidPlaneEast(), Math.sin(carpet.heading))
+      .normalize();
+    const muzzle = this._c
+      .copy(this._a)
+      .addScaledVector(carpet.getVoidPlaneUp(), MUZZLE_UP)
+      .addScaledVector(this._b, MUZZLE_FORWARD);
+
+    const u = carpet.getVoidPlaneUp();
+    this._a.subVectors(aimAt, muzzle);
+    this._a.addScaledVector(u, -this._a.dot(u));
+    if (this._a.lengthSq() < 1e-8) return;
+    this._a.normalize();
+
+    this.lastVoidAutofireMs = now;
+    this.activeBurst = {
+      muzzle: muzzle.clone(),
+      w0: this._a.clone(),
+      rotAxis: u.clone(),
+      atMs,
+      next: 0,
+      deltas,
+    };
+
+    this.emitReadyBursts(performance.now());
+
+    const sfxId2 = (["shoot_2", "shoot_3", "shoot_4"] as const)[Math.floor(Math.random() * 3)]!;
+    if (audio?.hasSFX(sfxId2)) {
+      audio.playSFX(sfxId2, 0.28, 0.9 + Math.random() * 0.08);
     }
   }
 

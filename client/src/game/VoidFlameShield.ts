@@ -11,7 +11,7 @@ import type { AudioManager } from "../audio/AudioManager";
 import { holoVert } from "./Rings";
 
 const SHIELD_MAX_HP = 12;
-const COLLISION_RADIUS = 0.34;
+const COLLISION_RADIUS = 0.17;
 const HIT_BOOST_SMOOTH = 11;
 /** ~60% slower white hit / pulse than 12.0 (longer, calmer flash). */
 const HIT_FLASH_DECAY = 4.8;
@@ -21,8 +21,8 @@ const LOW_HP_PULSE_HZ = 3.6;
 const SHIELD_TIME_SCALE = 0.4;
 
 /**
- * Holo look aligned with `Rings` diamonds, but lower saturation/brightness, plus
- * `uHitFlash` / `uLowHpPulse` for impact and critical state.
+ * Holo look aligned with `Rings` diamonds, plus rim lighting, shimmer scan,
+ * HP-based opacity fade, `uHitFlash` / `uLowHpPulse` for impact and critical state.
  */
 const holoFragVoidShield = `
 uniform float time;
@@ -30,6 +30,7 @@ uniform float phaseOffset;
 uniform float spawnScale;
 uniform float uHitFlash;
 uniform float uLowHpPulse;
+uniform float uHpRatio;
 
 varying vec3 vWorldPos;
 varying vec3 vNorm;
@@ -51,16 +52,28 @@ void main() {
   float glint = 0.88 + 0.12 * sin(facetAngle * 28.0 + time * 4.0);
   float pulse = 0.86 + 0.14 * sin(time * 2.2 + phaseOffset);
 
-  // Cooler than raw diamond, but bright enough to read in the void
   vec3 cool = vec3(0.45, 0.9, 1.0);
   vec3 base = mix(rainbow, cool, 0.76) * (0.64 + fresnel * 0.44) * glint * pulse;
   base *= 0.82;
 
+  // Rim lighting: crisp blue-white glow at silhouette edges
+  float rim = pow(max(0.0, fresnel), 1.8) * 2.2;
+  vec3 rimColor = vec3(0.4, 0.82, 1.0) * rim;
+
+  // Shimmer: two crossing scan lines that loop across the surface
+  float sh1 = sin(vWorldPos.x * 9.0 + time * 2.4 + vWorldPos.y * 5.0) * 0.5 + 0.5;
+  float sh2 = sin(vWorldPos.z * 7.0 - time * 1.8 + vWorldPos.y * 3.5) * 0.5 + 0.5;
+  float shimmer = pow(sh1 * sh2, 5.0) * 0.55;
+  vec3 shimmerCol = vec3(0.55, 0.88, 1.0) * shimmer;
+
   vec3 col = mix(base, vec3(1.0), fresnel * 0.28);
   col = mix(col, vec3(1.0), uHitFlash * 0.92);
+  col += rimColor + shimmerCol;
 
   float a = (0.24 + fresnel * 0.45) * pulse * glint * spawnScale * 0.92;
   a *= uLowHpPulse;
+  // Fade shield visibility as HP drains (never fully invisible until hp=0 handled in JS)
+  a *= (0.35 + 0.65 * uHpRatio);
   a = min(1.0, a);
 
   gl_FragColor = vec4(col, a);
@@ -93,6 +106,7 @@ export class VoidFlameShield {
         spawnScale: { value: 1 },
         uHitFlash: { value: 0 },
         uLowHpPulse: { value: 1 },
+        uHpRatio: { value: 1 },
       },
       transparent: true,
       blending: AdditiveBlending,
@@ -107,6 +121,19 @@ export class VoidFlameShield {
 
   canBlock(): boolean {
     return this.hitPoints > 0;
+  }
+
+  getHitPoints(): number {
+    return this.hitPoints;
+  }
+
+  getMaxHitPoints(): number {
+    return SHIELD_MAX_HP;
+  }
+
+  /** Restore up to `amount` HP, capped at max. */
+  heal(amount: number) {
+    this.hitPoints = Math.min(SHIELD_MAX_HP, this.hitPoints + amount);
   }
 
   getCollisionRadius(): number {
@@ -150,6 +177,8 @@ export class VoidFlameShield {
       ));
     }
     (this.mat.uniforms.uLowHpPulse as { value: number }).value = pulse;
+    (this.mat.uniforms.uHpRatio as { value: number }).value =
+      SHIELD_MAX_HP > 0 ? this.hitPoints / SHIELD_MAX_HP : 0;
 
     this.mesh.rotation.y += dt * 0.55 * SHIELD_TIME_SCALE;
     this.mesh.rotation.x += dt * 0.12 * SHIELD_TIME_SCALE;

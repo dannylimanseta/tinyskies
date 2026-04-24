@@ -111,26 +111,26 @@ export class EternalFlameWorld {
     await loadEternalFlameModelOnce();
     const base = getSharedEternalFlameModelRoot().clone(true);
     applyEternalFlameGlow(base);
-    fitEternalFlameModel(base, 0.2);
+    fitEternalFlameModel(base, 0.16);
     this.flameModel.add(base);
     this.group.add(this.flameModel);
 
     this.group.renderOrder = 120;
 
-    const coreLight = new PointLight(0x88ccff, 1.55, 2.0, 1.5);
+    const coreLight = new PointLight(0x88ccff, 1.0, 1.8, 1.5);
     coreLight.position.set(0, 0.04, 0.02);
     this.group.add(coreLight);
-    const fill = new PointLight(0x5599ff, 0.7, 1.6, 1.2);
+    const fill = new PointLight(0x5599ff, 0.45, 1.4, 1.2);
     fill.position.set(0.12, 0.08, -0.1);
     this.group.add(fill);
-    const rim = new PointLight(0xaaddff, 0.4, 1.2, 1.0);
+    const rim = new PointLight(0xaaddff, 0.26, 1.0, 1.0);
     rim.position.set(-0.1, 0, 0.08);
     this.group.add(rim);
 
     // Underglow: wide soft blue “pool” in view (local −Y) — add before main halos so it draws first
     const underSpecs = [
-      { scale: [1.3, 0.42, 1] as const, y: -0.11, opacity: 0.28, order: 105 },
-      { scale: [1.7, 0.55, 1] as const, y: -0.14, opacity: 0.18, order: 104 },
+      { scale: [1.04, 0.34, 1] as const, y: -0.09, opacity: 0.22, order: 105 },
+      { scale: [1.36, 0.44, 1] as const, y: -0.11, opacity: 0.14, order: 104 },
     ];
     for (const us of underSpecs) {
       const sm = new SpriteMaterial({
@@ -151,10 +151,10 @@ export class EternalFlameWorld {
     }
 
     const layerSpecs: { tex: "core" | "halo"; scale: number; opacity: number; order: number }[] = [
-      { tex: "halo", scale: 1.05, opacity: 0.32, order: 110 },
-      { tex: "halo", scale: 0.78, opacity: 0.27, order: 111 },
-      { tex: "core", scale: 0.52, opacity: 0.42, order: 112 },
-      { tex: "core", scale: 0.35, opacity: 0.52, order: 113 },
+      { tex: "halo", scale: 0.84, opacity: 0.25, order: 110 },
+      { tex: "halo", scale: 0.62, opacity: 0.21, order: 111 },
+      { tex: "core", scale: 0.42, opacity: 0.33, order: 112 },
+      { tex: "core", scale: 0.28, opacity: 0.41, order: 113 },
     ];
     for (const spec of layerSpecs) {
       const map = spec.tex === "core" ? getGlowCoreTexture() : getGlowHaloTexture();

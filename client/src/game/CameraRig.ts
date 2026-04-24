@@ -13,6 +13,9 @@ const MAX_TILT = 0.06;
 const TILT_SMOOTH = 5.0;
 const ZOOM_SMOOTH = 3.0;
 const BASE_FOV = 60;
+/** Void only: a bit less aggressive than globe chase so one smooth path (no lerp/ snap flip when turning). */
+const VOID_CHASE_DAMP = 0.9;
+const VOID_LOOKAT_DAMP = 0.85;
 
 export class CameraRig {
   readonly camera: PerspectiveCamera;
@@ -159,40 +162,41 @@ export class CameraRig {
   private updateVoidFlatChase(
     dt: number,
     v: { worldPos: Vector3; forward: Vector3; up: Vector3 },
-    turnRate: number,
+    _turnRate: number,
     speedRatio: number,
-    tiltScale: number,
+    _tiltScale: number,
     followDist: number,
     followHeight: number,
     speedZoom: number,
-    fovBoost: number,
+    _fovBoost: number,
   ) {
     const planeWorldPos = v.worldPos;
     const forward = v.forward;
     const frameUp = v.up;
 
     this.currentZoom += (speedRatio - this.currentZoom) * Math.min(1, ZOOM_SMOOTH * dt);
-    let dist = followDist + FOLLOW_DISTANCE_BOOST * this.currentZoom * speedZoom;
-    dist = Math.max(MIN_CHASE_DISTANCE, dist);
-    const height = followHeight + FOLLOW_HEIGHT_BOOST * this.currentZoom * speedZoom;
 
-    const targetFov = BASE_FOV + fovBoost * this.currentZoom;
-    if (Math.abs(this.camera.fov - targetFov) > 0.01) {
-      this.camera.fov = targetFov;
+    if (Math.abs(this.camera.fov - BASE_FOV) > 0.01) {
+      this.camera.fov = BASE_FOV;
       this.camera.updateProjectionMatrix();
     }
+
+    // Fixed “full zoom” follow in void: no FOV, no speed-based dolly/height wobble.
+    const effZ = 1.0;
+    let dist = followDist + FOLLOW_DISTANCE_BOOST * effZ * speedZoom;
+    dist = Math.max(MIN_CHASE_DISTANCE, dist);
+    const height = followHeight + FOLLOW_HEIGHT_BOOST * effZ * speedZoom;
 
     this.targetPos
       .copy(planeWorldPos)
       .addScaledVector(forward, -dist)
       .addScaledVector(frameUp, height);
 
-    this.targetLookAt.copy(planeWorldPos).addScaledVector(forward, 0.5);
+    this.targetLookAt.copy(planeWorldPos);
 
     const closeDamp = MathUtils.clamp(dist / 0.95, 0.36, 1.0);
-    const posFactor = 1 - Math.exp(-POSITION_SMOOTH * closeDamp * dt);
-    const lookFactor = 1 - Math.exp(-LOOKAT_SMOOTH * closeDamp * 0.78 * dt);
-
+    const posFactor = 1 - Math.exp(-POSITION_SMOOTH * VOID_CHASE_DAMP * closeDamp * dt);
+    const lookFactor = 1 - Math.exp(-LOOKAT_SMOOTH * VOID_LOOKAT_DAMP * closeDamp * dt);
     this.currentPos.lerp(this.targetPos, posFactor);
     this.currentLookAt.lerp(this.targetLookAt, lookFactor);
 
@@ -219,12 +223,8 @@ export class CameraRig {
 
     this.camera.lookAt(this.currentLookAt);
 
-    const tiltDamp = MathUtils.clamp(0.45 + 0.55 * closeDamp, 0, 1);
-    const targetTilt = -turnRate * MAX_TILT * tiltScale * tiltDamp;
-    this.currentTilt += (targetTilt - this.currentTilt) * Math.min(1, TILT_SMOOTH * dt);
-    if (Math.abs(this.currentTilt) > 0.0001) {
-      this.camera.rotateZ(this.currentTilt);
-    }
+    // No banking on turn in void; eliminates roll that fought lookAt while turning and felt like jerk.
+    this.currentTilt = 0;
   }
 
   resize(aspect: number) {

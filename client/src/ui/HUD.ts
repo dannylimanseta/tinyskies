@@ -188,6 +188,10 @@ export class HUD {
     this.playerCountEl.textContent = `${count} player${count !== 1 ? "s" : ""}`;
   }
 
+  setPlayerCountVisible(v: boolean) {
+    this.playerCountEl.style.display = v ? "" : "none";
+  }
+
   setXP(current: number, nextLevelXP: number, currentLevelXP: number, level: number) {
     this.xpLevelEl.textContent = `LVL ${level}`;
     const range = nextLevelXP - currentLevelXP;

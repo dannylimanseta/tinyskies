@@ -215,7 +215,7 @@ class WhiteRibbon {
 export class VoidCarpetTrail {
   readonly group = new Group();
   private trail: WhiteRibbon;
-  private readonly centerOffset = new Vector3(0, -0.01, 0.06);
+  private readonly centerOffset = new Vector3(0, -0.01, -0.06);
 
   constructor() {
     this.trail = new WhiteRibbon();

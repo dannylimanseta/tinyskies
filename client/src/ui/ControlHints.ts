@@ -19,7 +19,6 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
       { keys: ["A", "D"], label: "Turn" },
       { keys: ["↑"], label: "Climb" },
       { keys: ["E"], label: "Portal" },
-      { keys: ["Space"], label: "Flame (capybara)" },
     ];
   }
   const base: Row[] = [

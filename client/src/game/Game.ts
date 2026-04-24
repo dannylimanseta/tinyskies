@@ -67,6 +67,7 @@ import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { EternalFlameWorld } from "./EternalFlameWorld";
 import { VoidMothsManager, type VoidMothPlaneContext } from "./VoidMoths";
 import { VoidFlameShield } from "./VoidFlameShield";
+import { VoidHearts } from "./VoidHearts";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -94,6 +95,9 @@ import {
   THIRD_PACKAGE_DELIVERY_INDEX,
   ETERNAL_FLAME_SPEAKER,
   ETERNAL_FLAME_VOID_BUBBLES,
+  VOID_WAVE_BETWEEN_DIALOGUE,
+  VOID_SHIELD_LOW_HP_DIALOGUE,
+  VOID_FLAME_SHATTER_DIALOGUE,
 } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
@@ -302,9 +306,20 @@ export class Game {
   private voidEternalFlame: EternalFlameWorld | null = null;
   private voidMoths: VoidMothsManager | null = null;
   private voidFlameShield: VoidFlameShield | null = null;
+  private voidHearts: VoidHearts | null = null;
   private voidAmbientMusicActive = false;
   /** Timeouts for eternal-flame intro bubbles + moth spawn unlock; cleared on void exit. */
   private voidEternalFlameIntroTimeouts: ReturnType<typeof setTimeout>[] = [];
+  /** Current wave number (1–3). 0 = not yet started. */
+  private voidWave = 0;
+  /** True while waiting for wave-cleared → next-wave transition (debounce). */
+  private voidWavePendingTransition = false;
+  /** Whether the 50%-HP shield warning has been shown this void session. */
+  private voidShieldWarnedHalf = false;
+  /** Whether the ≤3-HP critical shield warning has been shown this void session. */
+  private voidShieldWarnedCritical = false;
+  /** Set to true once the flame shatter sequence begins; prevents re-entry. */
+  private voidFlameShattered = false;
   /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
   private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
@@ -380,6 +395,9 @@ export class Game {
   private readonly _voidChaseForward = new Vector3();
   private readonly _voidEternalFlamePosScratch = new Vector3();
   private readonly _carpetVoidWorldScratch = new Vector3();
+  private readonly _voidMothAimScratch = new Vector3();
+  private voidFlameArrowEl: HTMLDivElement | null = null;
+  private voidEnemyArrowEls: HTMLDivElement[] = [];
 
   private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" | "moonstoneUnion" = "flying";
   private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
@@ -548,6 +566,8 @@ export class Game {
       }
       this.audioManager.loadSFX("shoot_1", "/audio/sfx/shoot_1.mp3");
       this.audioManager.loadSFX("shoot_2", "/audio/sfx/shoot_2.mp3");
+      this.audioManager.loadSFX("shoot_3", "/audio/sfx/shoot_3.mp3");
+      this.audioManager.loadSFX("shoot_4", "/audio/sfx/shoot_4.mp3");
       for (const id of ["impact_1", "impact_2", "impact_3"] as const) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
@@ -2548,13 +2568,26 @@ export class Game {
       this.paintballSystem.tryLocalFire(this.localPlayer);
     }
     if (
-      paintball &&
+      this.inCosmicVoid &&
       this.localPlayer instanceof Carpet &&
       this.capybaraFlameShots &&
       this.localPlayer.hasCapybara &&
       this.portalInteractionSuppressTimer <= 0
     ) {
-      this.capybaraFlameShots.tryFire(this.localPlayer, this.audioManager);
+      this.localPlayer.getVoidPlaneWorldPos(this._carpetVoidWorldScratch);
+      const hasAim = this.voidMoths?.getNearestMothToPoint(
+        this._carpetVoidWorldScratch,
+        this._voidMothAimScratch,
+      ) ?? false;
+      const maxRange = this.capybaraFlameShots.voidMaxRange;
+      const inRange =
+        hasAim &&
+        this._carpetVoidWorldScratch.distanceTo(this._voidMothAimScratch) <= maxRange;
+      this.capybaraFlameShots.tryFireVoidAutofire(
+        this.localPlayer,
+        this.audioManager,
+        inRange ? this._voidMothAimScratch : null,
+      );
     }
 
     const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0 || this.inCosmicVoid;
@@ -2901,6 +2934,12 @@ export class Game {
       if (this.inCosmicVoid) {
         this.voidEternalFlame?.update(dt, this.cameraRig.camera);
         this.voidFlameShield?.update(dt);
+        this.updateVoidFlameArrow();
+        this.updateVoidEnemyArrows();
+        this.updateVoidWaveController();
+        if (this.voidHearts && this.localPlayer instanceof Carpet && this.localPlayer.isVoidPlaneFlight) {
+          this.voidHearts.update(dt, this.localPlayer.getVoidPlaneWorldPos(this._carpetVoidWorldScratch));
+        }
         if (this.voidEternalFlame && this.localPlayer instanceof Carpet) {
           this.localPlayer.group.updateMatrixWorld(true);
           const c = this.localPlayer;
@@ -4224,14 +4263,26 @@ export class Game {
     this.voidEternalFlameIntroTimeouts = [];
   }
 
+  /** Wave configs: [totalMoths, maxConcurrent, spawnMinSec, spawnMaxSec]. */
+  private static readonly VOID_WAVE_CONFIGS: readonly [number, number, number, number, number][] = [
+    [5,  4,  1.4, 2.2, 0.0],  // wave 1 — small scouting brood, leisurely pace
+    [9,  6,  0.9, 1.6, 0.0],  // wave 2 — Hungering Flight, faster spawns
+    [14, 9,  0.5, 1.1, 0.35], // wave 3 — Mothwing Eldest lead the relentless tide
+  ];
+
   /**
-   * Two NPC-style bubbles (same HUD as package quest), then lunar moths can spawn.
+   * Show the intro bubble, then start wave 1.
    * Timings must stay in sync with {@link PackageQuestHUD#showBubble} display duration (~4s).
    */
   private scheduleCosmicVoidEternalFlameIntro() {
     this.clearVoidEternalFlameIntroSchedulers();
     if (!this.inCosmicVoid || !this.voidMoths) return;
-    const [line1, line2] = ETERNAL_FLAME_VOID_BUBBLES;
+    this.voidWave = 0;
+    this.voidWavePendingTransition = false;
+    this.voidShieldWarnedHalf = false;
+    this.voidShieldWarnedCritical = false;
+
+    const [line1] = ETERNAL_FLAME_VOID_BUBBLES;
     const bubbleMs = 4000;
     const leadInMs = 400;
     this.voidEternalFlameIntroTimeouts.push(
@@ -4242,16 +4293,131 @@ export class Game {
     );
     this.voidEternalFlameIntroTimeouts.push(
       setTimeout(() => {
-        if (!this.inCosmicVoid) return;
-        this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, line2);
+        if (!this.inCosmicVoid || !this.voidMoths) return;
+        this.startVoidWave(1);
       }, leadInMs + bubbleMs),
     );
-    this.voidEternalFlameIntroTimeouts.push(
-      setTimeout(() => {
+  }
+
+  /** Configure and begin a numbered void wave (1-based). */
+  private startVoidWave(wave: number) {
+    if (!this.voidMoths) return;
+    const cfg = Game.VOID_WAVE_CONFIGS[wave - 1];
+    if (!cfg) return;
+    const [total, maxConc, spawnMin, spawnMax, elderChance] = cfg;
+    this.voidMoths.configureWave(total, maxConc, spawnMin, spawnMax, elderChance);
+    this.voidMoths.setMothSpawningEnabled(true);
+    this.voidWave = wave;
+    this.voidWavePendingTransition = false;
+  }
+
+  /**
+   * Called each frame during void: checks for wave-cleared → schedule inter-wave dialogue → next wave.
+   * Also checks shield HP thresholds and fires HP-warning dialogue.
+   */
+  private updateVoidWaveController() {
+    if (!this.inCosmicVoid || !this.voidMoths) return;
+
+    // Shield HP warnings
+    if (this.voidFlameShield) {
+      const hp = this.voidFlameShield.getHitPoints();
+      const max = this.voidFlameShield.getMaxHitPoints();
+      if (!this.voidShieldWarnedHalf && hp <= Math.floor(max * 0.5)) {
+        this.voidShieldWarnedHalf = true;
+        this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, VOID_SHIELD_LOW_HP_DIALOGUE[0]);
+      } else if (!this.voidShieldWarnedCritical && hp <= 3 && hp > 0) {
+        this.voidShieldWarnedCritical = true;
+        this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, VOID_SHIELD_LOW_HP_DIALOGUE[1]);
+      }
+    }
+
+    // Wave transition
+    if (
+      this.voidWave > 0 &&
+      this.voidWave < Game.VOID_WAVE_CONFIGS.length &&
+      !this.voidWavePendingTransition &&
+      this.voidMoths.isWaveCleared()
+    ) {
+      this.voidWavePendingTransition = true;
+      const nextWave = this.voidWave + 1;
+      const betweenLine = VOID_WAVE_BETWEEN_DIALOGUE[this.voidWave - 1];
+      const bubbleMs = 4800;
+      const pauseBeforeMs = 1200;
+
+      // Brief pause, then show between-wave dialogue, then start next wave
+      const t1 = setTimeout(() => {
+        if (!this.inCosmicVoid) return;
+        if (betweenLine) {
+          this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, betweenLine);
+        }
+      }, pauseBeforeMs);
+      const t2 = setTimeout(() => {
         if (!this.inCosmicVoid || !this.voidMoths) return;
-        this.voidMoths.setMothSpawningEnabled(true);
-      }, leadInMs + bubbleMs * 2),
-    );
+        this.startVoidWave(nextWave);
+      }, pauseBeforeMs + bubbleMs);
+      this.voidEternalFlameIntroTimeouts.push(t1, t2);
+    }
+  }
+
+  /** A moth reached the flame while the shield was gone: shatter sequence → main menu. */
+  private async handleVoidFlameShattered() {
+    if (this.voidFlameShattered) return;
+    this.voidFlameShattered = true;
+
+    // Stop moth spawning immediately
+    this.voidMoths?.setMothSpawningEnabled(false);
+
+    // Dim/hide the flame
+    if (this.voidEternalFlame) {
+      this.voidEternalFlame.group.visible = false;
+    }
+
+    // Show the shatter dialogue briefly
+    this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, VOID_FLAME_SHATTER_DIALOGUE);
+    await new Promise<void>((r) => setTimeout(r, 2600));
+
+    if (!this.transitionOverlay) return;
+    this.running = false;
+    this.stopVoidAmbientMusic();
+
+    await this.transitionOverlay.fadeOut({
+      durationSec: 1.5,
+      message: "You failed to protect the eternal flame.",
+      holdAtFullSec: 2.0,
+    });
+
+    this.removeVoidEternalFlame();
+    this.inCosmicVoid = false;
+    this.socketClient?.disconnect();
+    this.remotePlanes.dispose();
+
+    this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
+    this.hud.setPlayerCountVisible(true);
+
+    this.teardownGameplaySession();
+    this.dayNightCycle.moonProgress = 0;
+    this.moonThreat?.reset();
+    this.shouldShowBrazierMoonResume = false;
+    this.applyDayNightPreset();
+    this.gamePhase = "flying";
+    this.moonCinematicStep = "done";
+    this.moonCinematicCamera = null;
+    this.introActive = false;
+    this.vehicleHintsEl = null;
+    this.campsiteHintsEl = null;
+    this.mountLobby();
+    this.previewActive = true;
+    window.addEventListener("resize", this.onPreviewResize);
+    this.onPreviewResize();
+    const previewDt = Math.min(this.clock.getDelta(), 0.05);
+    this.stepPreview(previewDt);
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    requestAnimationFrame(this.previewTick);
+    if (this.transitionOverlay) {
+      await this.transitionOverlay.fadeIn();
+      this.transitionOverlay.dispose();
+      this.transitionOverlay = null;
+    }
   }
 
   private removeVoidEternalFlame() {
@@ -4259,6 +4425,11 @@ export class Game {
       this.localPlayer.exitVoidPlaneFlight();
     }
     this.clearVoidEternalFlameIntroSchedulers();
+    this.voidWave = 0;
+    this.voidWavePendingTransition = false;
+    this.voidShieldWarnedHalf = false;
+    this.voidShieldWarnedCritical = false;
+    this.voidFlameShattered = false;
     this.stopVoidAmbientMusic();
     if (this.voidMoths) {
       this.voidMoths.group.removeFromParent();
@@ -4272,10 +4443,175 @@ export class Game {
       this.voidFlameShield.dispose();
       this.voidFlameShield = null;
     }
+    if (this.voidHearts) {
+      this.voidHearts.group.removeFromParent();
+      this.voidHearts.dispose();
+      this.voidHearts = null;
+    }
     if (!this.voidEternalFlame) return;
     this.voidEternalFlame.group.removeFromParent();
     this.voidEternalFlame.dispose();
     this.voidEternalFlame = null;
+    this.destroyVoidFlameArrow();
+    this.destroyVoidEnemyArrows();
+  }
+
+  private createVoidFlameArrow() {
+    this.destroyVoidFlameArrow();
+    const el = document.createElement("div");
+    el.style.cssText = `
+      position:absolute;
+      width:32px;height:32px;
+      pointer-events:none;
+      z-index:10;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      transform-origin:center center;
+    `;
+    const inner = document.createElement("div");
+    inner.style.cssText = `
+      width:0;height:0;
+      border-left:10px solid transparent;
+      border-right:10px solid transparent;
+      border-bottom:22px solid rgba(80,180,255,0.92);
+      filter:drop-shadow(0 0 6px rgba(100,200,255,0.9));
+    `;
+    el.appendChild(inner);
+    this.container.appendChild(el);
+    this.voidFlameArrowEl = el;
+  }
+
+  private destroyVoidFlameArrow() {
+    if (this.voidFlameArrowEl) {
+      this.voidFlameArrowEl.remove();
+      this.voidFlameArrowEl = null;
+    }
+  }
+
+  private static readonly ENEMY_ARROW_POOL = 12;
+
+  private createVoidEnemyArrows() {
+    this.destroyVoidEnemyArrows();
+    for (let i = 0; i < Game.ENEMY_ARROW_POOL; i++) {
+      const el = document.createElement("div");
+      el.style.cssText = `
+        position:absolute;
+        width:32px;height:32px;
+        pointer-events:none;
+        z-index:10;
+        display:none;
+        align-items:center;
+        justify-content:center;
+        transform-origin:center center;
+      `;
+      const inner = document.createElement("div");
+      inner.style.cssText = `
+        width:0;height:0;
+        border-left:9px solid transparent;
+        border-right:9px solid transparent;
+        border-bottom:20px solid rgba(255,45,45,0.92);
+        filter:drop-shadow(0 0 5px rgba(255,80,0,0.85));
+      `;
+      el.appendChild(inner);
+      this.container.appendChild(el);
+      this.voidEnemyArrowEls.push(el);
+    }
+  }
+
+  private destroyVoidEnemyArrows() {
+    for (const el of this.voidEnemyArrowEls) el.remove();
+    this.voidEnemyArrowEls = [];
+  }
+
+  private readonly _enemyArrowPosScratch: Vector3[] = [];
+  private readonly _enemyArrowNdc = new Vector3();
+
+  private updateVoidEnemyArrows() {
+    if (!this.voidMoths || this.voidEnemyArrowEls.length === 0) return;
+    const cam = this.cameraRig.camera;
+    const cw = this.container.clientWidth || window.innerWidth;
+    const ch = this.container.clientHeight || window.innerHeight;
+    const margin = 44;
+    const hw = 16;
+    const hh = 16;
+
+    this.voidMoths.getLivingPositions(this._enemyArrowPosScratch, Game.ENEMY_ARROW_POOL);
+
+    for (let i = 0; i < this.voidEnemyArrowEls.length; i++) {
+      const el = this.voidEnemyArrowEls[i]!;
+      const pos = this._enemyArrowPosScratch[i];
+      if (!pos) { el.style.display = "none"; continue; }
+      this._enemyArrowNdc.copy(pos).project(cam);
+      const ndcX = this._enemyArrowNdc.x;
+      const ndcY = this._enemyArrowNdc.y;
+      const ndcZ = this._enemyArrowNdc.z;
+      const sx = (ndcX * 0.5 + 0.5) * cw;
+      const sy = (-ndcY * 0.5 + 0.5) * ch;
+      const behind = ndcZ > 1;
+      const inView = !behind && sx >= margin && sx <= cw - margin && sy >= margin && sy <= ch - margin;
+      if (inView) { el.style.display = "none"; continue; }
+      el.style.display = "flex";
+      const fx = behind ? -ndcX : ndcX;
+      const fy = behind ? -ndcY : ndcY;
+      const angle = Math.atan2(-fx, fy) * (180 / Math.PI);
+      const absX = Math.abs(fx);
+      const absY = Math.abs(fy);
+      const scale = Math.max(absX, absY) > 0.001 ? 1 / Math.max(absX, absY) : 1;
+      const ex = Math.max(margin, Math.min(cw - margin, (fx * scale * 0.5 + 0.5) * cw));
+      const ey = Math.max(margin, Math.min(ch - margin, (-fy * scale * 0.5 + 0.5) * ch));
+      el.style.left = `${ex - hw}px`;
+      el.style.top = `${ey - hh}px`;
+      el.style.transform = `rotate(${angle}deg)`;
+    }
+  }
+
+  private updateVoidFlameArrow() {
+    const el = this.voidFlameArrowEl;
+    if (!el || !this.voidEternalFlame) { el && (el.style.display = "none"); return; }
+    const flamePos = this.voidEternalFlame.group.position;
+    const cam = this.cameraRig.camera;
+    const tmp = flamePos.clone().project(cam);
+    const ndcX = tmp.x;
+    const ndcY = tmp.y;
+    const ndcZ = tmp.z;
+    const cw = this.container.clientWidth || window.innerWidth;
+    const ch = this.container.clientHeight || window.innerHeight;
+    const margin = 40;
+    const sx = (ndcX * 0.5 + 0.5) * cw;
+    const sy = (-ndcY * 0.5 + 0.5) * ch;
+    const behind = ndcZ > 1;
+    const inView = !behind && sx >= margin && sx <= cw - margin && sy >= margin && sy <= ch - margin;
+    if (inView) { el.style.display = "none"; return; }
+    el.style.display = "flex";
+    // When behind camera, flip the NDC coords so arrow points away from where the cam is facing.
+    const fx = behind ? -ndcX : ndcX;
+    const fy = behind ? -ndcY : ndcY;
+    const angle = Math.atan2(-fx, fy) * (180 / Math.PI);
+    const hw = 16; // half element width
+    const hh = 16;
+    const edgePad = margin;
+    const t = Math.max(
+      Math.abs(fx) > 0.001 ? (Math.sign(fx) * 1 - 0) / fx : Infinity,
+      Math.abs(fy) > 0.001 ? (Math.sign(fy) * 1 - 0) / fy : Infinity,
+    );
+    const clampX = Math.max(edgePad, Math.min(cw - edgePad, (fx * Math.min(1, Math.abs(1 / (Math.abs(fx) + 1e-6))) * 0.5 + 0.5) * cw));
+    const clampY = Math.max(edgePad, Math.min(ch - edgePad, (-fy * Math.min(1, Math.abs(1 / (Math.abs(fy) + 1e-6))) * 0.5 + 0.5) * ch));
+    // Clamp screen-space position to edges
+    let ex = (fx * 0.5 + 0.5) * cw;
+    let ey = (-fy * 0.5 + 0.5) * ch;
+    // Remap from projected coords to edge: scale so the dominant axis hits its edge
+    const absX = Math.abs(fx);
+    const absY = Math.abs(fy);
+    const scale = Math.max(absX, absY) > 0.001 ? 1 / Math.max(absX, absY) : 1;
+    const clX = fx * scale;
+    const clY = fy * scale;
+    ex = Math.max(edgePad, Math.min(cw - edgePad, (clX * 0.5 + 0.5) * cw));
+    ey = Math.max(edgePad, Math.min(ch - edgePad, (-clY * 0.5 + 0.5) * ch));
+    el.style.left = `${ex - hw}px`;
+    el.style.top = `${ey - hh}px`;
+    el.style.transform = `rotate(${angle}deg)`;
+    void clampX; void clampY; void t;
   }
 
   private async doEnterCosmicVoid() {
@@ -4332,6 +4668,9 @@ export class Game {
       this.packageQuestHUD.hideDeliveryTarget();
       this.setPortalHintVisible(false);
 
+      this.hud.setWorldName("Cosmic Void");
+      this.hud.setPlayerCountVisible(false);
+
       this.applyDayNightPreset();
 
       if (this.localPlayer instanceof Carpet) {
@@ -4359,9 +4698,12 @@ export class Game {
         this.voidMoths = new VoidMothsManager(
           this.paintballSystem,
           (isKill) => {
-            this.cameraRig.shake(isKill ? 0.055 : 0.045, isKill ? 0.3 : 0.25);
+            this.cameraRig.shake(isKill ? 0.022 : 0.014, isKill ? 0.18 : 0.12);
             this.vehicleFlashTimer = 0.14;
             this.playVoidMothStruckSfx(isKill);
+          },
+          () => {
+            void this.handleVoidFlameShattered();
           },
         );
         this.scene.add(this.voidMoths.group);
@@ -4369,8 +4711,27 @@ export class Game {
 
       await this.transitionOverlay.fadeIn();
       this.gamePhase = "flying";
+      this.createVoidFlameArrow();
+      this.createVoidEnemyArrows();
       if (this.voidMoths) {
         this.scheduleCosmicVoidEternalFlameIntro();
+      }
+      // Spawn void hearts using the carpet's current plane vectors
+      if (this.localPlayer instanceof Carpet && this.localPlayer.isVoidPlaneFlight && this.voidEternalFlame) {
+        const c = this.localPlayer;
+        const vh = new VoidHearts(
+          this.voidEternalFlame.group.position,
+          c.getVoidPlaneUp(),
+          c.getVoidPlaneNorth(),
+          c.getVoidPlaneEast(),
+        );
+        vh.onCollect = (heal) => {
+          if (this.voidFlameShield && this.voidFlameShield.getHitPoints() > 0) {
+            this.voidFlameShield.heal(heal);
+          }
+        };
+        this.voidHearts = vh;
+        this.scene.add(vh.group);
       }
     } finally {
       this.coastCarpetDuringCosmicTransition = false;
@@ -4427,6 +4788,9 @@ export class Game {
       if (this.packageQuest) this.packageQuest.group.visible = true;
       if (this.collectVFX) this.collectVFX.group.visible = true;
       this.setPortalHintVisible(true);
+
+      this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
+      this.hud.setPlayerCountVisible(true);
 
       this.applyDayNightPreset();
 

@@ -66,10 +66,31 @@ export function getNpcPortraitUrl(npcName: string): string {
 
 /** Cosmic-void intro; shown via {@link PackageQuestHUD#showBubble} as two sequential lines. */
 export const ETERNAL_FLAME_SPEAKER = "Eternal Flame";
-export const ETERNAL_FLAME_VOID_BUBBLES: readonly [string, string] = [
+export const ETERNAL_FLAME_VOID_BUBBLES: readonly [string] = [
   "Defend me! Lunar moths hunger for the last ember. Please, do not let them reach the flame.",
-  "Press SPACE to fire star shots. Each hit weakens a moth. Protect the light!",
 ];
+
+/**
+ * Dialogue spoken by the Eternal Flame between waves.
+ * Index 0 = after wave 1 clears (before wave 2), index 1 = after wave 2 clears (before wave 3).
+ */
+export const VOID_WAVE_BETWEEN_DIALOGUE: readonly [string, string] = [
+  "The scouts fall. But the Hungering Flight follows — centuries-old moth-kin. Do not let them reach me.",
+  "One last surge — the Mothwing Eldest. Hold this light. It will outlast the dark.",
+];
+
+/**
+ * Warnings spoken when the shield HP drops to thresholds.
+ * Index 0 = at or below 50% HP, index 1 = at or below 3 HP (critical).
+ */
+export const VOID_SHIELD_LOW_HP_DIALOGUE: readonly [string, string] = [
+  "I feel the cold creeping in — each strike dims the light inside me. Guard the flame while you still can.",
+  "I am nearly gone. I have burned since before your stars were named. Please — do not let this be where I end.",
+];
+
+/** Spoken by the Eternal Flame the moment a moth breaches the shield and shatters it. */
+export const VOID_FLAME_SHATTER_DIALOGUE =
+  "No... the moths have taken the light. I am... gone.";
 
 /**
  * Pickup lines by moon phase — each pool uses **items that fit the tone**:
