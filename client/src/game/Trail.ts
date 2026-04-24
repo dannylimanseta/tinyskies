@@ -85,7 +85,10 @@ export class Trail {
     this.mesh.frustumCulled = false;
   }
 
-  update(worldPos: Vector3, cameraPos: Vector3) {
+  /**
+   * @param widthScale — multiplies ribbon width (e.g. taper 1→0 over projectile lifetime).
+   */
+  update(worldPos: Vector3, cameraPos: Vector3, widthScale = 1) {
     this.points.unshift(worldPos.clone());
     if (this.points.length > this.length) {
       this.points.length = this.length;
@@ -94,6 +97,14 @@ export class Trail {
     const positions = this.posAttr.array as Float32Array;
     const alphas = this.alphaAttr.array as Float32Array;
     const count = this.points.length;
+
+    if (count < 2) {
+      positions.fill(0);
+      alphas.fill(0);
+      this.posAttr.needsUpdate = true;
+      this.alphaAttr.needsUpdate = true;
+      return;
+    }
 
     for (let i = 0; i < this.length; i++) {
       const p = this.points[i];
@@ -127,7 +138,7 @@ export class Trail {
       }
 
       const fade = 1 - i / this.length;
-      const w = this.width * fade;
+      const w = this.width * fade * widthScale;
 
       positions[i * 6] = p.x + _cross.x * w;
       positions[i * 6 + 1] = p.y + _cross.y * w;

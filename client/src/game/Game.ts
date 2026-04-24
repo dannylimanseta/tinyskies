@@ -2506,7 +2506,7 @@ export class Game {
       this.skyGremlins?.setSuspended(true);
     }
     this.paintballSystem?.update(dt, this.cameraRig.camera.position);
-    this.capybaraFlameShots?.update(dt);
+    this.capybaraFlameShots?.update(dt, this.cameraRig.camera.position);
 
     this.localPlayer.group.updateMatrixWorld(true);
 
