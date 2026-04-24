@@ -1,17 +1,10 @@
 import {
   AmbientLight,
-  Box3,
   Clock,
-  Color,
   DirectionalLight,
   Group,
-  IcosahedronGeometry,
   Mesh,
-  MeshBasicMaterial,
-  MeshLambertMaterial,
   MeshPhongMaterial,
-  MeshPhysicalMaterial,
-  MeshStandardMaterial,
   Object3D,
   PerspectiveCamera,
   PointLight,
@@ -20,10 +13,13 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import {
+  applyEternalFlameGlow,
+  fitEternalFlameModel,
+  getSharedEternalFlameModelRoot,
+  loadEternalFlameModelOnce,
+} from "../game/EternalFlameModel";
 import { ProgressionManager } from "../game/ProgressionManager";
-
-const GLB_URL = "/3D/eternal_flame.glb";
 const STARBURST_URL = "/2D/starburst.png";
 const STYLE_ID = "eternal-flame-ui-styles";
 const HOLD_MS = 2800;
@@ -150,81 +146,6 @@ function ensureStyles() {
   document.head.appendChild(style);
 }
 
-function fitModel(root: Object3D, target = 0.42) {
-  const box = new Box3().setFromObject(root);
-  const size = box.getSize(new Vector3());
-  const max = Math.max(size.x, size.y, size.z, 1e-4);
-  const s = target / max;
-  root.scale.setScalar(s);
-  const c = box.getCenter(new Vector3());
-  root.position.copy(c.multiplyScalar(-s));
-}
-
-/** Cool blue-cyan eternal flame (reads richer than pale orange wash). */
-const EMISSIVE_CORE = new Color(0x3399ff);
-const EMISSIVE_RIM = new Color(0x88ddff);
-const BASE_TINT = new Color(0x4a88cc);
-
-/** Strong emissive + local fill light so the flame reads as self-lit in preview and dock. */
-function applyEternalFlameGlow(root: Object3D) {
-  root.traverse((obj) => {
-    const mesh = obj as Mesh;
-    if (!mesh.isMesh || !mesh.material) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    const next: typeof mats = [];
-    for (let mi = 0; mi < mats.length; mi++) {
-      const mat = mats[mi]!;
-      if (mat instanceof MeshBasicMaterial) {
-        const c = mat.color.clone().lerp(BASE_TINT, 0.35);
-        const rep = new MeshStandardMaterial({
-          color: c,
-          map: mat.map,
-          transparent: mat.transparent,
-          opacity: mat.opacity,
-          depthWrite: mat.depthWrite,
-          side: mat.side,
-          emissive: EMISSIVE_CORE.clone(),
-          emissiveIntensity: 2.85,
-          emissiveMap: mat.map ?? null,
-        });
-        mat.dispose();
-        next.push(rep);
-        continue;
-      }
-      if (
-        mat instanceof MeshStandardMaterial ||
-        mat instanceof MeshPhysicalMaterial
-      ) {
-        mat.color.lerp(BASE_TINT, 0.22);
-        mat.emissive.copy(EMISSIVE_CORE);
-        mat.emissiveIntensity = Math.max(mat.emissiveIntensity, 2.65);
-        if (!mat.emissiveMap && mat.map) mat.emissiveMap = mat.map;
-        next.push(mat);
-        continue;
-      }
-      if (mat instanceof MeshPhongMaterial || mat instanceof MeshLambertMaterial) {
-        mat.emissive.copy(EMISSIVE_RIM);
-        mat.emissive.multiplyScalar(2.0);
-        mat.color.lerp(BASE_TINT, 0.28);
-        next.push(mat);
-        continue;
-      }
-      if ("emissive" in mat && (mat as { emissive?: Color }).emissive) {
-        const m = mat as MeshPhongMaterial;
-        m.emissive.copy(EMISSIVE_CORE);
-        const ei = (m as { emissiveIntensity?: number }).emissiveIntensity;
-        if (typeof ei === "number") {
-          (m as { emissiveIntensity: number }).emissiveIntensity = Math.max(ei, 1.8);
-        }
-        next.push(mat);
-        continue;
-      }
-      next.push(mat);
-    }
-    mesh.material = Array.isArray(mesh.material) ? next : next[0]!;
-  });
-}
-
 function dockWidthForCount(n: number): number {
   if (n <= 0) return DOCK_PX;
   return n * DOCK_SLOT_W + Math.max(0, n - 1) * DOCK_GAP_PX;
@@ -321,7 +242,7 @@ export class EternalFlameUI {
     for (let i = 0; i < count; i++) {
       const node = this.flameTemplate.clone(true);
       applyEternalFlameGlow(node);
-      fitModel(node, fitT);
+      fitEternalFlameModel(node, fitT);
       node.position.x = (i - (count - 1) * 0.5) * spacing;
       this.modelRoot.add(node);
     }
@@ -496,32 +417,9 @@ export class EternalFlameUI {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.renderer.outputColorSpace = SRGBColorSpace;
 
-      await new Promise<void>((resolve) => {
-        const loader = new GLTFLoader();
-        loader.load(
-          GLB_URL,
-          (gltf) => {
-            this.flameTemplate = gltf.scene;
-            this.modelLoaded = true;
-            resolve();
-          },
-          undefined,
-          () => {
-            const g = new Group();
-            const geo = new IcosahedronGeometry(0.22, 1);
-            const mat = new MeshPhongMaterial({
-              color: 0x4488cc,
-              emissive: 0x2288ff,
-              emissiveIntensity: 1.85,
-              flatShading: true,
-            });
-            g.add(new Mesh(geo, mat));
-            this.flameTemplate = g;
-            this.modelLoaded = true;
-            resolve();
-          },
-        );
-      });
+      await loadEternalFlameModelOnce();
+      this.flameTemplate = getSharedEternalFlameModelRoot();
+      this.modelLoaded = true;
 
       this.startLoop();
     })();

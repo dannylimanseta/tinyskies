@@ -63,6 +63,7 @@ import { pickRandomVehicleColor } from "./vehicleColors";
 import { CarpetPortalSystem } from "./CarpetPortalSystem";
 import { CapybaraFlameShots } from "./CapybaraFlameShots";
 import { CosmicWorldPortal } from "./CosmicWorldPortal";
+import { EternalFlameWorld } from "./EternalFlameWorld";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -276,6 +277,8 @@ export class Game {
   private capybaraFlameShots: CapybaraFlameShots | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
   private inCosmicVoid = false;
+  /** 3D eternal-flame in front of the player while in the cosmic void (carpet). */
+  private voidEternalFlame: EternalFlameWorld | null = null;
   /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
   private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
@@ -1554,6 +1557,7 @@ export class Game {
       this.gremlinHearts = null;
     }
     this.collectVFX?.dispose();
+    this.removeVoidEternalFlame();
     this.localPlayer?.dispose();
     this.paintballSystem?.dispose();
     this.paintballSystem = null;
@@ -1596,6 +1600,7 @@ export class Game {
     this.carpetSelfiePhotoUI = null;
     this.eternalFlameUI?.dispose();
     this.eternalFlameUI = null;
+    this.removeVoidEternalFlame();
     this.debugMenu?.dispose();
     this.debugMenu = null;
     this.carpetLandmarkSelfieQuest = null;
@@ -2776,6 +2781,9 @@ export class Game {
     for (const portal of this.cosmicWorldPortals) {
       portal.update(dt, this.cameraRig.camera, portalOpacity);
     }
+      if (this.inCosmicVoid) {
+        this.voidEternalFlame?.update(dt, this.cameraRig.camera);
+      }
     const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
     this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma, twisterTrauma));
     if (this.moonThreat) {
@@ -4041,6 +4049,13 @@ export class Game {
     }
   }
 
+  private removeVoidEternalFlame() {
+    if (!this.voidEternalFlame) return;
+    this.voidEternalFlame.group.removeFromParent();
+    this.voidEternalFlame.dispose();
+    this.voidEternalFlame = null;
+  }
+
   private async doEnterCosmicVoid() {
     if (!this.transitionOverlay || this.inCosmicVoid) return;
     this.coastCarpetDuringCosmicTransition = true;
@@ -4090,6 +4105,25 @@ export class Game {
 
       this.applyDayNightPreset();
 
+      if (this.localPlayer instanceof Carpet) {
+        this.removeVoidEternalFlame();
+        const c = this.localPlayer;
+        c.group.updateMatrixWorld(true);
+        const p = new Vector3().setFromMatrixPosition(c.group.matrixWorld);
+        const frame = tangentFrame(c.qPosition);
+        const forward = new Vector3()
+          .addScaledVector(frame.north, Math.cos(c.heading))
+          .addScaledVector(frame.east, Math.sin(c.heading));
+        p.addScaledVector(forward, 0.55);
+        p.addScaledVector(frame.up, 0.04);
+        const vf = new EternalFlameWorld();
+        await vf.init();
+        vf.setWorldPosition(p.x, p.y, p.z);
+        vf.alignToCamera(this.cameraRig.camera);
+        this.voidEternalFlame = vf;
+        this.scene.add(vf.group);
+      }
+
       await this.transitionOverlay.fadeIn();
       this.gamePhase = "flying";
     } finally {
@@ -4109,6 +4143,7 @@ export class Game {
       this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
 
       await this.transitionOverlay.fadeOut();
+      this.removeVoidEternalFlame();
       this.inCosmicVoid = false;
       this.socketClient?.disconnect();
       this.remotePlanes.dispose();
@@ -4884,6 +4919,7 @@ export class Game {
     this.aurora?.dispose();
     this.ringManager?.dispose();
     this.collectVFX?.dispose();
+    this.removeVoidEternalFlame();
     this.localPlayer?.dispose();
     this.globe?.dispose();
     this.renderer?.dispose();
