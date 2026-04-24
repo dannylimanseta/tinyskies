@@ -203,7 +203,6 @@ function pickWorldPose(
   rand: () => number,
 ): { qPosition: Quaternion; heading: number; altitude: number } {
   const portalHalfHeight = R * 1.25 + T;
-  const safePad = 0.02;
   for (let k = 0; k < 500; k++) {
     const q = new Quaternion();
     const h0 = rand() * Math.PI * 2;
@@ -218,14 +217,15 @@ function pickWorldPose(
 
     const minAlt =
       surfaceAltitudeAt(worldSeed, terrainType, frame.up.x, frame.up.y, frame.up.z) + CARPET_HOVER_HEIGHT;
-    const altitude = Math.max(minAlt + 0.15, minAlt);
+    /** Just above ground / carpet — keep low so the portal reads near the terrain. */
+    const altitude = minAlt + 0.04;
     const heading = rand() * Math.PI * 2;
     return { qPosition: finalQ, heading, altitude };
   }
   return {
     qPosition: moveOnSphere(new Quaternion(), 0, 0.4),
     heading: 0,
-    altitude: 0.5 + portalHalfHeight,
+    altitude: 0.22 + portalHalfHeight,
   };
 }
 
