@@ -274,6 +274,8 @@ export class Game {
   private carpetPortalSystem: CarpetPortalSystem | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
   private inCosmicVoid = false;
+  /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
+  private coastCarpetDuringCosmicTransition = false;
   private gameSeed = 42;
   private gameTerrainType = "default";
   private lensFlare: LensFlare | null = null;
@@ -2133,6 +2135,8 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.gameTime += dt;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
+    /** Twister collision/audio uses world position; the mesh is only hidden in void, so we must also disable logic. */
+    const twisterSuppressed = this.inCosmicVoid || this.coastCarpetDuringCosmicTransition;
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
     if (this.localPlayer instanceof Boat && this.progression) {
@@ -2295,7 +2299,30 @@ export class Game {
     }
     if (this.gamePhase === "transitioning") {
       this.skyGremlins?.setSuspended(true);
-      this.localPlayer.group.updateMatrixWorld(true);
+      if (this.coastCarpetDuringCosmicTransition && this.localPlayer instanceof Carpet) {
+        this.localPlayer.update(dt, 0, false, false, false, false, false, { maintainSpeed: true });
+        this.cameraRig.update(
+          dt,
+          this.localPlayer.qPosition,
+          this.localPlayer.heading,
+          this.localPlayer.altitude,
+          globeRadius,
+          0,
+          this.localPlayer.speedRatio,
+          this.vehicleFeatures.cameraTiltScale,
+          this.vehicleFeatures.cameraFollowDistance,
+          this.vehicleFeatures.cameraFollowHeight,
+          this.vehicleFeatures.cameraSpeedZoom,
+          this.vehicleFeatures.cameraFovBoost,
+        );
+        if (this.playerLight) {
+          this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+          const up = this.playerLight.position.clone().normalize();
+          this.playerLight.position.addScaledVector(up, 0.15);
+        }
+      } else {
+        this.localPlayer.group.updateMatrixWorld(true);
+      }
       this.meteorShower?.update(
         dt,
         this.moonThreat?.progress ?? 0,
@@ -2342,38 +2369,40 @@ export class Game {
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
 
     // Twister spin: one burst per engagement, then cooldown (collision was re-arming every frame → infinite spin).
-    if (this.twisterSpinCooldown > 0) {
-      this.twisterSpinCooldown = Math.max(0, this.twisterSpinCooldown - dt);
-    }
-    if (this.waterSpouts) {
-      const playerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
-      if (
-        this.waterSpouts.checkCollision(playerPos, 0.45) &&
-        this.twisterSpinTimer <= 0 &&
-        this.twisterSpinCooldown <= 0
-      ) {
-        this.twisterSpinTimer = TWISTER_SPIN_DURATION_SEC;
+    if (!twisterSuppressed) {
+      if (this.twisterSpinCooldown > 0) {
+        this.twisterSpinCooldown = Math.max(0, this.twisterSpinCooldown - dt);
       }
-    }
-    if (this.twisterSpinTimer > 0) {
-      this.twisterSpinTimer -= dt;
-      if (this.twisterSpinTimer <= 0) {
-        this.twisterSpinTimer = 0;
-        this.twisterSpinCooldown = TWISTER_SPIN_COOLDOWN_SEC;
+      if (this.waterSpouts) {
+        const playerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+        if (
+          this.waterSpouts.checkCollision(playerPos, 0.45) &&
+          this.twisterSpinTimer <= 0 &&
+          this.twisterSpinCooldown <= 0
+        ) {
+          this.twisterSpinTimer = TWISTER_SPIN_DURATION_SEC;
+        }
       }
+      if (this.twisterSpinTimer > 0) {
+        this.twisterSpinTimer -= dt;
+        if (this.twisterSpinTimer <= 0) {
+          this.twisterSpinTimer = 0;
+          this.twisterSpinCooldown = TWISTER_SPIN_COOLDOWN_SEC;
+        }
 
-      const spinT = Math.max(0, this.twisterSpinTimer);
-      let spinInput = 8.0; // Plane
-      if (this.localPlayer.vehicle === "carpet") spinInput = 8.0;
-      else if (this.localPlayer.vehicle === "boat") spinInput = 7.0;
+        const spinT = Math.max(0, this.twisterSpinTimer);
+        let spinInput = 8.0; // Plane
+        if (this.localPlayer.vehicle === "carpet") spinInput = 8.0;
+        else if (this.localPlayer.vehicle === "boat") spinInput = 7.0;
 
-      // Start fast, slow down at the end
-      const spinDecay = spinT / TWISTER_SPIN_DURATION_SEC;
-      spinInput *= Math.pow(spinDecay, 0.5);
+        // Start fast, slow down at the end
+        const spinDecay = spinT / TWISTER_SPIN_DURATION_SEC;
+        spinInput *= Math.pow(spinDecay, 0.5);
 
-      turnRate = spinInput; // Force spin
-      forward = false; // Kill forward input
-      brake = true; // Force brake
+        turnRate = spinInput; // Force spin
+        forward = false; // Kill forward input
+        brake = true; // Force brake
+      }
     }
 
     this.localPlayer.visibility = 1;
@@ -2713,7 +2742,7 @@ export class Game {
       this.playerVehicle === "carpet"
         ? this.globe.getMoonstoneShakeTrauma(questPlayerPos)
         : 0;
-    const twisterTrauma = this.twisterSpinTimer > 0 ? 0.6 : 0;
+    const twisterTrauma = !twisterSuppressed && this.twisterSpinTimer > 0 ? 0.6 : 0;
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
     this.moonThreat?.update(dt);
@@ -2743,10 +2772,12 @@ export class Game {
       this.localPlayer.heading,
       questPlayerPos,
     );
-    this.waterSpouts?.update(dt);
+    if (!twisterSuppressed) {
+      this.waterSpouts?.update(dt);
+    }
 
     let twisterVol = 0;
-    if (this.waterSpouts) {
+    if (!twisterSuppressed && this.waterSpouts) {
       const dist = this.waterSpouts.getClosestDistance(questPlayerPos);
       if (dist < 3.0) {
         // Ramp volume up as we get closer (max volume at distance 0.5)
@@ -3983,95 +4014,107 @@ export class Game {
 
   private async doEnterCosmicVoid() {
     if (!this.transitionOverlay || this.inCosmicVoid) return;
-    this.gamePhase = "transitioning";
-    this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
+    this.coastCarpetDuringCosmicTransition = true;
+    this.twisterSpinTimer = 0;
+    this.twisterSpinCooldown = 0;
+    try {
+      this.gamePhase = "transitioning";
+      this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
 
-    this.audioManager.resumeContextIfNeeded();
-    this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
+      this.audioManager.resumeContextIfNeeded();
+      this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
 
-    await this.transitionOverlay.fadeOut();
-    this.inCosmicVoid = true;
-    this.stateSync?.stop();
-    this.remotePlanes.setVisible(false);
-    this.remotePlayerNameLabels.setVisible(false);
+      await this.transitionOverlay.fadeOut();
+      this.inCosmicVoid = true;
+      this.stateSync?.stop();
+      this.remotePlanes.setVisible(false);
+      this.remotePlayerNameLabels.setVisible(false);
 
-    this.globe.group.visible = false;
-    this.ringManager.group.visible = false;
-    if (this.waterSpouts) this.waterSpouts.group.visible = false;
-    if (this.meteorShower) this.meteorShower.group.visible = false;
-    if (this.oceanFish) this.oceanFish.group.visible = false;
-    if (this.skyJellyfish) this.skyJellyfish.group.visible = false;
-    if (this.campsiteMarker) this.campsiteMarker.group.visible = false;
-    for (const portal of this.cosmicWorldPortals) portal.group.visible = false;
-    if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = false;
-    if (this.carpetTrail) this.carpetTrail.group.visible = false;
-    if (this.carpetWake) this.carpetWake.group.visible = false;
-    if (this.carpetLeaves) this.carpetLeaves.group.visible = false;
-    for (const fb of this.birdFlocks) fb.group.visible = false;
-    for (const ra of this.rainbowArches) ra.group.visible = false;
-    for (const fl of this.lanternClusters) fl.group.visible = false;
-    for (const fc of this.fireflyClusters) fc.group.visible = false;
-    for (const v of this.volcanoes) v.group.visible = false;
-    if (this.braziers) this.braziers.setVisible(false);
-    if (this.moonThreat) this.moonThreat.group.visible = false;
-    if (this.gremlinHearts) this.gremlinHearts.group.visible = false;
-    if (this.packageQuest) this.packageQuest.group.visible = false;
-    if (this.collectVFX) this.collectVFX.group.visible = false;
-    
-    this.packageQuestHUD.hideBubble();
-    this.packageQuestHUD.hideDeliveryTarget();
-    this.setPortalHintVisible(false);
+      this.globe.group.visible = false;
+      this.ringManager.group.visible = false;
+      if (this.waterSpouts) this.waterSpouts.group.visible = false;
+      if (this.meteorShower) this.meteorShower.group.visible = false;
+      if (this.oceanFish) this.oceanFish.group.visible = false;
+      if (this.skyJellyfish) this.skyJellyfish.group.visible = false;
+      if (this.campsiteMarker) this.campsiteMarker.group.visible = false;
+      for (const portal of this.cosmicWorldPortals) portal.group.visible = false;
+      if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = false;
+      if (this.carpetTrail) this.carpetTrail.group.visible = false;
+      if (this.carpetWake) this.carpetWake.group.visible = false;
+      if (this.carpetLeaves) this.carpetLeaves.group.visible = false;
+      for (const fb of this.birdFlocks) fb.group.visible = false;
+      for (const ra of this.rainbowArches) ra.group.visible = false;
+      for (const fl of this.lanternClusters) fl.group.visible = false;
+      for (const fc of this.fireflyClusters) fc.group.visible = false;
+      for (const v of this.volcanoes) v.group.visible = false;
+      if (this.braziers) this.braziers.setVisible(false);
+      if (this.moonThreat) this.moonThreat.group.visible = false;
+      if (this.gremlinHearts) this.gremlinHearts.group.visible = false;
+      if (this.packageQuest) this.packageQuest.group.visible = false;
+      if (this.collectVFX) this.collectVFX.group.visible = false;
 
-    this.applyDayNightPreset();
+      this.packageQuestHUD.hideBubble();
+      this.packageQuestHUD.hideDeliveryTarget();
+      this.setPortalHintVisible(false);
 
-    await this.transitionOverlay.fadeIn();
-    this.gamePhase = "flying";
+      this.applyDayNightPreset();
+
+      await this.transitionOverlay.fadeIn();
+      this.gamePhase = "flying";
+    } finally {
+      this.coastCarpetDuringCosmicTransition = false;
+    }
   }
 
   public async exitCosmicVoid() {
     if (!this.transitionOverlay || !this.inCosmicVoid) return;
-    this.gamePhase = "transitioning";
-    this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
+    this.coastCarpetDuringCosmicTransition = true;
+    try {
+      this.gamePhase = "transitioning";
+      this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;
 
-    this.audioManager.resumeContextIfNeeded();
-    this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
+      this.audioManager.resumeContextIfNeeded();
+      this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
 
-    await this.transitionOverlay.fadeOut();
-    this.inCosmicVoid = false;
-    this.socketClient?.disconnect();
-    this.remotePlanes.dispose();
-    this.initNetworking(this.worldSlug); // Restart stateSync and socket
-    this.remotePlanes.setVisible(true);
-    this.remotePlayerNameLabels.setVisible(true);
+      await this.transitionOverlay.fadeOut();
+      this.inCosmicVoid = false;
+      this.socketClient?.disconnect();
+      this.remotePlanes.dispose();
+      this.initNetworking(this.worldSlug); // Restart stateSync and socket
+      this.remotePlanes.setVisible(true);
+      this.remotePlayerNameLabels.setVisible(true);
 
-    this.globe.group.visible = true;
-    this.ringManager.group.visible = true;
-    if (this.waterSpouts) this.waterSpouts.group.visible = true;
-    if (this.meteorShower) this.meteorShower.group.visible = true;
-    if (this.oceanFish) this.oceanFish.group.visible = true;
-    if (this.skyJellyfish) this.skyJellyfish.group.visible = true;
-    if (this.campsiteMarker) this.campsiteMarker.group.visible = true;
-    for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
-    if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
-    if (this.carpetTrail) this.carpetTrail.group.visible = true;
-    if (this.carpetWake) this.carpetWake.group.visible = true;
-    if (this.carpetLeaves) this.carpetLeaves.group.visible = true;
-    for (const fb of this.birdFlocks) fb.group.visible = true;
-    for (const ra of this.rainbowArches) ra.group.visible = true;
-    for (const fl of this.lanternClusters) fl.group.visible = true;
-    for (const fc of this.fireflyClusters) fc.group.visible = true;
-    for (const v of this.volcanoes) v.group.visible = true;
-    if (this.braziers) this.braziers.setVisible(true);
-    if (this.moonThreat) this.moonThreat.group.visible = true;
-    if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
-    if (this.packageQuest) this.packageQuest.group.visible = true;
-    if (this.collectVFX) this.collectVFX.group.visible = true;
-    this.setPortalHintVisible(true);
+      this.globe.group.visible = true;
+      this.ringManager.group.visible = true;
+      if (this.waterSpouts) this.waterSpouts.group.visible = true;
+      if (this.meteorShower) this.meteorShower.group.visible = true;
+      if (this.oceanFish) this.oceanFish.group.visible = true;
+      if (this.skyJellyfish) this.skyJellyfish.group.visible = true;
+      if (this.campsiteMarker) this.campsiteMarker.group.visible = true;
+      for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
+      if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
+      if (this.carpetTrail) this.carpetTrail.group.visible = true;
+      if (this.carpetWake) this.carpetWake.group.visible = true;
+      if (this.carpetLeaves) this.carpetLeaves.group.visible = true;
+      for (const fb of this.birdFlocks) fb.group.visible = true;
+      for (const ra of this.rainbowArches) ra.group.visible = true;
+      for (const fl of this.lanternClusters) fl.group.visible = true;
+      for (const fc of this.fireflyClusters) fc.group.visible = true;
+      for (const v of this.volcanoes) v.group.visible = true;
+      if (this.braziers) this.braziers.setVisible(true);
+      if (this.moonThreat) this.moonThreat.group.visible = true;
+      if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
+      if (this.packageQuest) this.packageQuest.group.visible = true;
+      if (this.collectVFX) this.collectVFX.group.visible = true;
+      this.setPortalHintVisible(true);
 
-    this.applyDayNightPreset();
+      this.applyDayNightPreset();
 
-    await this.transitionOverlay.fadeIn();
-    this.gamePhase = "flying";
+      await this.transitionOverlay.fadeIn();
+      this.gamePhase = "flying";
+    } finally {
+      this.coastCarpetDuringCosmicTransition = false;
+    }
   }
 
   private handleCarpetPortalTeleport() {

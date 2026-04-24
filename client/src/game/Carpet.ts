@@ -136,6 +136,8 @@ export class Carpet {
     brake: boolean,
     elevate: boolean = false,
     _paintball: boolean = false,
+    _descend: boolean = false,
+    options?: { maintainSpeed?: boolean },
   ) {
     if (this.timeUniform) this.timeUniform.value += dt;
 
@@ -162,7 +164,9 @@ export class Carpet {
       this.rollAngle = Math.min(next, rollTarget);
     } else {
       this.rollAngle = 0;
-      if (forward) {
+      if (options?.maintainSpeed) {
+        /* Inertial coast (e.g. full-screen transition): keep speed, still steer with turnRate. */
+      } else if (forward) {
         this.speed = Math.min(effMaxSpeed, this.speed + ACCEL * dt);
       } else if (brake) {
         this.speed = Math.max(MIN_SPEED, this.speed - BRAKE_DECEL * dt);
