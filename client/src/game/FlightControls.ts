@@ -6,9 +6,9 @@ export interface ControlState {
   brake: boolean;
   elevate: boolean;
   descend: boolean;
-  /** One-shot: fire paintball (plane); consumed each frame read. */
+  /** One-shot: fire paintball (plane) or capybara flame (carpet+Space); consumed each frame read. */
   paintball: boolean;
-  /** One-shot: vehicle special action (e.g. carpet portal); consumed each frame read. */
+  /** One-shot: vehicle special (carpet portal on E); consumed each frame read. */
   specialAction: boolean;
   interact: boolean;
 }
@@ -72,6 +72,8 @@ export class FlightControls {
     const key = e.key.toLowerCase();
     if (key === " " && !e.repeat) {
       this.paintballQueued = true;
+    }
+    if (key === "e" && !e.repeat) {
       this.specialActionQueued = true;
     }
     if (key === "f" && !e.repeat) {

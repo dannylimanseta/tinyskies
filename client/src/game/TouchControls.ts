@@ -11,6 +11,8 @@ export class TouchControls {
   private joyBase: HTMLDivElement;
   private joyThumb: HTMLDivElement;
   private actionBtn: HTMLButtonElement;
+  /** Carpet: capybara flame (maps to same one-shot as keyboard Space). */
+  private carpetFlameBtn: HTMLButtonElement;
   private elevateBtn: HTMLButtonElement;
   private descendBtn: HTMLButtonElement;
 
@@ -23,6 +25,9 @@ export class TouchControls {
   private actionTouchId: number | null = null;
   private actionQueued = false;
   private actionHeld = false;
+
+  private carpetFlameTouchId: number | null = null;
+  private carpetFlameQueued = false;
 
   private elevateTouchId: number | null = null;
   private elevateHeld = false;
@@ -59,6 +64,14 @@ export class TouchControls {
     this.actionBtn.textContent = "E";
     this.el.appendChild(this.actionBtn);
 
+    this.carpetFlameBtn = document.createElement("button");
+    this.carpetFlameBtn.className = "tc-carpet-flame-btn";
+    this.carpetFlameBtn.type = "button";
+    this.carpetFlameBtn.setAttribute("aria-label", "Flame");
+    this.carpetFlameBtn.textContent = "●";
+    this.carpetFlameBtn.style.display = "none";
+    this.el.appendChild(this.carpetFlameBtn);
+
     container.appendChild(this.el);
     this.applyStyles();
 
@@ -78,6 +91,10 @@ export class TouchControls {
     this.actionBtn.addEventListener("touchstart", this.onActionStart, { passive: false });
     window.addEventListener("touchend", this.onActionEnd);
     window.addEventListener("touchcancel", this.onActionEnd);
+
+    this.carpetFlameBtn.addEventListener("touchstart", this.onCarpetFlameStart, { passive: false });
+    window.addEventListener("touchend", this.onCarpetFlameEnd);
+    window.addEventListener("touchcancel", this.onCarpetFlameEnd);
   }
 
   get enabled() { return this._enabled; }
@@ -92,13 +109,16 @@ export class TouchControls {
     if (vehicle === "plane") {
       this.actionBtn.textContent = "●";
       this.actionBtn.style.display = "";
+      this.carpetFlameBtn.style.display = "none";
       this.descendBtn.style.display = "none";
     } else if (vehicle === "carpet") {
-      this.actionBtn.textContent = "⟳";
-      this.actionBtn.style.display = "none";
+      this.actionBtn.textContent = "E";
+      this.actionBtn.style.display = "";
+      this.carpetFlameBtn.style.display = "";
       this.descendBtn.style.display = "none";
     } else {
       this.actionBtn.style.display = "none";
+      this.carpetFlameBtn.style.display = "none";
       this.descendBtn.style.display = "none";
     }
   }
@@ -127,10 +147,16 @@ export class TouchControls {
     const elevate = this.elevateHeld;
     const descend = this.descendHeld;
     let paintball = false;
+    let specialAction = false;
 
     if (this.vehicle === "plane") {
       paintball = this.actionQueued;
       this.actionQueued = false;
+    } else if (this.vehicle === "carpet") {
+      specialAction = this.actionQueued;
+      this.actionQueued = false;
+      paintball = this.carpetFlameQueued;
+      this.carpetFlameQueued = false;
     }
 
     return {
@@ -140,7 +166,7 @@ export class TouchControls {
       elevate,
       descend,
       paintball,
-      specialAction: false,
+      specialAction,
       interact: false,
     };
   }
@@ -220,6 +246,26 @@ export class TouchControls {
     }
   };
 
+  private onCarpetFlameStart = (e: TouchEvent) => {
+    e.preventDefault();
+    if (this.carpetFlameTouchId !== null) return;
+    const t = e.changedTouches[0];
+    this.carpetFlameTouchId = t.identifier;
+    this.carpetFlameQueued = true;
+    this.carpetFlameBtn.classList.add("active");
+  };
+
+  private onCarpetFlameEnd = (e: TouchEvent) => {
+    if (this.carpetFlameTouchId === null) return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === this.carpetFlameTouchId) {
+        this.carpetFlameTouchId = null;
+        this.carpetFlameBtn.classList.remove("active");
+        return;
+      }
+    }
+  };
+
   /* ── Elevate button touch handling ────────────────────── */
 
   private onElevateStart = (e: TouchEvent) => {
@@ -277,6 +323,9 @@ export class TouchControls {
     this.actionQueued = false;
     this.actionHeld = false;
     this.actionBtn.classList.remove("active");
+    this.carpetFlameTouchId = null;
+    this.carpetFlameQueued = false;
+    this.carpetFlameBtn.classList.remove("active");
     this.elevateTouchId = null;
     this.elevateHeld = false;
     this.elevateBtn.classList.remove("active");
@@ -324,7 +373,8 @@ export class TouchControls {
       }
       .tc-elevate-btn,
       .tc-descend-btn,
-      .tc-action-btn {
+      .tc-action-btn,
+      .tc-carpet-flame-btn {
         position: absolute;
         right: max(36px, calc(12px + env(safe-area-inset-right)));
         width: 56px;
@@ -353,19 +403,24 @@ export class TouchControls {
       .tc-descend-btn {
         bottom: max(180px, calc(168px + env(safe-area-inset-bottom)));
       }
+      .tc-carpet-flame-btn {
+        bottom: max(180px, calc(168px + env(safe-area-inset-bottom)));
+      }
       .tc-action-btn {
         bottom: max(112px, calc(100px + env(safe-area-inset-bottom)));
       }
       .tc-elevate-btn.active,
       .tc-descend-btn.active,
-      .tc-action-btn.active {
+      .tc-action-btn.active,
+      .tc-carpet-flame-btn.active {
         background: rgba(255, 255, 255, 0.20);
       }
       @media (max-width: 480px) {
         .tc-joy-base,
         .tc-elevate-btn,
         .tc-descend-btn,
-        .tc-action-btn {
+        .tc-action-btn,
+        .tc-carpet-flame-btn {
           backdrop-filter: none;
         }
       }
@@ -387,6 +442,9 @@ export class TouchControls {
     this.actionBtn.removeEventListener("touchstart", this.onActionStart);
     window.removeEventListener("touchend", this.onActionEnd);
     window.removeEventListener("touchcancel", this.onActionEnd);
+    this.carpetFlameBtn.removeEventListener("touchstart", this.onCarpetFlameStart);
+    window.removeEventListener("touchend", this.onCarpetFlameEnd);
+    window.removeEventListener("touchcancel", this.onCarpetFlameEnd);
     this.el.remove();
     document.getElementById("touch-controls-styles")?.remove();
   }

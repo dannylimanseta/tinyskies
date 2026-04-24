@@ -61,6 +61,7 @@ import { RingManager } from "./Rings";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { pickRandomVehicleColor } from "./vehicleColors";
 import { CarpetPortalSystem } from "./CarpetPortalSystem";
+import { CapybaraFlameShots } from "./CapybaraFlameShots";
 import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
@@ -272,6 +273,7 @@ export class Game {
   private carpetWake!: CarpetWake;
   private carpetLeaves!: CarpetLeaves;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
+  private capybaraFlameShots: CapybaraFlameShots | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
   private inCosmicVoid = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
@@ -1027,9 +1029,11 @@ export class Game {
         this.cosmicWorldPortals.push(portal);
         this.scene.add(portal.group);
       }
+      this.capybaraFlameShots = new CapybaraFlameShots(this.scene, globeRadius);
     } else {
       this.carpetPortalSystem = null;
       this.cosmicWorldPortals = [];
+      this.capybaraFlameShots = null;
     }
 
     this.lensFlare = new LensFlare();
@@ -1532,6 +1536,8 @@ export class Game {
       this.carpetPortalSystem.dispose();
       this.carpetPortalSystem = null;
     }
+    this.capybaraFlameShots?.dispose();
+    this.capybaraFlameShots = null;
     for (const portal of this.cosmicWorldPortals) {
       this.scene.remove(portal.group);
       portal.dispose();
@@ -2408,7 +2414,13 @@ export class Game {
     this.localPlayer.visibility = 1;
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, paintball, descend);
 
-    if (specialAction && this.localPlayer instanceof Carpet && this.carpetPortalSystem && !this.inCosmicVoid) {
+    if (
+      specialAction &&
+      this.localPlayer instanceof Carpet &&
+      this.carpetPortalSystem &&
+      !this.inCosmicVoid &&
+      this.portalInteractionSuppressTimer <= 0
+    ) {
       this.carpetPortalSystem.placePortal(this.localPlayer);
     }
 
@@ -2421,6 +2433,15 @@ export class Game {
 
     if (paintball && this.localPlayer instanceof Plane && this.paintballSystem) {
       this.paintballSystem.tryLocalFire(this.localPlayer);
+    }
+    if (
+      paintball &&
+      this.localPlayer instanceof Carpet &&
+      this.capybaraFlameShots &&
+      this.localPlayer.hasCapybara &&
+      this.portalInteractionSuppressTimer <= 0
+    ) {
+      this.capybaraFlameShots.tryFire(this.localPlayer, this.audioManager);
     }
 
     const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0 || this.inCosmicVoid;
@@ -2485,6 +2506,7 @@ export class Game {
       this.skyGremlins?.setSuspended(true);
     }
     this.paintballSystem?.update(dt, this.cameraRig.camera.position);
+    this.capybaraFlameShots?.update(dt);
 
     this.localPlayer.group.updateMatrixWorld(true);
 
@@ -4827,6 +4849,8 @@ export class Game {
       this.carpetPortalSystem.dispose();
       this.carpetPortalSystem = null;
     }
+    this.capybaraFlameShots?.dispose();
+    this.capybaraFlameShots = null;
     for (const portal of this.cosmicWorldPortals) {
       this.scene?.remove(portal.group);
       portal.dispose();

@@ -80,6 +80,11 @@ export class Carpet {
   isOverWater = false;
   private tassels: { obj: Object3D; baseY: number; cx: number; cz: number }[] = [];
   private capybara: { obj: Object3D; baseY: number; cx: number; cz: number } | null = null;
+
+  /** True once the capybara mesh has finished loading; used for capy-only actions (e.g. flame shots). */
+  get hasCapybara() {
+    return this.capybara != null;
+  }
   private static readonly TASSEL_CURL_MAX = Math.PI / 2;
   private tasselCurl = 0;
   private timeUniform: IUniform<number> | null = null;
