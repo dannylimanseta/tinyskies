@@ -10,7 +10,7 @@ import {
 import type { AudioManager } from "../audio/AudioManager";
 import { holoVert } from "./Rings";
 
-const SHIELD_MAX_HP = 8;
+const SHIELD_MAX_HP = 12;
 const COLLISION_RADIUS = 0.34;
 const HIT_BOOST_SMOOTH = 11;
 const HIT_FLASH_DECAY = 12.0;
@@ -46,17 +46,17 @@ void main() {
   vec3 rainbow = hueShift(hue);
 
   float glint = 0.88 + 0.12 * sin(facetAngle * 28.0 + time * 4.0);
-  float pulse = 0.82 + 0.18 * sin(time * 2.2 + phaseOffset);
+  float pulse = 0.86 + 0.14 * sin(time * 2.2 + phaseOffset);
 
   // Cooler than raw diamond, but bright enough to read in the void
-  vec3 cool = vec3(0.38, 0.78, 0.96);
-  vec3 base = mix(rainbow, cool, 0.72) * (0.58 + fresnel * 0.38) * glint * pulse;
-  base *= 0.58;
+  vec3 cool = vec3(0.45, 0.9, 1.0);
+  vec3 base = mix(rainbow, cool, 0.76) * (0.64 + fresnel * 0.44) * glint * pulse;
+  base *= 0.82;
 
-  vec3 col = mix(base, vec3(1.0), fresnel * 0.16);
+  vec3 col = mix(base, vec3(1.0), fresnel * 0.28);
   col = mix(col, vec3(1.0), uHitFlash * 0.92);
 
-  float a = (0.14 + fresnel * 0.3) * pulse * glint * spawnScale * 0.68;
+  float a = (0.24 + fresnel * 0.45) * pulse * glint * spawnScale * 0.92;
   a *= uLowHpPulse;
   a = min(1.0, a);
 

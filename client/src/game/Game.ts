@@ -23,6 +23,7 @@ import {
   AdditiveBlending,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
+import { surfaceAltitudeAt } from "./TerrainSurface";
 import {
   BRAZIER_MOON_PAUSE_MS,
   getVehicleFeatures,
@@ -35,7 +36,7 @@ import { AudioManager } from "../audio/AudioManager";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
-import { Carpet } from "./Carpet";
+import { Carpet, CARPET_HOVER_HEIGHT } from "./Carpet";
 import { FlightControls } from "./FlightControls";
 import { TouchControls } from "./TouchControls";
 import { CameraRig } from "./CameraRig";
@@ -4249,13 +4250,24 @@ export class Game {
         this.removeVoidEternalFlame();
         const c = this.localPlayer;
         c.group.updateMatrixWorld(true);
-        const p = new Vector3().setFromMatrixPosition(c.group.matrixWorld);
+        const globeR = this.worldConfig?.globeRadius ?? 5;
         const frame = tangentFrame(c.qPosition);
         const forward = new Vector3()
           .addScaledVector(frame.north, Math.cos(c.heading))
           .addScaledVector(frame.east, Math.sin(c.heading));
-        p.addScaledVector(forward, 0.55);
-        p.addScaledVector(frame.up, 0.08);
+        const { up } = frame;
+        const defaultAlt =
+          surfaceAltitudeAt(
+            this.gameSeed,
+            this.gameTerrainType,
+            up.x,
+            up.y,
+            up.z,
+          ) + CARPET_HOVER_HEIGHT;
+        const shellR = globeR + defaultAlt;
+        const p = cartesianFromSpherical(c.qPosition, defaultAlt, globeR);
+        p.addScaledVector(forward, 1.22);
+        p.normalize().multiplyScalar(shellR);
         const vf = new EternalFlameWorld();
         await vf.init();
         vf.setWorldPosition(p.x, p.y, p.z);

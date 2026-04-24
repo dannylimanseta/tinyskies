@@ -17,12 +17,12 @@ import type { CapybaraFlameShots } from "./CapybaraFlameShots";
 import type { PaintballSystem } from "./PaintballSystem";
 import type { VoidFlameShield } from "./VoidFlameShield";
 
-const WING_SPEED = 28;
-const FLIGHT_SPEED = 0.3;
-const TURN_SPEED = 1.35;
+const WING_SPEED = 18;
+const FLIGHT_SPEED = 0.18;
+const TURN_SPEED = 0.9;
 /** Slightly above the carpet’s spherical shell so moths read a bit “higher” in the void. */
 const MOTH_RADIAL_LIFT = 0.05;
-const JITTER_AMP = 0.9;
+const JITTER_AMP = 0.62;
 const MOTH_MAX_HP = 3;
 const MOTH_HIT_RADIUS = 0.028;
 const HP_BAR_W = 0.08;
@@ -410,7 +410,7 @@ export class VoidMothsManager {
     const mothShellR = playerR + MOTH_RADIAL_LIFT;
 
     if (this.spawnTimer <= 0 && this.moths.length < 15 && targetPos) {
-      this.spawnTimer = 2.0 + Math.random() * 2.5;
+      this.spawnTimer = 4.0 + Math.random() * 4.0;
       const moth = new VoidMoth();
       this.group.add(moth.getHpBarRoot());
       const angle = Math.random() * Math.PI * 2;

@@ -16,9 +16,10 @@ import type { Carpet } from "./Carpet";
 import { paintballRayFromPlaneState } from "./SphericalMath";
 
 const SHOT_SPEED = 3.5;
-/** Cooldown starts after the 3rd ball of a burst. */
+/** Cooldown after each burst completes. */
 const COOLDOWN_MS = 300;
-export const CAPYBARA_BALL_RADIUS = 0.016;
+const SHOTS_PER_BURST = 1;
+export const CAPYBARA_BALL_RADIUS = 0.008;
 const BALL_RADIUS = CAPYBARA_BALL_RADIUS;
 /** Tangent-arc max travel before fade-out. */
 const RANGE_FACTOR = 0.36;
@@ -26,17 +27,15 @@ const RANGE_FACTOR = 0.36;
 const MUZZLE_UP = 0.026;
 /** Forward offset from carpet center to capybara snout along the tangent plane. */
 const MUZZLE_FORWARD = 0.1;
-/** Base spread between the three shots (radians) in the tangent plane. */
-const TRIPLE_SPREAD = 0.018;
-/** Additional random rotation per shot (radians). */
+/** Optional yaw jitter on the single shot (radians). */
 const ANGLE_JITTER = 0.008;
-/** Delay between the three orbs in one burst. */
+/** Delay after shot 0 before shot 1, etc. (only used if SHOTS_PER_BURST > 1). */
 const BURST_SPACING_MS = 90;
 
 const WHITE = 0xffffff;
 const CORE_OPACITY = 0.75;
 /** World-space diameter of the sprite glow halo. */
-const GLOW_SIZE = 0.18;
+const GLOW_SIZE = 0.09;
 /** Peak opacity of the glow sprite (additive, so actual brightness is higher). */
 const GLOW_OPACITY = 0.9;
 
@@ -82,11 +81,10 @@ type ActiveBurst = {
   r0: number;
   rHat: Vector3;
   w0: Vector3;
-  /** Unix ms for shots 0,1,2. */
-  atMs: [number, number, number];
-  /** Next shot index to emit (0..3). */
+  /** Emission time for each shot in the burst. */
+  atMs: number[];
   next: number;
-  deltas: [number, number, number];
+  deltas: number[];
 };
 
 /**
@@ -161,17 +159,19 @@ export class CapybaraFlameShots {
 
     const t0 = now;
     const j = () => (Math.random() * 2 - 1) * ANGLE_JITTER;
+    const atMs: number[] = [];
+    const deltas: number[] = [];
+    for (let s = 0; s < SHOTS_PER_BURST; s++) {
+      atMs.push(t0 + s * BURST_SPACING_MS);
+      deltas.push(j());
+    }
     this.activeBurst = {
       r0,
       rHat: rHatMuzzle,
       w0: w0.clone(),
-      atMs: [t0, t0 + BURST_SPACING_MS, t0 + 2 * BURST_SPACING_MS],
+      atMs,
       next: 0,
-      deltas: [
-        -TRIPLE_SPREAD + j(),
-        j() * 0.15,
-        TRIPLE_SPREAD + j(),
-      ] as [number, number, number],
+      deltas,
     };
 
     this.emitReadyBursts(performance.now());
@@ -185,12 +185,12 @@ export class CapybaraFlameShots {
     const b = this.activeBurst;
     if (!b) return;
     const wTmp = new Vector3();
-    while (b.next < 3 && now + 0.5 >= b.atMs[b.next]!) {
-      wRotated(b.w0, b.rHat, b.deltas[b.next]!, wTmp);
+    while (b.next < b.atMs.length && now + 0.5 >= b.atMs[b.next]!) {
+      wRotated(b.w0, b.rHat, b.deltas[b.next] ?? 0, wTmp);
       this.spawnOne(b.r0, b.rHat, wTmp);
       b.next += 1;
     }
-    if (b.next >= 3) {
+    if (b.next >= b.atMs.length) {
       this.lastBurstEndMs = performance.now();
       this.activeBurst = null;
     }

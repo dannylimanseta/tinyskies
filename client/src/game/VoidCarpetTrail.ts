@@ -16,7 +16,8 @@ import {
 } from "three";
 
 const TRAIL_LENGTH = 52;
-const HALF_WIDTH = 0.12;
+/** 35% of original half-width (65% narrower). */
+const HALF_WIDTH = 0.042;
 
 const vert = `
 attribute float alpha;
