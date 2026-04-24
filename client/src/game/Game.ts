@@ -64,6 +64,7 @@ import { CarpetPortalSystem } from "./CarpetPortalSystem";
 import { CapybaraFlameShots } from "./CapybaraFlameShots";
 import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { EternalFlameWorld } from "./EternalFlameWorld";
+import { VoidMothsManager } from "./VoidMoths";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
@@ -279,6 +280,7 @@ export class Game {
   private inCosmicVoid = false;
   /** 3D eternal-flame in front of the player while in the cosmic void (carpet). */
   private voidEternalFlame: EternalFlameWorld | null = null;
+  private voidMoths: VoidMothsManager | null = null;
   /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
   private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
@@ -2210,7 +2212,9 @@ export class Game {
       }
 
       this.globe.update(dt);
-      this.moonThreat?.update(dt);
+      if (!this.inCosmicVoid && !this.voidEntryInProgress) {
+        this.moonThreat?.update(dt);
+      }
       for (const portal of this.cosmicWorldPortals) {
         portal.update(dt, this.cameraRig.camera, 0); // Hide during intro
       }
@@ -2278,7 +2282,9 @@ export class Game {
     if (this.gamePhase === "campsite" && this.campsiteScene) {
       this.skyGremlins?.setSuspended(true);
       this.localPlayer.visibility = 1;
-      this.moonThreat?.update(dt);
+      if (!this.inCosmicVoid && !this.voidEntryInProgress) {
+        this.moonThreat?.update(dt);
+      }
       this.localPlayer.group.updateMatrixWorld(true);
       this.meteorShower?.update(
         dt,
@@ -2774,7 +2780,9 @@ export class Game {
     const twisterTrauma = !twisterSuppressed && this.twisterSpinTimer > 0 ? 0.6 : 0;
 
     /* Moon threat + cinematic before package/balloon dialogue so nothing spawns the same frame impact starts. */
-    this.moonThreat?.update(dt);
+    if (!this.inCosmicVoid && !this.voidEntryInProgress) {
+      this.moonThreat?.update(dt);
+    }
     
     // Fade in portals over 2 seconds after the intro sequence ends
     const portalOpacity = Math.max(0, Math.min(1, (this.gameTime - Game.INTRO_DURATION) / 2.0));
@@ -2783,8 +2791,25 @@ export class Game {
     }
       if (this.inCosmicVoid) {
         this.voidEternalFlame?.update(dt, this.cameraRig.camera);
+        if (this.voidEternalFlame && this.localPlayer instanceof Carpet) {
+          this.localPlayer.group.updateMatrixWorld(true);
+          this.voidMoths?.update(
+            dt,
+            this.voidEternalFlame.group.position,
+            cartesianFromSpherical(
+              this.localPlayer.qPosition,
+              this.localPlayer.altitude,
+              globeRadius,
+            ),
+            this.cameraRig.camera,
+            this.capybaraFlameShots,
+          );
+        }
       }
-    const moonThreatTrauma = this.moonThreat?.getShakeTrauma() ?? 0;
+    const moonThreatTrauma =
+      this.inCosmicVoid || this.voidEntryInProgress
+        ? 0
+        : (this.moonThreat?.getShakeTrauma() ?? 0);
     this.cameraRig.setTrauma(Math.max(moonThreatTrauma, moonstoneShakeTrauma, twisterTrauma));
     if (this.moonThreat) {
       if (this.moonThreat.isNearImpact || this.moonThreat.hasImpacted) {
@@ -2887,7 +2912,11 @@ export class Game {
     }
 
     const moonProg = this.moonThreat?.progress ?? 0;
-    if (moonProg >= 0.75) {
+    if (
+      moonProg >= 0.75 &&
+      !this.inCosmicVoid &&
+      !this.voidEntryInProgress
+    ) {
       this.panicDialogueCooldown -= dt;
       if (this.panicDialogueCooldown <= 0 && !this.packageQuestHUD.isBubbleShowing) {
         const { npcName, line } = pickPanicLine();
@@ -4050,6 +4079,11 @@ export class Game {
   }
 
   private removeVoidEternalFlame() {
+    if (this.voidMoths) {
+      this.voidMoths.group.removeFromParent();
+      this.voidMoths.dispose();
+      this.voidMoths = null;
+    }
     if (!this.voidEternalFlame) return;
     this.voidEternalFlame.group.removeFromParent();
     this.voidEternalFlame.dispose();
@@ -4094,7 +4128,10 @@ export class Game {
       for (const fc of this.fireflyClusters) fc.group.visible = false;
       for (const v of this.volcanoes) v.group.visible = false;
       if (this.braziers) this.braziers.setVisible(false);
-      if (this.moonThreat) this.moonThreat.group.visible = false;
+      if (this.moonThreat) {
+        this.moonThreat.group.visible = false;
+        this.moonThreat.setSceneMoonVfxVisible(false);
+      }
       if (this.gremlinHearts) this.gremlinHearts.group.visible = false;
       if (this.packageQuest) this.packageQuest.group.visible = false;
       if (this.collectVFX) this.collectVFX.group.visible = false;
@@ -4122,6 +4159,20 @@ export class Game {
         vf.alignToCamera(this.cameraRig.camera);
         this.voidEternalFlame = vf;
         this.scene.add(vf.group);
+
+        this.voidMoths = new VoidMothsManager(
+          this.paintballSystem,
+          (isKill) => {
+            this.cameraRig.shake(isKill ? 0.055 : 0.045, isKill ? 0.3 : 0.25);
+            this.vehicleFlashTimer = 0.14;
+            if (isKill) {
+              this.playGremlinDeathSfx(false);
+            } else {
+              this.maybePlayGremlinHitSfx(false);
+            }
+          },
+        );
+        this.scene.add(this.voidMoths.group);
       }
 
       await this.transitionOverlay.fadeIn();
@@ -4169,7 +4220,10 @@ export class Game {
       for (const fc of this.fireflyClusters) fc.group.visible = true;
       for (const v of this.volcanoes) v.group.visible = true;
       if (this.braziers) this.braziers.setVisible(true);
-      if (this.moonThreat) this.moonThreat.group.visible = true;
+      if (this.moonThreat) {
+        this.moonThreat.group.visible = true;
+        this.moonThreat.setSceneMoonVfxVisible(true);
+      }
       if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
       if (this.packageQuest) this.packageQuest.group.visible = true;
       if (this.collectVFX) this.collectVFX.group.visible = true;

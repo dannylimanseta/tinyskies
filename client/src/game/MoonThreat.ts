@@ -334,6 +334,19 @@ if (uMolten > 0.01) {
     scene.add(this.group);
   }
 
+  /**
+   * Embers, trail, debris, and impact shockwave rings can be parented to the scene (not `group`);
+   * toggle them when hiding the moon (e.g. cosmic void) so nothing glows in the background.
+   */
+  setSceneMoonVfxVisible(visible: boolean) {
+    if (this.emberPoints) this.emberPoints.visible = visible;
+    if (this.trailMesh) this.trailMesh.visible = visible;
+    if (this.debrisMesh) this.debrisMesh.visible = visible;
+    for (const w of this.shockwaveWaves) {
+      w.visible = visible;
+    }
+  }
+
   /* ── Fire particle setup ─────────────────────────────────── */
 
   private initEmbers() {

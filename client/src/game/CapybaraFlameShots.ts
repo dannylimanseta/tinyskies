@@ -18,7 +18,8 @@ import { paintballRayFromPlaneState } from "./SphericalMath";
 const SHOT_SPEED = 3.5;
 /** Cooldown starts after the 3rd ball of a burst. */
 const COOLDOWN_MS = 300;
-const BALL_RADIUS = 0.016;
+export const CAPYBARA_BALL_RADIUS = 0.016;
+const BALL_RADIUS = CAPYBARA_BALL_RADIUS;
 /** Tangent-arc max travel before fade-out. */
 const RANGE_FACTOR = 0.36;
 /** Radial (up) offset from carpet center to capybara muzzle (bodyH/2 + model.position.y). */
@@ -267,6 +268,27 @@ export class CapybaraFlameShots {
 
       if (p.traveled >= p.maxRange || fade <= 0.02) {
         this.removeOrb(p, i);
+      }
+    }
+  }
+
+  /**
+   * For each target sphere, if any orb is within (orb radius + target radius) the `onHit` callback runs
+   * and the orb is removed. Useful for void moths and similar (run after `update`).
+   */
+  testSphereHits(
+    targets: { position: Vector3; hitRadius: number; onHit: () => void }[],
+  ) {
+    if (targets.length === 0) return;
+    for (let i = this.orbs.length - 1; i >= 0; i--) {
+      const p = this.orbs[i]!;
+      const op = p.group.position;
+      for (const t of targets) {
+        if (t.position.distanceTo(op) < BALL_RADIUS + t.hitRadius) {
+          t.onHit();
+          this.removeOrb(p, i);
+          break;
+        }
       }
     }
   }
