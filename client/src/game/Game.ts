@@ -4115,7 +4115,7 @@ export class Game {
           .addScaledVector(frame.north, Math.cos(c.heading))
           .addScaledVector(frame.east, Math.sin(c.heading));
         p.addScaledVector(forward, 0.55);
-        p.addScaledVector(frame.up, 0.04);
+        p.addScaledVector(frame.up, 0.08);
         const vf = new EternalFlameWorld();
         await vf.init();
         vf.setWorldPosition(p.x, p.y, p.z);
