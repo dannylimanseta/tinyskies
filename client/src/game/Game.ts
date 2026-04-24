@@ -23,7 +23,6 @@ import {
   AdditiveBlending,
 } from "three";
 import { cartesianFromSpherical, tangentFrame } from "./SphericalMath";
-import { surfaceAltitudeAt } from "./TerrainSurface";
 import {
   BRAZIER_MOON_PAUSE_MS,
   getVehicleFeatures,
@@ -36,7 +35,7 @@ import { AudioManager } from "../audio/AudioManager";
 import { Globe } from "./Globe";
 import { Plane } from "./Plane";
 import { Boat } from "./Boat";
-import { Carpet, CARPET_HOVER_HEIGHT } from "./Carpet";
+import { Carpet } from "./Carpet";
 import { FlightControls } from "./FlightControls";
 import { TouchControls } from "./TouchControls";
 import { CameraRig } from "./CameraRig";
@@ -66,7 +65,7 @@ import { CarpetPortalSystem } from "./CarpetPortalSystem";
 import { CapybaraFlameShots } from "./CapybaraFlameShots";
 import { CosmicWorldPortal } from "./CosmicWorldPortal";
 import { EternalFlameWorld } from "./EternalFlameWorld";
-import { VoidMothsManager } from "./VoidMoths";
+import { VoidMothsManager, type VoidMothPlaneContext } from "./VoidMoths";
 import { VoidFlameShield } from "./VoidFlameShield";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
@@ -93,6 +92,8 @@ import {
   pickStonehengeWhisper,
   pickBrazierWhisper,
   THIRD_PACKAGE_DELIVERY_INDEX,
+  ETERNAL_FLAME_SPEAKER,
+  ETERNAL_FLAME_VOID_BUBBLES,
 } from "./PackageDialogue";
 import { CampsiteMarker } from "./CampsiteMarker";
 import { CampsiteScene } from "./CampsiteScene";
@@ -302,6 +303,8 @@ export class Game {
   private voidMoths: VoidMothsManager | null = null;
   private voidFlameShield: VoidFlameShield | null = null;
   private voidAmbientMusicActive = false;
+  /** Timeouts for eternal-flame intro bubbles + moth spawn unlock; cleared on void exit. */
+  private voidEternalFlameIntroTimeouts: ReturnType<typeof setTimeout>[] = [];
   /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
   private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
@@ -373,6 +376,10 @@ export class Game {
   private shouldShowBrazierMoonResume = false;
   private panicDialogueCooldown = 0;
   private localPlayerWorldScratch = new Vector3();
+  private readonly _voidChasePos = new Vector3();
+  private readonly _voidChaseForward = new Vector3();
+  private readonly _voidEternalFlamePosScratch = new Vector3();
+  private readonly _carpetVoidWorldScratch = new Vector3();
 
   private gamePhase: "flying" | "campsite" | "transitioning" | "moonImpact" | "moonstoneUnion" = "flying";
   private moonCinematicStep: "fadeOut1" | "wideShot" | "fadeOut2" | "done" = "done";
@@ -2204,6 +2211,34 @@ export class Game {
     };
   }
 
+  private getVoidCameraChaseForRig():
+    | {
+        worldPos: Vector3;
+        forward: Vector3;
+        up: Vector3;
+      }
+    | null {
+    if (
+      !this.inCosmicVoid ||
+      !(this.localPlayer instanceof Carpet) ||
+      !this.localPlayer.isVoidPlaneFlight
+    ) {
+      return null;
+    }
+    const c = this.localPlayer;
+    c.getVoidPlaneWorldPos(this._voidChasePos);
+    this._voidChaseForward
+      .set(0, 0, 0)
+      .addScaledVector(c.getVoidPlaneNorth(), Math.cos(c.heading))
+      .addScaledVector(c.getVoidPlaneEast(), Math.sin(c.heading))
+      .normalize();
+    return {
+      worldPos: this._voidChasePos,
+      forward: this._voidChaseForward,
+      up: c.getVoidPlaneUp(),
+    };
+  }
+
   private tick = () => {
     if (!this.running) return;
     requestAnimationFrame(this.tick);
@@ -2397,6 +2432,7 @@ export class Game {
           voidCam.followHeight,
           this.vehicleFeatures.cameraSpeedZoom,
           this.vehicleFeatures.cameraFovBoost,
+          this.getVoidCameraChaseForRig(),
         );
         if (this.playerLight) {
           this.playerLight.position.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
@@ -2565,6 +2601,7 @@ export class Game {
       voidCam.followHeight,
       this.vehicleFeatures.cameraSpeedZoom,
       this.vehicleFeatures.cameraFovBoost,
+      this.getVoidCameraChaseForRig(),
     );
     if (this.localPlayer instanceof Plane) {
       this.localPlayer.updateGremlinDamageHpBar(dt, this.cameraRig.camera);
@@ -2866,17 +2903,29 @@ export class Game {
         this.voidFlameShield?.update(dt);
         if (this.voidEternalFlame && this.localPlayer instanceof Carpet) {
           this.localPlayer.group.updateMatrixWorld(true);
+          const c = this.localPlayer;
+          const voidMothPlane: VoidMothPlaneContext | null = c.isVoidPlaneFlight
+            ? {
+                planeUp: c.getVoidPlaneUp(),
+                planeN: c.getVoidPlaneNorth(),
+                planeE: c.getVoidPlaneEast(),
+                flamePos: this.voidEternalFlame.group.position,
+              }
+            : null;
           this.voidMoths?.update(
             dt,
             this.voidEternalFlame.group.position,
-            cartesianFromSpherical(
-              this.localPlayer.qPosition,
-              this.localPlayer.altitude,
-              globeRadius,
-            ),
+            c.isVoidPlaneFlight
+              ? c.getVoidPlaneWorldPos(this._carpetVoidWorldScratch)
+              : cartesianFromSpherical(
+                  c.qPosition,
+                  c.altitude,
+                  globeRadius,
+                ),
             this.cameraRig.camera,
             this.capybaraFlameShots,
             this.voidFlameShield,
+            voidMothPlane,
           );
         }
       }
@@ -4170,7 +4219,46 @@ export class Game {
     this.voidAmbientMusicActive = false;
   }
 
+  private clearVoidEternalFlameIntroSchedulers() {
+    for (const t of this.voidEternalFlameIntroTimeouts) clearTimeout(t);
+    this.voidEternalFlameIntroTimeouts = [];
+  }
+
+  /**
+   * Two NPC-style bubbles (same HUD as package quest), then lunar moths can spawn.
+   * Timings must stay in sync with {@link PackageQuestHUD#showBubble} display duration (~4s).
+   */
+  private scheduleCosmicVoidEternalFlameIntro() {
+    this.clearVoidEternalFlameIntroSchedulers();
+    if (!this.inCosmicVoid || !this.voidMoths) return;
+    const [line1, line2] = ETERNAL_FLAME_VOID_BUBBLES;
+    const bubbleMs = 4000;
+    const leadInMs = 400;
+    this.voidEternalFlameIntroTimeouts.push(
+      setTimeout(() => {
+        if (!this.inCosmicVoid) return;
+        this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, line1);
+      }, leadInMs),
+    );
+    this.voidEternalFlameIntroTimeouts.push(
+      setTimeout(() => {
+        if (!this.inCosmicVoid) return;
+        this.packageQuestHUD.showBubble(ETERNAL_FLAME_SPEAKER, line2);
+      }, leadInMs + bubbleMs),
+    );
+    this.voidEternalFlameIntroTimeouts.push(
+      setTimeout(() => {
+        if (!this.inCosmicVoid || !this.voidMoths) return;
+        this.voidMoths.setMothSpawningEnabled(true);
+      }, leadInMs + bubbleMs * 2),
+    );
+  }
+
   private removeVoidEternalFlame() {
+    if (this.localPlayer instanceof Carpet) {
+      this.localPlayer.exitVoidPlaneFlight();
+    }
+    this.clearVoidEternalFlameIntroSchedulers();
     this.stopVoidAmbientMusic();
     if (this.voidMoths) {
       this.voidMoths.group.removeFromParent();
@@ -4251,23 +4339,9 @@ export class Game {
         const c = this.localPlayer;
         c.group.updateMatrixWorld(true);
         const globeR = this.worldConfig?.globeRadius ?? 5;
-        const frame = tangentFrame(c.qPosition);
-        const forward = new Vector3()
-          .addScaledVector(frame.north, Math.cos(c.heading))
-          .addScaledVector(frame.east, Math.sin(c.heading));
-        const { up } = frame;
-        const defaultAlt =
-          surfaceAltitudeAt(
-            this.gameSeed,
-            this.gameTerrainType,
-            up.x,
-            up.y,
-            up.z,
-          ) + CARPET_HOVER_HEIGHT;
-        const shellR = globeR + defaultAlt;
-        const p = cartesianFromSpherical(c.qPosition, defaultAlt, globeR);
-        p.addScaledVector(forward, 1.22);
-        p.normalize().multiplyScalar(shellR);
+        c.enterVoidPlaneFlight(globeR);
+        c.getVoidFlameTargetWorld(this._voidEternalFlamePosScratch);
+        const p = this._voidEternalFlamePosScratch;
         const vf = new EternalFlameWorld();
         await vf.init();
         vf.setWorldPosition(p.x, p.y, p.z);
@@ -4295,6 +4369,9 @@ export class Game {
 
       await this.transitionOverlay.fadeIn();
       this.gamePhase = "flying";
+      if (this.voidMoths) {
+        this.scheduleCosmicVoidEternalFlameIntro();
+      }
     } finally {
       this.coastCarpetDuringCosmicTransition = false;
       this.voidEntryInProgress = false;

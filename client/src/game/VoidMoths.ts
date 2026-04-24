@@ -17,6 +17,14 @@ import type { CapybaraFlameShots } from "./CapybaraFlameShots";
 import type { PaintballSystem } from "./PaintballSystem";
 import type { VoidFlameShield } from "./VoidFlameShield";
 
+/** Cosmic-void moths: stay on the same flat tangent plane as the carpet (not a sphere around world origin). */
+export type VoidMothPlaneContext = {
+  planeUp: Vector3;
+  planeN: Vector3;
+  planeE: Vector3;
+  flamePos: Vector3;
+};
+
 const WING_SPEED = 18;
 const FLIGHT_SPEED = 0.18;
 const TURN_SPEED = 0.9;
@@ -245,6 +253,7 @@ class VoidMoth {
     target: Vector3,
     playerShellRadius: number,
     camera: Camera,
+    voidPlane: VoidMothPlaneContext | null = null,
   ) {
     if (this.isDead) return;
 
@@ -273,11 +282,15 @@ class VoidMoth {
       this.group.position.addScaledVector(this.velocity, dt);
 
       if (this.velocity.lengthSq() > 0.0001) {
-        this.scratch.copy(this.group.position);
-        if (this.scratch.lengthSq() > 1e-8) {
-          this.group.up.copy(this.scratch).normalize();
+        if (voidPlane) {
+          this.group.up.copy(voidPlane.planeUp);
         } else {
-          this.group.up.set(0, 1, 0);
+          this.scratch.copy(this.group.position);
+          if (this.scratch.lengthSq() > 1e-8) {
+            this.group.up.copy(this.scratch).normalize();
+          } else {
+            this.group.up.set(0, 1, 0);
+          }
         }
         this.scratch.copy(this.group.position).add(this.velocity);
         this.group.lookAt(this.scratch);
@@ -296,8 +309,14 @@ class VoidMoth {
       this.hitWobbleAmp = 0;
     }
 
-    // Hold |pos| to target shell (carpet altitude + MOTH_RADIAL_LIFT)
-    if (playerShellRadius > 0.1) {
+    if (voidPlane) {
+      const u = voidPlane.planeUp;
+      const T = voidPlane.flamePos;
+      this.scratch.copy(this.group.position).sub(T);
+      const h = this.scratch.dot(u);
+      this.group.position.addScaledVector(u, -h);
+    } else if (playerShellRadius > 0.1) {
+      // Hold |pos| to a sphere (globe) — void flat mode uses the branch above.
       this.scratch.copy(this.group.position);
       const len = this.scratch.length();
       if (len > 1e-5) {
@@ -316,7 +335,11 @@ class VoidMoth {
     }
   }
 
-  updateHpBar(dt: number, camera: Camera) {
+  updateHpBar(
+    dt: number,
+    camera: Camera,
+    voidUp: Vector3 | null = null,
+  ) {
     const maxH = this.maxHealth;
     const tgt = this.health <= 0 ? 0 : this.health / maxH;
     this.hpDisplay += (tgt - this.hpDisplay) * Math.min(1, HP_TWEEN * dt);
@@ -332,7 +355,11 @@ class VoidMoth {
     this.hpFillMesh.position.x = -innerW * 0.5 + rw * 0.5;
 
     this.scratch.copy(this.group.position);
-    this.hpUpScratch.copy(this.scratch).normalize();
+    if (voidUp) {
+      this.hpUpScratch.copy(voidUp);
+    } else {
+      this.hpUpScratch.copy(this.scratch).normalize();
+    }
     this.hpPosScratch
       .copy(this.scratch)
       .addScaledVector(this.hpUpScratch, HP_LIFT);
@@ -373,8 +400,11 @@ export class VoidMothsManager {
   private moths: VoidMoth[] = [];
   private time = 0;
   private spawnTimer = 0;
+  /** False until the eternal-flame intro dialogue finishes; blocks new spawns. */
+  private mothSpawningEnabled = false;
   private readonly _shieldCenter = new Vector3();
   private readonly _mothImpactPos = new Vector3();
+  private readonly _spawnRing = new Vector3();
 
   constructor(
     private readonly paintballSystem: PaintballSystem | null,
@@ -382,6 +412,14 @@ export class VoidMothsManager {
   ) {
     ensureSharedWingGeos();
     ensureSharedHpMats();
+  }
+
+  /** When enabled, the first spawn is scheduled after a normal inter-spawn delay. */
+  setMothSpawningEnabled(v: boolean) {
+    this.mothSpawningEnabled = v;
+    if (v) {
+      this.spawnTimer = 4.0 + Math.random() * 4.0;
+    }
   }
 
   private orbHitMoth(m: VoidMoth) {
@@ -402,27 +440,45 @@ export class VoidMothsManager {
     camera: Camera,
     capybara: CapybaraFlameShots | null,
     voidShield: VoidFlameShield | null = null,
+    voidPlane: VoidMothPlaneContext | null = null,
   ) {
     this.time += dt;
-    this.spawnTimer -= dt;
+    if (this.mothSpawningEnabled) {
+      this.spawnTimer -= dt;
+    }
 
     const playerR = carpetWorldPos.length();
     const mothShellR = playerR + MOTH_RADIAL_LIFT;
 
-    if (this.spawnTimer <= 0 && this.moths.length < 15 && targetPos) {
+    if (
+      this.mothSpawningEnabled &&
+      this.spawnTimer <= 0 &&
+      this.moths.length < 15 &&
+      targetPos
+    ) {
       this.spawnTimer = 4.0 + Math.random() * 4.0;
       const moth = new VoidMoth();
       this.group.add(moth.getHpBarRoot());
       const angle = Math.random() * Math.PI * 2;
       const ring = 4.2 + Math.random() * 2.8;
-      const offset = new Vector3(
-        Math.cos(angle) * ring,
-        (Math.random() - 0.5) * 1.6,
-        Math.sin(angle) * ring,
-      );
-      moth.group.position.copy(targetPos).add(offset);
-      if (mothShellR > 0.1) {
-        moth.group.position.normalize().multiplyScalar(mothShellR);
+      if (voidPlane) {
+        const { planeN, planeE, planeUp, flamePos } = voidPlane;
+        this._spawnRing
+          .set(0, 0, 0)
+          .addScaledVector(planeN, Math.cos(angle) * ring)
+          .addScaledVector(planeE, Math.sin(angle) * ring)
+          .addScaledVector(planeUp, (Math.random() - 0.5) * 0.4);
+        moth.group.position.copy(flamePos).add(this._spawnRing);
+      } else {
+        const offset = new Vector3(
+          Math.cos(angle) * ring,
+          (Math.random() - 0.5) * 1.6,
+          Math.sin(angle) * ring,
+        );
+        moth.group.position.copy(targetPos).add(offset);
+        if (mothShellR > 0.1) {
+          moth.group.position.normalize().multiplyScalar(mothShellR);
+        }
       }
       this.moths.push(moth);
       this.group.add(moth.group);
@@ -433,9 +489,10 @@ export class VoidMothsManager {
         moth.update(
           dt,
           this.time,
-          targetPos,
-          mothShellR,
+          voidPlane?.flamePos ?? targetPos,
+          voidPlane ? 0 : mothShellR,
           camera,
+          voidPlane,
         );
       }
     }
@@ -459,7 +516,11 @@ export class VoidMothsManager {
 
     for (const moth of this.moths) {
       if (!moth.isDead && targetPos) {
-        moth.updateHpBar(dt, camera);
+        moth.updateHpBar(
+          dt,
+          camera,
+          voidPlane ? voidPlane.planeUp : null,
+        );
       }
     }
 

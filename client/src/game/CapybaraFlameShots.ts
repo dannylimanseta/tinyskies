@@ -15,13 +15,14 @@ import type { AudioManager } from "../audio/AudioManager";
 import type { Carpet } from "./Carpet";
 import { paintballRayFromPlaneState } from "./SphericalMath";
 
-const SHOT_SPEED = 3.5;
+/** 40% slower than the original 3.5. */
+const SHOT_SPEED = 2.1;
 /** Cooldown after each burst completes. */
 const COOLDOWN_MS = 300;
 const SHOTS_PER_BURST = 1;
-export const CAPYBARA_BALL_RADIUS = 0.008;
+export const CAPYBARA_BALL_RADIUS = 0.0104;
 const BALL_RADIUS = CAPYBARA_BALL_RADIUS;
-/** Tangent-arc max travel before fade-out. */
+/** Linear (world) max travel from muzzle before fade-out. */
 const RANGE_FACTOR = 0.36;
 /** Radial (up) offset from carpet center to capybara muzzle (bodyH/2 + model.position.y). */
 const MUZZLE_UP = 0.026;
@@ -64,9 +65,10 @@ function getGlowTexture(): CanvasTexture {
 }
 
 type Orb = {
-  r0: number;
-  rHat: Vector3;
-  wHat: Vector3;
+  /** Muzzle world position. */
+  start: Vector3;
+  /** Initial tangent direction (unit); straight-line motion in world space. */
+  dir: Vector3;
   traveled: number;
   maxRange: number;
   speed: number;
@@ -78,10 +80,10 @@ type Orb = {
 };
 
 type ActiveBurst = {
-  r0: number;
-  rHat: Vector3;
+  muzzle: Vector3;
   w0: Vector3;
-  /** Emission time for each shot in the burst. */
+  /** Axis for yaw jitter: world radial (sphere) or void plane up. */
+  rotAxis: Vector3;
   atMs: number[];
   next: number;
   deltas: number[];
@@ -112,12 +114,15 @@ function wRotated(
 /**
  * Local-only projectiles for the capybara-on-carpet.
  * Each orb is a small white core sphere + a camera-facing radial-gradient sprite glow
- * (simulates bloom without a post-processing pass) + a white ribbon trail.
+ * (simulates bloom without a post-processing pass), moving in a straight line in world space.
  */
 export class CapybaraFlameShots {
   private orbs: Orb[] = [];
   private lastBurstEndMs = -COOLDOWN_MS;
   private activeBurst: ActiveBurst | null = null;
+  private readonly _a = new Vector3();
+  private readonly _b = new Vector3();
+  private readonly _c = new Vector3();
 
   constructor(
     private readonly scene: Scene,
@@ -135,28 +140,6 @@ export class CapybaraFlameShots {
     const now = performance.now();
     if (now - this.lastBurstEndMs < COOLDOWN_MS) return;
 
-    const ray = paintballRayFromPlaneState(
-      carpet.qPosition,
-      carpet.heading,
-      carpet.pitch,
-      carpet.altitude,
-      this.globeRadius,
-    );
-    const o = ray.origin;
-    const baseR = Math.max(1e-4, o.length());
-    const rHat = o.clone().divideScalar(baseR);
-    const w0 = ray.direction.clone();
-    w0.sub(rHat.clone().multiplyScalar(w0.dot(rHat)));
-    if (w0.lengthSq() < 1e-8) return;
-    w0.normalize();
-
-    // Shift origin to the capybara's actual world position (above + forward of carpet center).
-    const muzzle = o.clone()
-      .addScaledVector(rHat, MUZZLE_UP)
-      .addScaledVector(w0, MUZZLE_FORWARD);
-    const r0 = Math.max(1e-4, muzzle.length());
-    const rHatMuzzle = muzzle.clone().divideScalar(r0);
-
     const t0 = now;
     const j = () => (Math.random() * 2 - 1) * ANGLE_JITTER;
     const atMs: number[] = [];
@@ -165,14 +148,57 @@ export class CapybaraFlameShots {
       atMs.push(t0 + s * BURST_SPACING_MS);
       deltas.push(j());
     }
-    this.activeBurst = {
-      r0,
-      rHat: rHatMuzzle,
-      w0: w0.clone(),
-      atMs,
-      next: 0,
-      deltas,
-    };
+
+    if (carpet.isVoidPlaneFlight) {
+      carpet.getVoidPlaneWorldPos(this._a);
+      this._b
+        .set(0, 0, 0)
+        .addScaledVector(carpet.getVoidPlaneNorth(), Math.cos(carpet.heading))
+        .addScaledVector(carpet.getVoidPlaneEast(), Math.sin(carpet.heading))
+        .normalize();
+      const muzzle = this._c
+        .copy(this._a)
+        .addScaledVector(carpet.getVoidPlaneUp(), MUZZLE_UP)
+        .addScaledVector(this._b, MUZZLE_FORWARD);
+      this.activeBurst = {
+        muzzle: muzzle.clone(),
+        w0: this._b.clone(),
+        rotAxis: carpet.getVoidPlaneUp().clone(),
+        atMs,
+        next: 0,
+        deltas,
+      };
+    } else {
+      const ray = paintballRayFromPlaneState(
+        carpet.qPosition,
+        carpet.heading,
+        carpet.pitch,
+        carpet.altitude,
+        this.globeRadius,
+      );
+      const o = ray.origin;
+      const baseR = Math.max(1e-4, o.length());
+      const rHat = o.clone().divideScalar(baseR);
+      const w0 = ray.direction.clone();
+      w0.sub(rHat.clone().multiplyScalar(w0.dot(rHat)));
+      if (w0.lengthSq() < 1e-8) return;
+      w0.normalize();
+
+      const muzzle = o
+        .clone()
+        .addScaledVector(rHat, MUZZLE_UP)
+        .addScaledVector(w0, MUZZLE_FORWARD);
+      const r0 = Math.max(1e-4, muzzle.length());
+      const rHatMuzzle = muzzle.clone().divideScalar(r0);
+      this.activeBurst = {
+        muzzle: muzzle.clone(),
+        w0: w0.clone(),
+        rotAxis: rHatMuzzle,
+        atMs,
+        next: 0,
+        deltas,
+      };
+    }
 
     this.emitReadyBursts(performance.now());
 
@@ -186,8 +212,8 @@ export class CapybaraFlameShots {
     if (!b) return;
     const wTmp = new Vector3();
     while (b.next < b.atMs.length && now + 0.5 >= b.atMs[b.next]!) {
-      wRotated(b.w0, b.rHat, b.deltas[b.next] ?? 0, wTmp);
-      this.spawnOne(b.r0, b.rHat, wTmp);
+      wRotated(b.w0, b.rotAxis, b.deltas[b.next] ?? 0, wTmp);
+      this.spawnOne(b.muzzle, wTmp);
       b.next += 1;
     }
     if (b.next >= b.atMs.length) {
@@ -196,7 +222,7 @@ export class CapybaraFlameShots {
     }
   }
 
-  private spawnOne(r0: number, rHat: Vector3, wDir: Vector3) {
+  private spawnOne(muzzle: Vector3, wDir: Vector3) {
     const group = new Group();
     group.renderOrder = 300;
 
@@ -226,16 +252,14 @@ export class CapybaraFlameShots {
     const core = new Mesh(coreGeo, coreMat);
     group.add(core);
 
-    group.position
-      .copy(rHat)
-      .multiplyScalar(r0);
+    const start = muzzle.clone();
+    group.position.copy(start);
 
     this.scene.add(group);
 
     this.orbs.push({
-      r0,
-      rHat: rHat.clone(),
-      wHat: wDir.clone(),
+      start,
+      dir: wDir.clone(),
       traveled: 0,
       maxRange: this.globeRadius * RANGE_FACTOR,
       speed: SHOT_SPEED,
@@ -254,12 +278,7 @@ export class CapybaraFlameShots {
       const p = this.orbs[i]!;
       const step = p.speed * dt;
       p.traveled += step;
-      const theta = p.traveled / p.r0;
-      const r = p.r0;
-      p.group.position
-        .copy(p.rHat)
-        .multiplyScalar(r * Math.cos(theta))
-        .addScaledVector(p.wHat, r * Math.sin(theta));
+      p.group.position.copy(p.start).addScaledVector(p.dir, p.traveled);
 
       const tr = p.traveled / p.maxRange;
       const fade = Math.max(0, 1 - Math.pow(Math.min(1, tr), 1.1));

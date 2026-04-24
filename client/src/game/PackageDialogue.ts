@@ -64,6 +64,13 @@ export function getNpcPortraitUrl(npcName: string): string {
   return file ? `/npc/${file}` : "";
 }
 
+/** Cosmic-void intro; shown via {@link PackageQuestHUD#showBubble} as two sequential lines. */
+export const ETERNAL_FLAME_SPEAKER = "Eternal Flame";
+export const ETERNAL_FLAME_VOID_BUBBLES: readonly [string, string] = [
+  "Defend me! Lunar moths hunger for the last ember. Please, do not let them reach the flame.",
+  "Press SPACE to fire star shots. Each hit weakens a moth. Protect the light!",
+];
+
 /**
  * Pickup lines by moon phase — each pool uses **items that fit the tone**:
  * - Calm: everyday cosy parcels (jam, gifts, hobbies).
