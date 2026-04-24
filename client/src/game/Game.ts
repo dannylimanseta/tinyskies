@@ -276,6 +276,8 @@ export class Game {
   private capybaraFlameShots: CapybaraFlameShots | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
   private inCosmicVoid = false;
+  /** After choosing cosmic entry until `inCosmicVoid` is set — mutes world ambience during the fade. */
+  private voidEntryInProgress = false;
   /** While entering/exiting cosmic void, the game is `transitioning` but the carpet should still advance inertialy. */
   private coastCarpetDuringCosmicTransition = false;
   private gameSeed = 42;
@@ -2812,7 +2814,7 @@ export class Game {
 
     const moonstoneProgress = this.updateMoonstoneRuins(questPlayerPos, !portalInteractionSuppressed);
     const moonstoneRumbleVol =
-      moonstoneProgress > 0
+      !this.inCosmicVoid && !this.voidEntryInProgress && moonstoneProgress > 0
         ? MOONSTONE_RUMBLE_MAX_VOL * (0.5 + 0.5 * moonstoneProgress)
         : 0;
     this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, moonstoneRumbleVol);
@@ -2867,7 +2869,12 @@ export class Game {
       this.audioManager.setLoopVolume("engine_biplane", engineVol);
     } else if (this.playerVehicle === "carpet") {
       const carpet = this.localPlayer as Carpet;
-      const targetVol = carpet.isOverWater ? OCEAN_WAVES_LOOP_VOL * 0.8 : 0;
+      const targetVol =
+        this.inCosmicVoid || this.voidEntryInProgress
+          ? 0
+          : carpet.isOverWater
+            ? OCEAN_WAVES_LOOP_VOL * 0.8
+            : 0;
       this.audioManager.setLoopVolume(OCEAN_WAVES_LOOP_NAME, targetVol);
     }
 
@@ -4037,6 +4044,7 @@ export class Game {
   private async doEnterCosmicVoid() {
     if (!this.transitionOverlay || this.inCosmicVoid) return;
     this.coastCarpetDuringCosmicTransition = true;
+    this.voidEntryInProgress = true;
     this.twisterSpinTimer = 0;
     this.twisterSpinCooldown = 0;
     try {
@@ -4048,6 +4056,7 @@ export class Game {
 
       await this.transitionOverlay.fadeOut();
       this.inCosmicVoid = true;
+      this.voidEntryInProgress = false;
       this.stateSync?.stop();
       this.remotePlanes.setVisible(false);
       this.remotePlayerNameLabels.setVisible(false);
@@ -4085,6 +4094,7 @@ export class Game {
       this.gamePhase = "flying";
     } finally {
       this.coastCarpetDuringCosmicTransition = false;
+      this.voidEntryInProgress = false;
     }
   }
 
@@ -4214,6 +4224,19 @@ export class Game {
     ctx.fillRect(0, 0, S, S);
   }
 
+  /** Ocean, birds, weather, and world loops — inaudible in the cosmic void / during void entry. */
+  private silenceWorldAmbienceForCosmicVoid() {
+    this.audioManager.setLoopVolume(RAIN_LOOP_NAME, 0);
+    this.audioManager.setLoopVolume("crickets_loop", 0);
+    this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, 0);
+    this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
+    this.audioManager.setLoopVolume(OCEAN_WAVES_LOOP_NAME, 0);
+    this.audioManager.setLoopVolume(MOONSTONE_RUMBLE_LOOP_NAME, 0);
+    this.audioManager.setLoopVolume("twister", 0);
+    this.audioManager.setWeights(0, 0, 0);
+    this.audioManager.setEndTimesWeight(0);
+  }
+
   private applyDayNightPreset() {
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
     const p = this.dayNightCycle.getPreset();
@@ -4249,12 +4272,11 @@ export class Game {
         this.aurora.group.visible = false;
         this.aurora.setOpacity(0);
       }
-      this.audioManager.setLoopVolume(RAIN_LOOP_NAME, 0);
-      this.audioManager.setLoopVolume("crickets_loop", 0);
-      this.audioManager.setLoopVolume(BIRDS_LOOP_NAME, 0);
-      this.audioManager.setLoopVolume(RUMBLE_LOOP_NAME, 0);
-      this.audioManager.setWeights(0, 0, 0);
-      this.audioManager.setEndTimesWeight(0);
+      this.silenceWorldAmbienceForCosmicVoid();
+      return;
+    }
+    if (this.voidEntryInProgress) {
+      this.silenceWorldAmbienceForCosmicVoid();
       return;
     }
 
