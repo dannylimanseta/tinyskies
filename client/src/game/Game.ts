@@ -1104,10 +1104,12 @@ export class Game {
       });
       this.scene.add(this.carpetPortalSystem.group);
       this.carpetPortalSystem.syncToCarpet(this.localPlayer as Carpet);
-      for (let i = 0; i < 3; i++) {
-        const portal = new CosmicWorldPortal(globeRadius, seed, terrainType, i);
-        this.cosmicWorldPortals.push(portal);
-        this.scene.add(portal.group);
+      if (!ProgressionManager.loadPlayerWorldState().voidPortalsClosed) {
+        for (let i = 0; i < 3; i++) {
+          const portal = new CosmicWorldPortal(globeRadius, seed, terrainType, i);
+          this.cosmicWorldPortals.push(portal);
+          this.scene.add(portal.group);
+        }
       }
       this.capybaraFlameShots = new CapybaraFlameShots(this.scene, globeRadius);
       this.voidCarpetTrail = new VoidCarpetTrail();
@@ -4458,9 +4460,12 @@ export class Game {
     // Fade to black and return to the world
     await this.exitCosmicVoid();
 
-    // Award the eternal flame — save +1 then play the full starburst loot sequence
+    // Award the eternal flame and permanently close the void portals
     const prev = ProgressionManager.loadPlayerWorldState();
-    this.savePlayerWorldState({ eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1 });
+    this.savePlayerWorldState({
+      eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
+      voidPortalsClosed: true,
+    });
     this.eternalFlameUI?.syncFromSave();
     // Brief delay so the world has a moment to settle before the overlay appears
     await new Promise<void>((r) => setTimeout(r, 600));
@@ -4803,7 +4808,9 @@ export class Game {
     if (this.oceanFish) this.oceanFish.group.visible = true;
     if (this.skyJellyfish) this.skyJellyfish.group.visible = true;
     if (this.campsiteMarker) this.campsiteMarker.group.visible = true;
-    for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
+    if (!ProgressionManager.loadPlayerWorldState().voidPortalsClosed) {
+      for (const portal of this.cosmicWorldPortals) portal.group.visible = true;
+    }
     if (this.carpetPortalSystem) this.carpetPortalSystem.group.visible = true;
     if (this.carpetTrail) this.carpetTrail.group.visible = true;
     if (this.voidCarpetTrail) {

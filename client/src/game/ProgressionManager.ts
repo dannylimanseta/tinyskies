@@ -53,6 +53,11 @@ export interface SavedPlayerWorldState {
    * Drives approach duration: 0 → 5 min, 1 → 7 min, 2+ → 10 min (see `moonApproachDurationSec`).
    */
   completedMoonApproachRunCount?: number;
+  /**
+   * Once true, the cosmic void portals are permanently removed from the world.
+   * Set after the player survives all three void waves and collects the eternal flame.
+   */
+  voidPortalsClosed?: boolean;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;
