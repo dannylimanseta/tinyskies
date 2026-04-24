@@ -55,11 +55,11 @@ function getPortalHaloTexture(): CanvasTexture {
   const ctx = canvas.getContext("2d")!;
   const c = size / 2;
   const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
-  grad.addColorStop(0.0, "rgba(8,8,8,0.18)");
-  grad.addColorStop(0.2, "rgba(16,16,16,0.22)");
-  grad.addColorStop(0.5, "rgba(12,12,12,0.15)");
-  grad.addColorStop(0.78, "rgba(6,6,6,0.08)");
-  grad.addColorStop(1.0, "rgba(0,0,0,0.0)");
+  grad.addColorStop(0.0, "rgba(120, 160, 255, 0.9)");
+  grad.addColorStop(0.2, "rgba(80, 120, 255, 0.6)");
+  grad.addColorStop(0.5, "rgba(40, 70, 200, 0.2)");
+  grad.addColorStop(0.78, "rgba(15, 30, 120, 0.05)");
+  grad.addColorStop(1.0, "rgba(0, 0, 0, 0.0)");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
   const tex = new CanvasTexture(canvas);
@@ -95,7 +95,7 @@ class CosmicWorldPortalVisual {
       map: getPortalHaloTexture(),
       color: 0xffffff,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.85,
       blending: AdditiveBlending,
       depthWrite: false,
       depthTest: true,
@@ -149,7 +149,7 @@ class CosmicWorldPortalVisual {
   }
 
   update(time: number, camera: Camera, opacity: number) {
-    this.haloMat.opacity = 0.45 * opacity;
+    this.haloMat.opacity = 0.85 * opacity;
     this.innerMat.color.setScalar(1.0);
     this.innerMat.opacity = opacity;
 
@@ -157,11 +157,21 @@ class CosmicWorldPortalVisual {
       this.innerMat.userData.shader.uniforms.uTime.value = time + this.timePhase;
     }
 
-    // Face the camera directly like a Sprite would
-    this.inner.quaternion.copy(camera.quaternion);
+    // Keep the portal standing upright relative to the planet surface, while facing the camera.
+    // This stops the tall oval shape from banking/rolling when the player's camera banks.
+    const p = this.group.position;
+    const radUp = p.clone().normalize();
+    this.group.up.copy(radUp);
     
-    // Group orientation doesn't need to match camera since we orient the inner mesh directly,
-    // but the halo Sprite handles itself automatically.
+    // We want the front (+Z face) of the PlaneGeometry to point AT the camera.
+    // lookAt makes the -Z axis point AT the target.
+    // So we look at a point directly behind the portal (away from the camera).
+    const toCam = camera.position.clone().sub(p);
+    const lookTarget = p.clone().sub(toCam);
+    this.group.lookAt(lookTarget);
+    
+    // Ensure the inner mesh doesn't have any leftover rotation from previous frame
+    this.inner.quaternion.identity();
   }
 
   dispose() {
