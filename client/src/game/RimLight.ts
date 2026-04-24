@@ -1,4 +1,29 @@
-import { MeshPhongMaterial, Color } from "three";
+import {
+  Color,
+  MeshLambertMaterial,
+  MeshPhongMaterial,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+} from "three";
+
+const RIM_DITHERING_PATCH = `vec3 rimViewDir = normalize(vViewPosition);
+vec3 rimNormal = normalize(normal);
+float rimFresnel = 1.0 - abs(dot(rimViewDir, rimNormal));
+vec3 rim = rimColor * rimIntensity * pow(rimFresnel, rimPower);
+gl_FragColor.rgb += rim;
+#include <dithering_fragment>`;
+
+function appendRimToFragmentShader(fragmentShader: string): string {
+  return fragmentShader
+    .replace(
+      "uniform vec3 emissive;",
+      `uniform vec3 emissive;
+uniform vec3 rimColor;
+uniform float rimIntensity;
+uniform float rimPower;`,
+    )
+    .replace("#include <dithering_fragment>", RIM_DITHERING_PATCH);
+}
 
 /**
  * Shared Fresnel tint for all `addRimLight` meshes. `Game.applyDayNightPreset` updates
@@ -24,26 +49,55 @@ export function addRimLight(
     shader.uniforms.rimColor = { value: globalRimColor };
     shader.uniforms.rimIntensity = rimIntensityUniform;
     shader.uniforms.rimPower = { value: power };
-
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "uniform vec3 emissive;",
-      `uniform vec3 emissive;
-uniform vec3 rimColor;
-uniform float rimIntensity;
-uniform float rimPower;`,
-    );
-
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <dithering_fragment>",
-      `vec3 rimViewDir = normalize(vViewPosition);
-vec3 rimNormal = normalize(normal);
-float rimFresnel = 1.0 - abs(dot(rimViewDir, rimNormal));
-vec3 rim = rimColor * rimIntensity * pow(rimFresnel, rimPower);
-gl_FragColor.rgb += rim;
-#include <dithering_fragment>`,
-    );
+    shader.fragmentShader = appendRimToFragmentShader(shader.fragmentShader);
   };
 
   mat.needsUpdate = true;
   return rimIntensityUniform;
+}
+
+/**
+ * Like {@link addRimLight} for Phong/Lambert, but the rim color is a per-material uniform
+ * (independent of {@link globalRimColor}).
+ */
+export function addRimLightWithColor(
+  mat: MeshPhongMaterial | MeshLambertMaterial,
+  color: Color | number = 0xffffff,
+  intensity: number = 0.6,
+  power: number = 2.5,
+) {
+  const rimColor = color instanceof Color ? color : new Color(color);
+  const rimColorUniform = { value: rimColor };
+  const rimIntensityUniform = { value: intensity };
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.rimColor = rimColorUniform;
+    shader.uniforms.rimIntensity = rimIntensityUniform;
+    shader.uniforms.rimPower = { value: power };
+    shader.fragmentShader = appendRimToFragmentShader(shader.fragmentShader);
+  };
+  mat.needsUpdate = true;
+  return { rimIntensity: rimIntensityUniform, rimColor: rimColorUniform };
+}
+
+/**
+ * Fresnel rim on MeshStandardMaterial / MeshPhysicalMaterial (same GLSL hook as Phong;
+ * used where props are not Phong, e.g. eternal flame after glow pass).
+ */
+export function addRimLightToStandard(
+  mat: MeshStandardMaterial | MeshPhysicalMaterial,
+  color: Color | number = 0xffffff,
+  intensity: number = 0.6,
+  power: number = 2.5,
+) {
+  const rimColor = color instanceof Color ? color : new Color(color);
+  const rimColorUniform = { value: rimColor };
+  const rimIntensityUniform = { value: intensity };
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.rimColor = rimColorUniform;
+    shader.uniforms.rimIntensity = rimIntensityUniform;
+    shader.uniforms.rimPower = { value: power };
+    shader.fragmentShader = appendRimToFragmentShader(shader.fragmentShader);
+  };
+  mat.needsUpdate = true;
+  return { rimIntensity: rimIntensityUniform, rimColor: rimColorUniform };
 }

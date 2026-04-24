@@ -13,6 +13,7 @@ import {
   Vector3,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { addRimLightToStandard, addRimLightWithColor } from "./RimLight.js";
 
 export const ETERNAL_FLAME_GLB = "/3D/eternal_flame.glb";
 
@@ -20,6 +21,10 @@ export const ETERNAL_FLAME_GLB = "/3D/eternal_flame.glb";
 const EMISSIVE_CORE = new Color(0x3399ff);
 const EMISSIVE_RIM = new Color(0x88ddff);
 const BASE_TINT = new Color(0x4a88cc);
+/** Fresnel edge read for void flame (not tied to the scene day/night rim color). */
+const RIM_LIGHT = new Color(0x7ee8ff);
+const RIM_INTENSITY = 0.5;
+const RIM_POWER = 2.4;
 
 let modelRoot: Object3D | null = null;
 let loadPromise: Promise<Object3D> | null = null;
@@ -135,5 +140,19 @@ export function applyEternalFlameGlow(root: Object3D) {
       next.push(mat);
     }
     mesh.material = Array.isArray(mesh.material) ? next : next[0]!;
+  });
+  root.traverse((obj) => {
+    const mesh = obj as Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mat of mats) {
+      if (mat instanceof MeshStandardMaterial || mat instanceof MeshPhysicalMaterial) {
+        addRimLightToStandard(mat, RIM_LIGHT, RIM_INTENSITY, RIM_POWER);
+        continue;
+      }
+      if (mat instanceof MeshPhongMaterial || mat instanceof MeshLambertMaterial) {
+        addRimLightWithColor(mat, RIM_LIGHT, RIM_INTENSITY, RIM_POWER);
+      }
+    }
   });
 }
