@@ -60,6 +60,7 @@ const NPC_PORTRAIT_FILES: Record<string, string> = {
 };
 
 export function getNpcPortraitUrl(npcName: string): string {
+  if (npcName === "Eternal Flame") return "/2D/eternal_flame.png";
   const file = NPC_PORTRAIT_FILES[npcName];
   return file ? `/npc/${file}` : "";
 }

@@ -82,7 +82,10 @@ const GREMLIN_RETREAT_WEIGHT = 1.25;
 const GREMLIN_FIRE_RANGE = 1.6;
 /** Gremlin King can engage the player from farther away. */
 const GREMLIN_KING_FIRE_RANGE = 2.55;
-const GREMLIN_FIRE_DOT = 0.32;
+/** Must be within ~35° of facing the player before firing. */
+const GREMLIN_FIRE_DOT = 0.82;
+/** Heading lerp rate (rad/s equivalent) when actively turning to face before a shot. */
+const GREMLIN_AIM_TURN_RATE = 9.0;
 /** Seconds between shots (randomized per burst). */
 const GREMLIN_FIRE_COOLDOWN_MIN = 1.85;
 const GREMLIN_FIRE_COOLDOWN_MAX = 2.95;
@@ -1180,10 +1183,24 @@ export class SkyGremlins {
       gremlin.fireCooldown <= 0
     ) {
       this.directionScratch.divideScalar(fireDistance);
+
+      // Turn to face the player before shooting: project player direction onto the
+      // tangent plane and lerp the gremlin's heading toward that bearing quickly.
+      this.orbitScratch.copy(this.directionScratch);
+      this.orbitScratch.addScaledVector(movedFrame.up, -this.orbitScratch.dot(movedFrame.up));
+      if (this.orbitScratch.lengthSq() > 1e-5) {
+        this.orbitScratch.normalize();
+        const aimHeading = Math.atan2(
+          this.orbitScratch.dot(movedFrame.east),
+          this.orbitScratch.dot(movedFrame.north),
+        );
+        gremlin.heading = lerpAngle(gremlin.heading, aimHeading, Math.min(1, GREMLIN_AIM_TURN_RATE * dt));
+      }
+
       this.forwardFromHeading(gremlin.qPosition, gremlin.heading, this.forwardScratch);
       if (this.forwardScratch.dot(this.directionScratch) >= fireDot) {
         gremlin.aimTimer += dt;
-        if (gremlin.aimTimer >= 0.2) {
+        if (gremlin.aimTimer >= 0.45) {
           gremlin.aimTimer = 0;
           this.rightScratch.crossVectors(this.directionScratch, movedFrame.up);
           if (this.rightScratch.lengthSq() < 1e-5) {

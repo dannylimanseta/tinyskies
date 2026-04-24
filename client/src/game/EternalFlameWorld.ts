@@ -2,8 +2,13 @@ import {
   AdditiveBlending,
   Camera,
   CanvasTexture,
+  Color,
   Group,
   Mesh,
+  MeshPhongMaterial,
+  MeshLambertMaterial,
+  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   PointLight,
   Sprite,
   SpriteMaterial,
@@ -111,6 +116,29 @@ export class EternalFlameWorld {
     await loadEternalFlameModelOnce();
     const base = getSharedEternalFlameModelRoot().clone(true);
     applyEternalFlameGlow(base);
+
+    // Void scene: strip emissive so the flame reads naturally under the void lighting
+    // without blowing out. The UI dock/starburst clones keep their glow unchanged.
+    const black = new Color(0x000000);
+    base.traverse((obj) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of mats) {
+        if (
+          mat instanceof MeshStandardMaterial ||
+          mat instanceof MeshPhysicalMaterial ||
+          mat instanceof MeshPhongMaterial ||
+          mat instanceof MeshLambertMaterial
+        ) {
+          mat.emissive.copy(black);
+          if ("emissiveIntensity" in mat) {
+            (mat as MeshStandardMaterial).emissiveIntensity = 0;
+          }
+        }
+      }
+    });
+
     fitEternalFlameModel(base, 0.16);
     this.flameModel.add(base);
     this.group.add(this.flameModel);
