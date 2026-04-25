@@ -938,6 +938,12 @@ export class HUD {
         70% { opacity: 0.8; transform: rotate(var(--rot)) scale(1); }
         100% { opacity: 0; transform: rotate(var(--rot)) scale(1); }
       }
+      @media (max-width: 768px) {
+        .hud-paintball-splatter {
+          width: min(200px, 40vw);
+          height: min(200px, 40vw);
+        }
+      }
 
       @media (max-width: 768px) {
         .hud-firefly-celebration {

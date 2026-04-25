@@ -2,17 +2,20 @@ import type { ControlState } from "./FlightControls";
 import type { Vehicle } from "@globefly/shared";
 
 const TURN_SPEED = 1.2;
-const JOYSTICK_RADIUS = 56;
+const JOYSTICK_RADIUS = 36;
 const DEADZONE = 0.3;
+
+/** Portal-magic look: ring + center soft dot + crescent, uses currentColor. */
+const PORTAL_BTN_SVG = `<svg class="tc-portal-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.35" opacity="0.92"/><circle cx="12" cy="12" r="2.1" fill="currentColor" opacity="0.32"/><path d="M4.2 12a7.8 7.8 0 0 1 4.1-6.5M20 12a7.8 7.8 0 0 1-4.1 6.5" fill="none" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" opacity="0.5"/></svg>`;
 
 export class TouchControls {
   private el: HTMLDivElement;
 
   private joyBase: HTMLDivElement;
   private joyThumb: HTMLDivElement;
+  private rightCol: HTMLDivElement;
+  private rightStack: HTMLDivElement;
   private actionBtn: HTMLButtonElement;
-  /** Carpet: capybara flame (maps to same one-shot as keyboard Space). */
-  private carpetFlameBtn: HTMLButtonElement;
   private elevateBtn: HTMLButtonElement;
   private descendBtn: HTMLButtonElement;
 
@@ -26,9 +29,6 @@ export class TouchControls {
   private actionQueued = false;
   private actionHeld = false;
 
-  private carpetFlameTouchId: number | null = null;
-  private carpetFlameQueued = false;
-
   private elevateTouchId: number | null = null;
   private elevateHeld = false;
 
@@ -36,6 +36,8 @@ export class TouchControls {
   private descendHeld = false;
 
   private vehicle: Vehicle = "plane";
+  /** Cosmic void (carpet): autofire, no on-screen right-hand actions. */
+  private cosmicVoid = false;
   private _enabled = true;
 
   constructor(container: HTMLElement) {
@@ -49,28 +51,30 @@ export class TouchControls {
     this.joyBase.appendChild(this.joyThumb);
     this.el.appendChild(this.joyBase);
 
+    this.rightCol = document.createElement("div");
+    this.rightCol.className = "tc-right-col";
+    this.rightStack = document.createElement("div");
+    this.rightStack.className = "tc-right-stack";
+
     this.elevateBtn = document.createElement("button");
     this.elevateBtn.className = "tc-elevate-btn";
+    this.elevateBtn.type = "button";
     this.elevateBtn.textContent = "↑";
-    this.el.appendChild(this.elevateBtn);
-
-    this.descendBtn = document.createElement("button");
-    this.descendBtn.className = "tc-descend-btn";
-    this.descendBtn.textContent = "↓";
-    this.el.appendChild(this.descendBtn);
 
     this.actionBtn = document.createElement("button");
     this.actionBtn.className = "tc-action-btn";
-    this.actionBtn.textContent = "E";
-    this.el.appendChild(this.actionBtn);
+    this.actionBtn.type = "button";
+    this.actionBtn.textContent = "●";
 
-    this.carpetFlameBtn = document.createElement("button");
-    this.carpetFlameBtn.className = "tc-carpet-flame-btn";
-    this.carpetFlameBtn.type = "button";
-    this.carpetFlameBtn.setAttribute("aria-label", "Flame");
-    this.carpetFlameBtn.textContent = "●";
-    this.carpetFlameBtn.style.display = "none";
-    this.el.appendChild(this.carpetFlameBtn);
+    this.descendBtn = document.createElement("button");
+    this.descendBtn.className = "tc-descend-btn";
+    this.descendBtn.type = "button";
+    this.descendBtn.textContent = "↓";
+    this.descendBtn.style.display = "none";
+
+    this.rightStack.append(this.elevateBtn, this.actionBtn, this.descendBtn);
+    this.rightCol.append(this.rightStack);
+    this.el.appendChild(this.rightCol);
 
     container.appendChild(this.el);
     this.applyStyles();
@@ -92,9 +96,7 @@ export class TouchControls {
     window.addEventListener("touchend", this.onActionEnd);
     window.addEventListener("touchcancel", this.onActionEnd);
 
-    this.carpetFlameBtn.addEventListener("touchstart", this.onCarpetFlameStart, { passive: false });
-    window.addEventListener("touchend", this.onCarpetFlameEnd);
-    window.addEventListener("touchcancel", this.onCarpetFlameEnd);
+    this.refreshActionLayout();
   }
 
   get enabled() { return this._enabled; }
@@ -105,21 +107,60 @@ export class TouchControls {
 
   setVehicle(vehicle: Vehicle) {
     this.vehicle = vehicle;
-    this.elevateBtn.style.display = "";
-    if (vehicle === "plane") {
-      this.actionBtn.textContent = "●";
+    this.clearRightControlTouches();
+    this.refreshActionLayout();
+  }
+
+  setCosmicVoid(inside: boolean) {
+    this.cosmicVoid = inside;
+    this.clearRightControlTouches();
+    this.refreshActionLayout();
+  }
+
+  private setActionButtonToPlane() {
+    this.actionBtn.textContent = "●";
+  }
+
+  private setActionButtonToPortal() {
+    this.actionBtn.innerHTML = PORTAL_BTN_SVG;
+  }
+
+  private clearRightControlTouches() {
+    this.actionTouchId = null;
+    this.actionQueued = false;
+    this.actionHeld = false;
+    this.actionBtn.classList.remove("active");
+    this.elevateTouchId = null;
+    this.elevateHeld = false;
+    this.elevateBtn.classList.remove("active");
+    this.descendTouchId = null;
+    this.descendHeld = false;
+    this.descendBtn.classList.remove("active");
+  }
+
+  private refreshActionLayout() {
+    const v = this.vehicle;
+    const isCarpetVoid = v === "carpet" && this.cosmicVoid;
+
+    if (v === "boat" || isCarpetVoid) {
+      this.rightCol.style.display = "none";
+      return;
+    }
+
+    this.rightCol.style.display = "";
+    this.descendBtn.style.display = "none";
+
+    if (v === "plane") {
+      this.elevateBtn.style.display = "";
+      this.elevateBtn.setAttribute("aria-label", "Climb");
+      this.setActionButtonToPlane();
       this.actionBtn.style.display = "";
-      this.carpetFlameBtn.style.display = "none";
-      this.descendBtn.style.display = "none";
-    } else if (vehicle === "carpet") {
-      this.actionBtn.textContent = "E";
-      this.actionBtn.style.display = "";
-      this.carpetFlameBtn.style.display = "";
-      this.descendBtn.style.display = "none";
+      this.actionBtn.setAttribute("aria-label", "Shoot paintball");
     } else {
-      this.actionBtn.style.display = "none";
-      this.carpetFlameBtn.style.display = "none";
-      this.descendBtn.style.display = "none";
+      this.elevateBtn.style.display = "none";
+      this.setActionButtonToPortal();
+      this.actionBtn.style.display = "";
+      this.actionBtn.setAttribute("aria-label", "Place magic portal");
     }
   }
 
@@ -144,7 +185,7 @@ export class TouchControls {
     const forward = ny < -DEADZONE;
     const brake = ny > DEADZONE;
 
-    const elevate = this.elevateHeld;
+    const elevate = this.vehicle === "plane" && this.elevateHeld;
     const descend = this.descendHeld;
     let paintball = false;
     let specialAction = false;
@@ -152,11 +193,9 @@ export class TouchControls {
     if (this.vehicle === "plane") {
       paintball = this.actionQueued;
       this.actionQueued = false;
-    } else if (this.vehicle === "carpet") {
+    } else if (this.vehicle === "carpet" && !this.cosmicVoid) {
       specialAction = this.actionQueued;
       this.actionQueued = false;
-      paintball = this.carpetFlameQueued;
-      this.carpetFlameQueued = false;
     }
 
     return {
@@ -246,26 +285,6 @@ export class TouchControls {
     }
   };
 
-  private onCarpetFlameStart = (e: TouchEvent) => {
-    e.preventDefault();
-    if (this.carpetFlameTouchId !== null) return;
-    const t = e.changedTouches[0];
-    this.carpetFlameTouchId = t.identifier;
-    this.carpetFlameQueued = true;
-    this.carpetFlameBtn.classList.add("active");
-  };
-
-  private onCarpetFlameEnd = (e: TouchEvent) => {
-    if (this.carpetFlameTouchId === null) return;
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === this.carpetFlameTouchId) {
-        this.carpetFlameTouchId = null;
-        this.carpetFlameBtn.classList.remove("active");
-        return;
-      }
-    }
-  };
-
   /* ── Elevate button touch handling ────────────────────── */
 
   private onElevateStart = (e: TouchEvent) => {
@@ -319,19 +338,7 @@ export class TouchControls {
     this.joyDx = 0;
     this.joyDy = 0;
     this.joyThumb.style.transform = "translate(-50%, -50%)";
-    this.actionTouchId = null;
-    this.actionQueued = false;
-    this.actionHeld = false;
-    this.actionBtn.classList.remove("active");
-    this.carpetFlameTouchId = null;
-    this.carpetFlameQueued = false;
-    this.carpetFlameBtn.classList.remove("active");
-    this.elevateTouchId = null;
-    this.elevateHeld = false;
-    this.elevateBtn.classList.remove("active");
-    this.descendTouchId = null;
-    this.descendHeld = false;
-    this.descendBtn.classList.remove("active");
+    this.clearRightControlTouches();
   }
 
   private applyStyles() {
@@ -348,43 +355,65 @@ export class TouchControls {
       }
       .tc-joy-base {
         position: absolute;
-        bottom: max(96px, calc(84px + env(safe-area-inset-bottom)));
-        left: max(36px, calc(12px + env(safe-area-inset-left)));
-        width: 120px;
-        height: 120px;
+        bottom: max(20px, env(safe-area-inset-bottom));
+        left: max(14px, calc(10px + env(safe-area-inset-left)));
+        width: 110px;
+        height: 110px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.06);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.07);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         pointer-events: auto;
         touch-action: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
       }
       .tc-joy-thumb {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 48px;
-        height: 48px;
+        width: 44px;
+        height: 44px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.20);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.22);
+        border: 1px solid rgba(255, 255, 255, 0.16);
         transition: background 0.1s;
+      }
+      .tc-right-col {
+        position: absolute;
+        right: max(12px, calc(8px + env(safe-area-inset-right)));
+        /* sit above Vibe Jam / other bottom-rail UI */
+        bottom: max(50px, calc(22px + env(safe-area-inset-bottom)));
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 10px;
+        max-width: min(168px, 46vw);
+        pointer-events: none;
+      }
+      .tc-right-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 9px;
+        pointer-events: auto;
       }
       .tc-elevate-btn,
       .tc-descend-btn,
-      .tc-action-btn,
-      .tc-carpet-flame-btn {
-        position: absolute;
-        right: max(36px, calc(12px + env(safe-area-inset-right)));
-        width: 56px;
-        height: 56px;
+      .tc-action-btn {
+        position: relative;
+        right: auto;
+        bottom: auto;
+        width: 52px;
+        height: 52px;
+        min-width: 52px;
+        min-height: 52px;
         border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        background: rgba(255, 255, 255, 0.06);
-        backdrop-filter: blur(8px);
-        color: rgba(255, 255, 255, 0.6);
-        font-size: 1.2rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(10px);
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 1.05rem;
         font-weight: 700;
         font-family: inherit;
         pointer-events: auto;
@@ -396,32 +425,43 @@ export class TouchControls {
         transition: background 0.1s;
         -webkit-user-select: none;
         user-select: none;
+        box-shadow: 0 2px 14px rgba(0,0,0,0.18);
+        padding: 0;
       }
-      .tc-elevate-btn {
-        bottom: max(320px, calc(308px + env(safe-area-inset-bottom)));
-      }
-      .tc-descend-btn {
-        bottom: max(252px, calc(240px + env(safe-area-inset-bottom)));
-      }
-      .tc-carpet-flame-btn {
-        bottom: max(252px, calc(240px + env(safe-area-inset-bottom)));
-      }
-      .tc-action-btn {
-        bottom: max(184px, calc(172px + env(safe-area-inset-bottom)));
+      .tc-action-btn .tc-portal-icon {
+        width: 1.4rem;
+        height: 1.4rem;
+        max-width: 68%;
+        max-height: 68%;
+        display: block;
+        flex-shrink: 0;
       }
       .tc-elevate-btn.active,
       .tc-descend-btn.active,
-      .tc-action-btn.active,
-      .tc-carpet-flame-btn.active {
-        background: rgba(255, 255, 255, 0.20);
+      .tc-action-btn.active {
+        background: rgba(255, 255, 255, 0.24);
       }
       @media (max-width: 480px) {
         .tc-joy-base,
         .tc-elevate-btn,
         .tc-descend-btn,
-        .tc-action-btn,
-        .tc-carpet-flame-btn {
+        .tc-action-btn {
           backdrop-filter: none;
+        }
+        .tc-joy-base { width: 100px; height: 100px; }
+        .tc-joy-thumb { width: 40px; height: 40px; }
+        .tc-elevate-btn,
+        .tc-descend-btn,
+        .tc-action-btn {
+          width: 48px;
+          height: 48px;
+          min-width: 48px;
+          min-height: 48px;
+          font-size: 1rem;
+        }
+        .tc-action-btn .tc-portal-icon {
+          width: 1.25rem;
+          height: 1.25rem;
         }
       }
     `;
@@ -442,9 +482,6 @@ export class TouchControls {
     this.actionBtn.removeEventListener("touchstart", this.onActionStart);
     window.removeEventListener("touchend", this.onActionEnd);
     window.removeEventListener("touchcancel", this.onActionEnd);
-    this.carpetFlameBtn.removeEventListener("touchstart", this.onCarpetFlameStart);
-    window.removeEventListener("touchend", this.onCarpetFlameEnd);
-    window.removeEventListener("touchcancel", this.onCarpetFlameEnd);
     this.el.remove();
     document.getElementById("touch-controls-styles")?.remove();
   }

@@ -5152,6 +5152,7 @@ export class Game {
 
       await this.transitionOverlay.fadeIn();
       this.gamePhase = "flying";
+      this.touchControls?.setCosmicVoid(true);
       this.createVoidFlameArrow();
       this.createVoidEnemyArrows();
       if (this.voidMoths) {
@@ -5176,6 +5177,7 @@ export class Game {
       await this.transitionOverlay.fadeOut();
       this.removeVoidEternalFlame();
       this.inCosmicVoid = false;
+      this.touchControls?.setCosmicVoid(false);
       this.socketClient?.disconnect();
       this.remotePlanes.dispose();
       this.initNetworking(this.worldSlug); // Restart stateSync and socket
