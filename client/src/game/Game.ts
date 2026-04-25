@@ -2599,7 +2599,11 @@ export class Game {
     const portalInteractionSuppressed = this.portalInteractionSuppressTimer > 0 || this.inCosmicVoid;
 
     // Auto-enter cosmic void portal on proximity — no key press needed, just fly into it.
-    if (!portalInteractionSuppressed && this.localPlayer instanceof Carpet) {
+    if (
+      !portalInteractionSuppressed &&
+      this.localPlayer instanceof Carpet &&
+      !ProgressionManager.loadPlayerWorldState().voidPortalsClosed
+    ) {
       const pPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
       for (const portal of this.cosmicWorldPortals) {
         if (pPos.distanceTo(portal.worldPosition) < 0.45) {
@@ -4458,16 +4462,19 @@ export class Game {
 
     this.stopVoidAmbientMusic();
 
-    // Fade to black and return to the world
-    await this.exitCosmicVoid();
-
-    // Award the eternal flame and permanently close the void portals
+    // Persist before `exitCosmicVoid` so `restoreWorldVisibilityFromVoid` does not
+    // re-show portals, and clear portal meshes so proximity cannot re-trigger entry.
     const prev = ProgressionManager.loadPlayerWorldState();
     this.savePlayerWorldState({
       eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
       voidPortalsClosed: true,
     });
     this.eternalFlameUI?.syncFromSave();
+    this.clearCosmicWorldPortals();
+
+    // Fade to black and return to the world
+    await this.exitCosmicVoid();
+
     // Brief delay so the world has a moment to settle before the overlay appears
     await new Promise<void>((r) => setTimeout(r, 600));
     this.eternalFlameUI?.playKingLootSequence();
@@ -4798,6 +4805,15 @@ export class Game {
     } finally {
       this.coastCarpetDuringCosmicTransition = false;
     }
+  }
+
+  /** Disposes and removes all cosmic void portal visuals (e.g. after completion). */
+  private clearCosmicWorldPortals() {
+    for (const portal of this.cosmicWorldPortals) {
+      this.scene.remove(portal.group);
+      portal.dispose();
+    }
+    this.cosmicWorldPortals = [];
   }
 
   /** Restore all scene objects that were hidden when entering the cosmic void. */
