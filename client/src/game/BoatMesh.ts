@@ -272,3 +272,135 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
   boat.userData.hullMaterial = hullMat;
   return boat;
 }
+
+/**
+ * Smaller open-hulled sailing dinghy for NPC ocean traffic.
+ * Bow geometry follows the same wall-to-plank math as createBoat() so
+ * there are no gaps or holes at the bow seam.
+ */
+export function createSmallBoat(hullColor: number = 0x5588cc): Group {
+  const boat = new Group();
+  const s = 0.021;
+
+  const hullMat = new MeshPhongMaterial({ color: hullColor, flatShading: true, shininess: 40 });
+  addRimLight(hullMat, 0xffeedd, 0.22, 3.2);
+  const deckMat = new MeshPhongMaterial({ color: 0x7a6040, flatShading: true, shininess: 20 });
+  addRimLight(deckMat, 0xffeebb, 0.18, 3.5);
+  const metalMat = new MeshPhongMaterial({ color: 0x666a6d, flatShading: true, shininess: 45 });
+  addRimLight(metalMat, 0xddeeff, 0.18, 3);
+  const sailMat = new MeshPhongMaterial({ color: 0xf8f0e0, flatShading: true, shininess: 10 });
+  addRimLight(sailMat, 0xfff8ee, 0.15, 3.5);
+  const foamMat = new MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.4,
+    blending: AdditiveBlending, depthWrite: false,
+  });
+
+  const hullW    = s * 1.9;
+  const hullH    = s * 0.58;
+  const hullLen  = s * 3.0;  // main box (stern-to-bow-seam)
+  const wallThick = s * 0.14;
+  const hullY    = s * 0.06;
+  const deckY    = hullY + s * 0.02;
+
+  // Main hull is centered at z = s*0.1 so its front face lands exactly at:
+  //   z_front = s*0.1 - hullLen/2 = s*0.1 - s*1.5 = -s*1.4  → bowBackZ = 1.4 (in s)
+  const hullCenterZ = s * 0.1;
+  const bowBackZ  = 1.4;   // s units; matches z_front of main hull
+  const bowTipZ   = 2.1;   // s units; pointed bow tip
+  // Wall centre-line X (half-width minus half-thickness)
+  const bowHalfW  = hullW / 2 / s - wallThick / s / 2; // ≈ 0.88 s-units
+  const bowDz     = bowTipZ - bowBackZ;
+  const bowPlankLen = Math.sqrt(bowHalfW * bowHalfW + bowDz * bowDz);
+  const bowAngle  = Math.atan2(bowHalfW, bowDz);
+
+  // ── Bottom plate (main hull) ──
+  const bottom = new Mesh(new BoxGeometry(hullW, wallThick * 0.5, hullLen), hullMat);
+  bottom.position.set(0, hullY - hullH * 0.5 + wallThick * 0.25, hullCenterZ);
+  boat.add(bottom);
+
+  // ── Port & starboard walls (main hull only — end flush at bow seam) ──
+  for (const side of [-1, 1]) {
+    const wall = new Mesh(new BoxGeometry(wallThick, hullH, hullLen), hullMat);
+    wall.position.set(side * (hullW * 0.5 - wallThick * 0.5), hullY, hullCenterZ);
+    boat.add(wall);
+  }
+
+  // ── Bow planks (same math as createBoat) — no gap at seam ──
+  for (const side of [-1, 1]) {
+    const plank = new Mesh(new BoxGeometry(wallThick, hullH, s * bowPlankLen), hullMat);
+    plank.position.set(side * s * bowHalfW * 0.5, hullY, -s * (bowBackZ + bowTipZ) * 0.5);
+    plank.rotation.y = side * bowAngle;
+    boat.add(plank);
+  }
+
+  // ── Bow bottom plate (closes the hull floor under the bow planks) ──
+  const bowBot = new Mesh(new BoxGeometry(s * 0.9, wallThick * 0.5, s * bowDz), hullMat);
+  bowBot.position.set(0, hullY - hullH * 0.5 + wallThick * 0.25, -s * (bowBackZ + bowTipZ) * 0.5);
+  boat.add(bowBot);
+
+  // ── Bow tip cap (closes the point) ──
+  const bowTip = new Mesh(new BoxGeometry(wallThick * 1.2, hullH, wallThick * 1.2), hullMat);
+  bowTip.position.set(0, hullY, -s * bowTipZ);
+  boat.add(bowTip);
+
+  // ── Stern transom ──
+  const sternZ = hullCenterZ + hullLen * 0.5;
+  const transom = new Mesh(new BoxGeometry(hullW, hullH, wallThick), hullMat);
+  transom.position.set(0, hullY, sternZ);
+  boat.add(transom);
+
+  // ── Deck floor ──
+  const deck = new Mesh(new BoxGeometry(hullW - wallThick * 2, s * 0.05, hullLen), deckMat);
+  deck.position.set(0, deckY, hullCenterZ);
+  boat.add(deck);
+
+  // Bow deck strips (cover the interior of the bow)
+  const bowDeckSteps = 4;
+  const bowDeckStepLen = bowDz / bowDeckSteps;
+  for (let i = 0; i < bowDeckSteps; i++) {
+    const zCenter = bowBackZ + bowDeckStepLen * (i + 0.5);
+    const t = 1 - (zCenter - bowBackZ) / bowDz;
+    const stripW = Math.max(0.1, bowHalfW * 2 * t - 0.3);
+    const strip = new Mesh(new BoxGeometry(s * stripW, s * 0.05, s * (bowDeckStepLen + 0.02)), deckMat);
+    strip.position.set(0, deckY, -s * zCenter);
+    boat.add(strip);
+  }
+
+  // ── Foam waterline (main hull sides) ──
+  const foamH = s * 0.1;
+  const foamSide = s * 0.1;
+  for (const side of [-1, 1]) {
+    const foam = new Mesh(new BoxGeometry(foamSide, foamH, hullLen), foamMat);
+    foam.position.set(side * (hullW * 0.5 + foamSide * 0.3), -s * 0.14, hullCenterZ);
+    boat.add(foam);
+    // Bow foam strips
+    const bowFoam = new Mesh(new BoxGeometry(foamSide, foamH, s * bowPlankLen), foamMat);
+    bowFoam.position.set(side * (s * bowHalfW * 0.5 + foamSide * 0.35), -s * 0.14, -s * (bowBackZ + bowTipZ) * 0.5);
+    bowFoam.rotation.y = side * bowAngle;
+    boat.add(bowFoam);
+  }
+
+  // ── Mast ──
+  const mast = new Mesh(new CylinderGeometry(s * 0.04, s * 0.055, s * 2.4, 6), metalMat);
+  mast.position.set(0, deckY + s * 1.3, -s * 0.2);
+  boat.add(mast);
+
+  // Sail (boom + canvas)
+  const sailCanvas = new Mesh(new BoxGeometry(s * 0.05, s * 1.4, s * 0.65), sailMat);
+  sailCanvas.position.set(s * 0.16, deckY + s * 1.45, -s * 0.1);
+  sailCanvas.rotation.z = 0.1;
+  boat.add(sailCanvas);
+  const boom = new Mesh(new CylinderGeometry(s * 0.025, s * 0.025, s * 0.65, 5), metalMat);
+  boom.rotation.x = Math.PI / 2;
+  boom.position.set(s * 0.1, deckY + s * 0.72, -s * 0.1);
+  boat.add(boom);
+
+  // ── Rudder ──
+  const rudder = new Mesh(new BoxGeometry(s * 0.05, s * 0.28, s * 0.16), metalMat);
+  rudder.position.set(0, s * 0.03, sternZ + s * 0.04);
+  boat.add(rudder);
+
+  boat.traverse((child) => { child.castShadow = true; });
+  boat.userData.hullMaterial = hullMat;
+  return boat;
+}

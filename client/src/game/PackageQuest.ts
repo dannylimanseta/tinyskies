@@ -43,6 +43,8 @@ const MAX_PAIR_RETRIES = 20;
 /** When offering multiple delivery quests, pickup villages must be at least this “far” apart (lower dot = farther on the globe). */
 const MIN_ORIGIN_SEPARATION_DOTS = [0.4, 0.52, 0.62, 0.72, 0.85] as const;
 const OFFER_COUNT = 3;
+/** Package delivery runs per world / session (matches {@link OFFER_COUNT}). */
+export const PACKAGE_DELIVERIES_PER_WORLD = OFFER_COUNT;
 
 const STRING_LENGTH = 0.12;
 const SWING_GRAVITY = 8.0;
@@ -205,6 +207,11 @@ export class PackageQuestManager {
 
   get isCarrying(): boolean {
     return this.state === QuestState.Carrying || this.state === QuestState.Delivering;
+  }
+
+  /** Completed village deliveries this session (0 … {@link PACKAGE_DELIVERIES_PER_WORLD}). */
+  getCompletedDeliveryCount(): number {
+    return this.questIndex;
   }
 
   private state = QuestState.Spawning;

@@ -86,11 +86,12 @@ import { FloatingLanterns, LANTERN_CLUSTER_COUNT, LANTERN_XP } from "./FloatingL
 import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyCluster";
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { Braziers, BRAZIER_COUNT, type SavedBrazierState } from "./Braziers";
-import { SkyGremlins, SKY_GREMLIN_KING_XP, SKY_GREMLIN_XP } from "./SkyGremlins";
+import { SkyGremlins, SKY_GREMLIN_KING_XP, SKY_GREMLIN_XP, GREMLIN_TAKEDOWNS_FOR_KING } from "./SkyGremlins";
 import { NpcPlanes } from "./NpcPlanes";
+import { NpcBoats } from "./NpcBoats";
 import { GremlinHearts } from "./GremlinHearts";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
-import { PackageQuestManager } from "./PackageQuest";
+import { PackageQuestManager, PACKAGE_DELIVERIES_PER_WORLD } from "./PackageQuest";
 import {
   isNpcMale,
   pickBalloonGreeting,
@@ -437,6 +438,7 @@ export class Game {
   private skyGremlins: SkyGremlins | null = null;
   private npcPlanes: NpcPlanes | null = null;
   private npcPaintballUnsub: (() => void) | null = null;
+  private npcBoats: NpcBoats | null = null;
   private gremlinHearts: GremlinHearts | null = null;
   private lastGremlinHitSfxAt = 0;
   private lastVoidMothHitSfxAt = 0;
@@ -1383,7 +1385,6 @@ export class Game {
     });
     this.hud.setVehicle(vehicle, {
       showXpProgression: this.vehicleFeatures.xpProgressionUI,
-      showFishCounter: this.vehicleFeatures.fishingMiniGame,
     });
 
     if (this.localPlayer instanceof Boat && this.vehicleFeatures.fishingMiniGame) {
@@ -1391,11 +1392,9 @@ export class Game {
       this.scene.add(this.oceanFish.group);
       this.fishCaught = 0;
       this.boatMysteryAt12Handled = false;
-      this.hud.setFishCaught(0);
       this.oceanFish.onCatch = (variant) => {
         if (variant === "octopus") {
           this.fishCaught += 1;
-          this.hud.setFishCaught(this.fishCaught);
           this.completeVehicleTutorialStep("fish");
           this.audioManager.resumeContextIfNeeded();
           this.cameraRig.shake(0.02, 0.14);
@@ -1420,7 +1419,6 @@ export class Game {
         }
 
         this.fishCaught += 1;
-        this.hud.setFishCaught(this.fishCaught);
         this.completeVehicleTutorialStep("fish");
         const xp = variant === "large" ? FISH_CATCH_XP * 2 : FISH_CATCH_XP;
         this.awardXP("fish", xp);
@@ -1542,6 +1540,11 @@ export class Game {
       if (this.paintballSystem) {
         this.npcPaintballUnsub = this.npcPlanes.registerPaintballListener(this.paintballSystem);
       }
+    }
+
+    // NPC small boats — boat vehicle only, local-only
+    if (vehicle === "boat") {
+      this.npcBoats = new NpcBoats(this.scene, globeRadius, seed, terrainType);
     }
 
     this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
@@ -1818,6 +1821,8 @@ export class Game {
     this.npcPaintballUnsub = null;
     this.npcPlanes?.dispose();
     this.npcPlanes = null;
+    this.npcBoats?.dispose();
+    this.npcBoats = null;
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
       this.kingEternalFlameRewardTimeout = null;
@@ -2627,11 +2632,13 @@ export class Game {
           void this.doLanding();
         }
       }
+      this.syncQuestTrackersToHud();
       return;
     }
 
     /* ── Campsite phase ────────────────────────────────── */
     if (this.gamePhase === "campsite" && this.campsiteScene) {
+      this.syncQuestTrackersToHud();
       this.skyGremlins?.setSuspended(true);
       this.localPlayer.visibility = 1;
       if (!this.inCosmicVoid && !this.voidEntryInProgress) {
@@ -2669,6 +2676,7 @@ export class Game {
       return;
     }
     if (this.gamePhase === "transitioning") {
+      this.syncQuestTrackersToHud();
       this.skyGremlins?.setSuspended(true);
       if (this.coastCarpetDuringCosmicTransition && this.localPlayer instanceof Carpet) {
         this.localPlayer.update(dt, 0, false, false, false, false, false, { maintainSpeed: true });
@@ -2721,6 +2729,7 @@ export class Game {
 
     /* ── Moon impact cinematic phase ────────────────────── */
     if (this.gamePhase === "moonImpact") {
+      this.syncQuestTrackersToHud();
       this.skyGremlins?.setSuspended(true);
       this.moonThreat?.update(dt);
       this.tickMoonImpactCinematic(dt);
@@ -2729,6 +2738,7 @@ export class Game {
 
     /* ── Moonstone union cinematic phase ────────────────── */
     if (String(this.gamePhase) === "moonstoneUnion") {
+      this.syncQuestTrackersToHud();
       this.skyGremlins?.setSuspended(true);
       this.tickMoonstoneUnionCinematic(dt);
       return;
@@ -2890,6 +2900,13 @@ export class Game {
     if (this.npcPlanes && !this.inCosmicVoid) {
       const _npcPlayerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
       this.npcPlanes.update(dt, _npcPlayerPos, (msg) => {
+        this.hud.showAmbientToast(msg);
+      });
+    }
+
+    if (this.npcBoats) {
+      const _npcBoatPlayerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      this.npcBoats.update(dt, _npcBoatPlayerPos, (msg) => {
         this.hud.showAmbientToast(msg);
       });
     }
@@ -3353,6 +3370,7 @@ export class Game {
       this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
     );
 
+    this.syncQuestTrackersToHud();
     this.renderer.render(this.scene, this.cameraRig.camera);
     if (this.vehicleFeatures.speedLines && !this.inCosmicVoid) {
       this.speedLines.render(this.renderer);
@@ -4485,6 +4503,44 @@ export class Game {
     await this.transitionOverlay.fadeIn();
     this.gamePhase = "flying";
     if (CAMPSITE_HOME_ENABLED) this.hud.setCampsiteButtonVisible(true);
+  }
+
+  /** Per-vehicle quest lines under the world name (gremlin / package / jelly / brazier hint / fish). */
+  private syncQuestTrackersToHud() {
+    if (this.gamePhase !== "flying") {
+      this.hud.setQuestTrackers(null);
+      return;
+    }
+    const v = this.playerVehicle;
+    if (v === "plane") {
+      const kills = this.skyGremlins?.getSessionGremlinKills() ?? 0;
+      const pkg =
+        this.vehicleFeatures.packageQuests && this.packageQuest
+          ? {
+              current: this.packageQuest.getCompletedDeliveryCount(),
+              max: PACKAGE_DELIVERIES_PER_WORLD,
+            }
+          : null;
+      this.hud.setQuestTrackers({
+        vehicle: "plane",
+        gremlin: { current: kills, max: GREMLIN_TAKEDOWNS_FOR_KING },
+        pkg,
+      });
+    } else if (v === "carpet") {
+      const jelly = this.skyJellyfish?.getCollectedCount() ?? 0;
+      this.hud.setQuestTrackers({
+        vehicle: "carpet",
+        jelly: { current: jelly, max: JELLY_COUNT },
+        brazierHint: true,
+      });
+    } else if (v === "boat") {
+      this.hud.setQuestTrackers({
+        vehicle: "boat",
+        fish: { current: this.fishCaught, max: FISH_COUNT_BEFORE_MYSTERY_OCTOPUS },
+      });
+    } else {
+      this.hud.setQuestTrackers(null);
+    }
   }
 
   private setPortalHintVisible(visible: boolean) {
@@ -5987,6 +6043,8 @@ export class Game {
     this.npcPaintballUnsub = null;
     this.npcPlanes?.dispose();
     this.npcPlanes = null;
+    this.npcBoats?.dispose();
+    this.npcBoats = null;
     if (this.gremlinHearts) {
       this.scene.remove(this.gremlinHearts.group);
       this.gremlinHearts.dispose();

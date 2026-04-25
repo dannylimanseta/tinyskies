@@ -1,6 +1,27 @@
 import type { Vehicle } from "@globefly/shared";
 import { CAMPSITE_HOME_ENABLED } from "../config/features";
 
+/** Quest progress shown under the world name (driven from {@link HUD.setQuestTrackers}). */
+export type QuestTrackerState =
+  | {
+      vehicle: "plane";
+      gremlin: { current: number; max: number };
+      /** Null when package quests are disabled for this build. */
+      pkg: { current: number; max: number } | null;
+    }
+  | { vehicle: "carpet"; jelly: { current: number; max: number }; brazierHint: boolean }
+  | { vehicle: "boat"; fish: { current: number; max: number } };
+
+/** Quest row icons: assets in `client/public/2D/`. */
+const QT_ICONS = {
+  gremlin: `<img class="hud-qt-ico" src="/2D/icon_gremlin.svg" alt="" draggable="false" />`,
+  package: `<img class="hud-qt-ico" src="/2D/icon_package.svg" alt="" draggable="false" />`,
+  jellyfish: `<img class="hud-qt-ico hud-qt-ico--carpet" src="/2D/icon_jellyfish.svg" alt="" draggable="false" />`,
+  fish: `<img class="hud-qt-ico" src="/2D/icon_fish.svg" alt="" draggable="false" />`,
+  /** Brazier hint — no art asset; inline flame only. */
+  flame: `<svg class="hud-qt-ico hud-qt-ico--flame hud-qt-ico--carpet" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2s2.5 3.2 2.5 6.5c0 1.2-.3 2.1-.5 2.5.8-.3 1.3-1.1 1.3-2.1 0-1.5-.4-2.3-.4-2.3S18 8.2 18 12c0 3.3-2.7 6-6 6s-6-2.7-6-6c0-3.5 1.2-4.3 1.2-4.3s1 1.3 1 3.2c0 1.4-.4 1.7-.4 1.7s-.1-1.3-.1-2.3C6.5 5.2 12 2 12 2z"/></svg>`,
+} as const;
+
 export class HUD {
   private el: HTMLDivElement;
   private hidden = false;
@@ -14,7 +35,6 @@ export class HUD {
   private xpBarFill!: HTMLElement;
   private xpValueEl!: HTMLElement;
   private topRightEl!: HTMLDivElement;
-  private fishCaughtEl: HTMLDivElement | null = null;
   private fullscreenBtn!: HTMLButtonElement;
   private muteBtn!: HTMLButtonElement;
 
@@ -32,6 +52,9 @@ export class HUD {
   private brazierFillEls: Element[] = [];
   private brazierTrackerShown = false;
   private centeredToastEls: HTMLDivElement[] = [];
+
+  private questTrackersEl: HTMLElement | null = null;
+  private lastQuestTrackerSig = "";
 
   constructor(container: HTMLElement) {
     this.el = document.createElement("div");
@@ -53,9 +76,9 @@ export class HUD {
       <div class="hud-top">
         <div class="hud-world-name"></div>
         <div class="hud-player-count">1 player</div>
+        <div class="hud-quest-trackers" style="display:none" aria-label="Quest progress"></div>
       </div>
       <div class="hud-top-right">
-        <div class="hud-fish-count" style="display:none" aria-live="polite">Fish: 0</div>
         <button class="hud-campsite-btn" aria-label="Go to campsite">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2 3 20h18Z"/>
@@ -102,12 +125,12 @@ export class HUD {
 
     this.worldNameEl = this.el.querySelector(".hud-world-name")!;
     this.playerCountEl = this.el.querySelector(".hud-player-count")!;
+    this.questTrackersEl = this.el.querySelector(".hud-quest-trackers");
     this.xpPanelEl = this.el.querySelector(".hud-xp-panel")!;
     this.xpLevelEl = this.el.querySelector(".hud-xp-level")!;
     this.xpBarFill = this.el.querySelector(".hud-xp-bar-fill")!;
     this.xpValueEl = this.el.querySelector(".hud-xp-value")!;
     this.topRightEl = this.el.querySelector(".hud-top-right")!;
-    this.fishCaughtEl = this.el.querySelector(".hud-fish-count");
     this.fullscreenBtn = this.el.querySelector(".hud-fullscreen-btn")!;
     this.muteBtn = this.el.querySelector(".hud-mute-btn")!;
     this.campsiteBtn = this.el.querySelector(".hud-campsite-btn")!;
@@ -166,22 +189,9 @@ export class HUD {
     this.worldNameEl.textContent = name;
   }
 
-  setVehicle(_vehicle: Vehicle, options?: { showXpProgression?: boolean; showFishCounter?: boolean }) {
+  setVehicle(_vehicle: Vehicle, options?: { showXpProgression?: boolean }) {
     const showXp = options?.showXpProgression ?? true;
     this.xpPanelEl.style.display = showXp ? "flex" : "none";
-    const showFish = options?.showFishCounter ?? false;
-    if (this.fishCaughtEl) {
-      this.fishCaughtEl.style.display = showFish ? "block" : "none";
-      if (showFish) {
-        this.fishCaughtEl.textContent = "Fish: 0";
-      }
-    }
-  }
-
-  setFishCaught(n: number) {
-    if (!this.fishCaughtEl) return;
-    this.fishCaughtEl.textContent = `Fish: ${n}`;
-    this.fishCaughtEl.style.display = "";
   }
 
   setPlayerCount(count: number) {
@@ -190,6 +200,52 @@ export class HUD {
 
   setPlayerCountVisible(v: boolean) {
     this.playerCountEl.style.display = v ? "" : "none";
+  }
+
+  /**
+   * Per-vehicle quest lines under the world name. Pass `null` to hide the block.
+   * Updates are a no-op when the serialized state is unchanged (cheap every-frame sync).
+   */
+  setQuestTrackers(state: QuestTrackerState | null) {
+    if (!this.questTrackersEl) return;
+    if (!state) {
+      this.questTrackersEl.style.display = "none";
+      this.questTrackersEl.innerHTML = "";
+      this.lastQuestTrackerSig = "";
+      return;
+    }
+    const sig = JSON.stringify(state);
+    if (sig === this.lastQuestTrackerSig) return;
+    this.lastQuestTrackerSig = sig;
+    this.questTrackersEl.style.display = "flex";
+
+    const frac = (c: number, m: number) => {
+      const cc = Math.max(0, Math.min(m, c));
+      return `<span class="hud-quest-frac">${cc}/${m}</span>`;
+    };
+    const row = (html: string) => `<div class="hud-quest-row">${html}</div>`;
+
+    if (state.vehicle === "plane") {
+      const g = state.gremlin;
+      const parts: string[] = [row(`${QT_ICONS.gremlin}${frac(g.current, g.max)}`)];
+      if (state.pkg) {
+        const p = state.pkg;
+        parts.push(row(`${QT_ICONS.package}${frac(p.current, p.max)}`));
+      }
+      this.questTrackersEl.innerHTML = parts.join("");
+    } else if (state.vehicle === "carpet") {
+      const j = state.jelly;
+      const parts: string[] = [row(`${QT_ICONS.jellyfish}${frac(j.current, j.max)}`)];
+      if (state.brazierHint) {
+        parts.push(
+          row(`${QT_ICONS.flame}<span class="hud-quest-hint">Figure out how to raise the braziers</span>`),
+        );
+      }
+      this.questTrackersEl.innerHTML = parts.join("");
+    } else {
+      const f = state.fish;
+      this.questTrackersEl.innerHTML = row(`${QT_ICONS.fish}${frac(f.current, f.max)}`);
+    }
   }
 
   setXP(current: number, nextLevelXP: number, currentLevelXP: number, level: number) {
@@ -533,15 +589,66 @@ export class HUD {
         font-weight: 400;
         color: rgba(255, 255, 255, 0.45);
       }
-      .hud-fish-count {
-        font-size: 0.75rem;
-        font-weight: 500;
-        color: rgba(255, 255, 255, 0.85);
-        white-space: nowrap;
-        margin-right: 10px;
-        pointer-events: none;
+      .hud-quest-trackers {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-top: 8px;
+        align-items: flex-start;
+        /* Match .pkg-banner: delivery distance type scale */
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        color: rgba(255, 255, 255, 0.5);
       }
-
+      .hud-quest-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 3px;
+        font: inherit;
+      }
+      .hud-quest-frac {
+        font-size: 1em;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.65);
+        font-variant-numeric: tabular-nums;
+        min-width: 2.4em;
+      }
+      .hud-qt-ico {
+        width: 1.2em;
+        height: 1.2em;
+        flex-shrink: 0;
+        object-fit: contain;
+        display: block;
+        opacity: 0.95;
+      }
+      .hud-qt-ico--carpet {
+        width: 1.6em;
+        height: 1.6em;
+      }
+      .hud-qt-ico--flame {
+        color: rgba(255, 255, 255, 0.85);
+      }
+      .hud-qt-ico--carpet.hud-qt-ico--flame {
+        /* Slightly larger than jelly asset so the flame holds its own. */
+        width: 1.68em;
+        height: 1.68em;
+      }
+      .hud-quest-hint {
+        font-size: 1em;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.65);
+        max-width: min(20rem, 88vw);
+        line-height: 1.2;
+      }
+      @media (max-width: 768px) {
+        .hud-quest-trackers {
+          /* Match .pkg-banner narrow: same as delivery distance */
+          font-size: 0.8rem;
+        }
+      }
       .hud-top-right {
         position: absolute;
         top: 32px;
@@ -1316,6 +1423,7 @@ export class HUD {
         }
         .hud-world-name { font-size: 0.8rem; }
         .hud-player-count { font-size: 0.65rem; }
+        .hud-quest-trackers { font-size: 0.8rem; }
 
         .hud-xp-panel {
           bottom: max(24px, calc(14px + env(safe-area-inset-bottom)));

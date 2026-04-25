@@ -45,7 +45,8 @@ export const SKY_GREMLIN_KING_XP = 120;
 
 const GREMLIN_SHOOTER_PREFIX = "gremlin:";
 const GREMLIN_KING_SHOOTER_ID = "gremlin:king";
-const GREMLINS_KILLED_BEFORE_KING = 5;
+/** Sky gremlins shot down in a session before the Gremlin King appears (HUD quest tracker uses this). */
+export const GREMLIN_TAKEDOWNS_FOR_KING = 7;
 const GREMLIN_HP_MAX = 3;
 const GREMLIN_KING_HP_MAX = 10;
 const HP_BAR_W = 0.135;
@@ -441,6 +442,11 @@ export class SkyGremlins {
     this.removeProjectileStepListener = this.paintballSystem.addProjectileStepListener((info) => {
       this.handleProjectileStep(info);
     });
+  }
+
+  /** Gremlins shot down this session (excluding the king). */
+  getSessionGremlinKills(): number {
+    return this.sessionGremlinKills;
   }
 
   setSuspended(suspended: boolean) {
@@ -1453,7 +1459,7 @@ export class SkyGremlins {
           this.onShotDown(gremlin.worldPosition.clone());
           this.sessionGremlinKills++;
           if (
-            this.sessionGremlinKills >= GREMLINS_KILLED_BEFORE_KING &&
+            this.sessionGremlinKills >= GREMLIN_TAKEDOWNS_FOR_KING &&
             !this.kingSpawned
           ) {
             this.kingSpawned = true;
