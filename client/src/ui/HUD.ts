@@ -1440,10 +1440,39 @@ export class HUD {
     return window.matchMedia("(min-width: 769px) and (hover: hover) and (pointer: fine)").matches;
   }
 
+  /**
+   * Re-measure `.hud-top-right` for the package delivery banner. Call after the root is
+   * shown again (e.g. `hud.show()`) or when `hud.root.style.display` is toggled without
+   * going through `show()` / `hideUI()`.
+   */
+  refreshTopRightLayout(): void {
+    requestAnimationFrame(() => {
+      this.updateTopRightReservedWidth();
+    });
+  }
+
   private updateTopRightReservedWidth() {
     if (!this.topRightEl?.isConnected) return;
+    // When #hud is display:none (intro), rects are 0 — a bogus reserved value makes
+    // .pkg-banner's right inset huge and collapses the delivery banner to ~0 width.
+    if (this.hidden || this.el.style.display === "none") return;
     const rect = this.topRightEl.getBoundingClientRect();
-    const reserved = Math.max(72, Math.ceil(window.innerWidth - rect.left + 12));
+    if (rect.width < 0.5 || rect.height < 0.5) return;
+    const hudW = this.el.getBoundingClientRect().width;
+    if (hudW < 1) return;
+    const gap = 12;
+    const bannerLeft = 10;
+    /** Keep room for "Deliver to … · 9999m" even on long names (flex ellipsis on the name). */
+    const minBannerWidth = 168;
+    const fromClusterLeftToHudRight = Math.ceil(hudW - rect.left + gap);
+    // Bad layout (e.g. #hud was display:none) often yields rect.left ≈ 0 and would reserve ~100vw.
+    if (fromClusterLeftToHudRight > hudW * 0.88) {
+      this.el.style.setProperty("--hud-top-right-reserved", "120px");
+      return;
+    }
+    let reserved = Math.max(72, fromClusterLeftToHudRight);
+    const maxReserved = Math.max(72, hudW - bannerLeft - gap - minBannerWidth);
+    reserved = Math.min(reserved, maxReserved);
     this.el.style.setProperty("--hud-top-right-reserved", `${reserved}px`);
   }
 
@@ -1485,6 +1514,7 @@ export class HUD {
   show() {
     this.hidden = false;
     this.el.style.display = "";
+    this.refreshTopRightLayout();
     if (!this.entranceDone) {
       this.entranceDone = true;
       requestAnimationFrame(() => {

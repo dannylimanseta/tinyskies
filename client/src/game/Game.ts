@@ -135,6 +135,9 @@ const BALLOON_GREET_EXIT_DIST = 1.75;
 /** Seconds before the same balloon can greet again after you leave. */
 const BALLOON_GREET_COOLDOWN = 32;
 
+/** Min time between save-feed posts for the same world (rare event; avoids duplicate requests). */
+const SAVE_FEED_MIN_INTERVAL_MS = 10_000;
+
 const OBSERVATORY_GREET_DIST = 1.6;
 const OBSERVATORY_GREET_EXIT_DIST = 2.2;
 const OBSERVATORY_GREET_COOLDOWN = 40;
@@ -254,16 +257,47 @@ const GONG_SFX_VOLUME = 0.55;
 const CHOIR_1_SFX_VOLUME = 0.58;
 const KING_ETERNAL_FLAME_REWARD_DELAY_MS = 1000;
 
-type VehicleTutorialStepId = "move" | "elevate" | "shoot";
+type VehicleTutorialStepId =
+  | "move"
+  | "elevate"
+  | "shoot"
+  | "portal1"
+  | "portal2"
+  | "portalTravel"
+  | "fish";
 type VehicleTutorialStep = ControlHintRow & { id: VehicleTutorialStepId };
 
-const BIPLANE_TUTORIAL_STEPS: VehicleTutorialStep[] = [
-  { id: "move", keys: ["W", "A", "S", "D"], label: "Fly with WASD" },
-  { id: "elevate", keys: ["↑"], label: "Climb with Up Arrow" },
-  { id: "shoot", keys: ["Space"], label: "Shoot with Space" },
-];
+const VEHICLE_TUTORIAL_STEPS: Record<Vehicle, VehicleTutorialStep[]> = {
+  plane: [
+    { id: "move", keys: ["W", "A", "S", "D"], label: "Fly with WASD" },
+    { id: "elevate", keys: ["↑"], label: "Climb with Up Arrow" },
+    { id: "shoot", keys: ["Space"], label: "Shoot with Space" },
+  ],
+  carpet: [
+    { id: "move", keys: ["W", "A", "S", "D"], label: "Fly with WASD" },
+    { id: "portal1", keys: ["Space"], label: "Open Portal 1 with Space" },
+    { id: "portal2", keys: ["Space"], label: "Open Portal 2 with Space" },
+    { id: "portalTravel", keys: [], label: "Fly through a portal" },
+  ],
+  boat: [
+    { id: "move", keys: ["W", "A", "S", "D"], label: "Move with WASD" },
+    { id: "fish", keys: [], label: "Find a fish pool and catch a fish" },
+  ],
+};
+const VEHICLE_TUTORIAL_FINISH_LABELS: Record<Vehicle, string> = {
+  plane: "That's it. Enjoy flying!",
+  carpet: "That's it. Enjoy flying!",
+  boat: "That's it. Enjoy boating!",
+};
 const VEHICLE_TUTORIAL_ADVANCE_DELAY_MS = 4000;
 const VEHICLE_TUTORIAL_FADE_MS = 350;
+
+function vehicleTutorialRows(vehicle: Vehicle): ControlHintRow[] {
+  return [
+    ...VEHICLE_TUTORIAL_STEPS[vehicle],
+    { keys: [], label: VEHICLE_TUTORIAL_FINISH_LABELS[vehicle] },
+  ];
+}
 
 const GREMLIN_HIT_SFX_IDS = [
   "gremlin_1",
@@ -527,6 +561,8 @@ export class Game {
   private reservationId?: string;
   /** Set in `start()` via {@link resolveServerUrl}; used by {@link getServerUrl}. */
   private serverUrlCache: string | null = null;
+  /** Last “world saved” feed post time per world slug. */
+  private lastSaveFeedAtBySlug = new Map<string, number>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -625,6 +661,7 @@ export class Game {
 
   private mountLobby() {
     this.lobby = new Lobby(this.container, {
+      serverUrl: this.getServerUrl(),
       playerName: this.playerName,
       mobile: this.mobile,
       onNameChange: (name) => { this.playerName = name; ProgressionManager.savePlayerName(name); },
@@ -1281,6 +1318,7 @@ export class Game {
         if (variant === "octopus") {
           this.fishCaught += 1;
           this.hud.setFishCaught(this.fishCaught);
+          this.completeVehicleTutorialStep("fish");
           this.audioManager.resumeContextIfNeeded();
           this.cameraRig.shake(0.02, 0.14);
           this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.18);
@@ -1305,6 +1343,7 @@ export class Game {
 
         this.fishCaught += 1;
         this.hud.setFishCaught(this.fishCaught);
+        this.completeVehicleTutorialStep("fish");
         const xp = variant === "large" ? FISH_CATCH_XP * 2 : FISH_CATCH_XP;
         this.awardXP("fish", xp);
         this.audioManager.resumeContextIfNeeded();
@@ -2079,6 +2118,7 @@ export class Game {
       moonFrozenByEternalFlames: true,
       moonFrozenElapsedSec: elapsed,
     });
+    this.maybeReportSaveFeed();
     this.moonThreat?.freezeApproachForever();
     this.shouldShowBrazierMoonResume = false;
     this.hud.showEternalFlamesMoonSaved();
@@ -2542,7 +2582,7 @@ export class Game {
 
     let { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
-    this.updateVehicleTutorial({ turnRate, forward, brake, elevate, paintball });
+    this.updateVehicleTutorial({ turnRate, forward, brake, elevate, paintball, specialAction });
 
     // Twister spin: one burst per engagement, then cooldown (collision was re-arming every frame → infinite spin).
     if (!twisterSuppressed) {
@@ -2592,12 +2632,15 @@ export class Game {
       this.portalInteractionSuppressTimer <= 0
     ) {
       this.carpetPortalSystem.placePortal(this.localPlayer);
+      this.completeVehicleTutorialStep("portal1");
+      this.completeVehicleTutorialStep("portal2");
     }
 
     if (this.localPlayer instanceof Carpet && this.carpetPortalSystem) {
       const portalUpdate = this.carpetPortalSystem.update(dt, this.localPlayer);
       if (portalUpdate.didTeleport) {
         this.handleCarpetPortalTeleport();
+        this.completeVehicleTutorialStep("portalTravel");
       }
     }
 
@@ -4058,6 +4101,7 @@ export class Game {
 
     // Restore UI + gameplay.
     this.hud.root.style.display = "";
+    this.hud.refreshTopRightLayout();
     this.localPlayer.group.visible = true;
     this.controls.enabled = true;
     if (this.touchControls) this.touchControls.enabled = true;
@@ -4294,7 +4338,7 @@ export class Game {
     }
     this.vehicleTutorialAdvancePending = false;
 
-    if (this.mobile || vehicle !== "plane") return;
+    if (this.mobile) return;
     const tutorials = ProgressionManager.loadPlayerWorldState().vehicleTutorialsCompleted;
     if (tutorials?.[vehicle]) return;
 
@@ -4307,7 +4351,8 @@ export class Game {
     this.vehicleTutorialHints = mountVehicleTutorialHints(
       this.hud.root,
       !this.mobile,
-      BIPLANE_TUTORIAL_STEPS,
+      vehicleTutorialRows(vehicle),
+      vehicle === "boat" ? "First voyage" : "First flight",
     );
   }
 
@@ -4317,9 +4362,11 @@ export class Game {
     brake: boolean;
     elevate: boolean;
     paintball: boolean;
+    specialAction: boolean;
   }) {
     if (!this.activeVehicleTutorial || this.vehicleTutorialAdvancePending) return;
-    const step = BIPLANE_TUTORIAL_STEPS[this.activeVehicleTutorial.stepIndex];
+    const step =
+      VEHICLE_TUTORIAL_STEPS[this.activeVehicleTutorial.vehicle][this.activeVehicleTutorial.stepIndex];
     if (!step) {
       this.finishVehicleTutorial();
       return;
@@ -4338,6 +4385,14 @@ export class Game {
     this.scheduleVehicleTutorialAdvance();
   }
 
+  private completeVehicleTutorialStep(stepId: VehicleTutorialStepId) {
+    if (!this.activeVehicleTutorial || this.vehicleTutorialAdvancePending) return;
+    const step =
+      VEHICLE_TUTORIAL_STEPS[this.activeVehicleTutorial.vehicle][this.activeVehicleTutorial.stepIndex];
+    if (step?.id !== stepId) return;
+    this.scheduleVehicleTutorialAdvance();
+  }
+
   private scheduleVehicleTutorialAdvance() {
     if (!this.activeVehicleTutorial || this.vehicleTutorialAdvancePending) return;
     this.vehicleTutorialAdvancePending = true;
@@ -4348,9 +4403,10 @@ export class Game {
         return;
       }
 
+      const steps = VEHICLE_TUTORIAL_STEPS[this.activeVehicleTutorial.vehicle];
       const nextStepIndex = this.activeVehicleTutorial.stepIndex + 1;
-      if (nextStepIndex >= BIPLANE_TUTORIAL_STEPS.length) {
-        this.finishVehicleTutorial();
+      if (nextStepIndex >= steps.length) {
+        this.transitionVehicleTutorialToStep(steps.length, true);
         return;
       }
 
@@ -4358,7 +4414,7 @@ export class Game {
     }, VEHICLE_TUTORIAL_ADVANCE_DELAY_MS);
   }
 
-  private transitionVehicleTutorialToStep(nextStepIndex: number) {
+  private transitionVehicleTutorialToStep(nextStepIndex: number, finishAfterHold = false) {
     const hints = this.vehicleTutorialHints;
     if (!this.activeVehicleTutorial || !hints) {
       this.vehicleTutorialAdvancePending = false;
@@ -4375,7 +4431,14 @@ export class Game {
       this.vehicleTutorialHints.setStep(nextStepIndex);
       requestAnimationFrame(() => {
         this.vehicleTutorialHints?.root.classList.remove("control-hints--hidden");
-        this.vehicleTutorialAdvancePending = false;
+        if (finishAfterHold) {
+          this.vehicleTutorialAdvanceTimeout = setTimeout(() => {
+            this.vehicleTutorialAdvanceTimeout = null;
+            this.finishVehicleTutorial();
+          }, VEHICLE_TUTORIAL_ADVANCE_DELAY_MS);
+        } else {
+          this.vehicleTutorialAdvancePending = false;
+        }
       });
     }, VEHICLE_TUTORIAL_FADE_MS);
   }
@@ -5338,6 +5401,36 @@ export class Game {
     );
     if (next.moonstoneUnionComplete) next.braziersRevealed = true;
     ProgressionManager.savePlayerWorldState(next);
+  }
+
+  /**
+   * Posts to the main-menu “saved [world]” feed only when this player has permanently
+   * stopped the moon (all five braziers lit with eternal flame). Throttled to limit abuse.
+   */
+  private maybeReportSaveFeed() {
+    if (!this.worldSlug || !this.worldConfig?.name) return;
+    const ws = ProgressionManager.loadPlayerWorldState();
+    if (!ws.moonFrozenByEternalFlames) return;
+    const eternal = ws.brazierEternal;
+    if (!eternal || eternal.length < BRAZIER_COUNT) return;
+    for (let i = 0; i < BRAZIER_COUNT; i++) {
+      if (!eternal[i]) return;
+    }
+    const now = Date.now();
+    const last = this.lastSaveFeedAtBySlug.get(this.worldSlug) ?? 0;
+    if (now - last < SAVE_FEED_MIN_INTERVAL_MS) return;
+    this.lastSaveFeedAtBySlug.set(this.worldSlug, now);
+    const name = (this.playerName || "Pilot").trim() || "Pilot";
+    const worldName = this.worldConfig.name;
+    void fetch(`${this.getServerUrl()}/api/save-feed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        playerName: name.slice(0, 48),
+        worldName: worldName.slice(0, 80),
+        worldSlug: this.worldSlug.slice(0, 32),
+      }),
+    }).catch(() => {});
   }
 
   /** Places braziers in the world if they have not been created yet. */

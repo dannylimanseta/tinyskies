@@ -23,7 +23,6 @@ function rowsForVehicle(vehicle: Vehicle): ControlHintRow[] {
       { keys: ["W"], label: "Throttle" },
       { keys: ["S"], label: "Slow" },
       { keys: ["A", "D"], label: "Turn" },
-      { keys: ["↑"], label: "Climb" },
       { keys: ["Space"], label: "Portal" },
     ];
   }
@@ -139,6 +138,7 @@ const TITLES: Record<Vehicle, string> = {
 
 function appendKeys(parent: HTMLElement, keys: string[]) {
   parent.replaceChildren();
+  parent.style.display = keys.length > 0 ? "" : "none";
   for (const k of keys) {
     const el = document.createElement("kbd");
     el.textContent = k;
@@ -194,10 +194,11 @@ export function mountVehicleTutorialHints(
   parent: HTMLElement,
   desktop: boolean,
   rows: ControlHintRow[],
+  title = "First flight",
 ): VehicleTutorialHints | null {
   if (!desktop || rows.length === 0) return null;
-  const root = buildHints(parent, "First flight tutorial", [rows[0]!], {
-    title: "First flight",
+  const root = buildHints(parent, `${title} tutorial`, [rows[0]!], {
+    title,
     className: "control-hints--tutorial",
   });
   const keys = root.querySelector(".control-hints-keys") as HTMLElement;

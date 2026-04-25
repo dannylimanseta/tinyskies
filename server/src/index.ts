@@ -11,6 +11,7 @@ import { nanoid } from "nanoid";
 import { RoomManager } from "./rooms/RoomManager.js";
 import { createWorldsRouter } from "./routes/worlds.js";
 import { createLanternsRouter } from "./routes/lanterns.js";
+import { createSaveFeedRouter } from "./routes/saveFeed.js";
 import { generateUniqueWorldName } from "./utils/worldNames.js";
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -69,6 +70,7 @@ const roomManager = new RoomManager();
 
 app.use("/api/worlds", createWorldsRouter(prisma, roomManager));
 app.use("/api/lanterns", createLanternsRouter(prisma));
+app.use("/api/save-feed", createSaveFeedRouter(prisma));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

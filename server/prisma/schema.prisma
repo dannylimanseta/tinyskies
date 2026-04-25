@@ -26,3 +26,14 @@ model LanternLedger {
   worldSlug String
   createdAt DateTime @default(now())
 }
+
+/** Recent “player saved world” lines for the main menu feed (not player-specific). */
+model SaveFeedEntry {
+  id         String   @id @default(cuid())
+  playerName String
+  worldName  String
+  worldSlug  String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+}

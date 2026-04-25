@@ -231,7 +231,9 @@ export class PackageQuestHUD {
         display: flex;
         flex-direction: row;
         flex-wrap: nowrap;
-        align-items: baseline;
+        /* Match .hud-top-right button row: 36px-tall controls at top: 32px */
+        min-height: 36px;
+        align-items: center;
         justify-content: flex-end;
         min-width: 0;
         box-sizing: border-box;
@@ -239,11 +241,14 @@ export class PackageQuestHUD {
         font-weight: 600;
         color: rgba(255, 255, 255, 0.5);
         letter-spacing: 0.04em;
+        line-height: 1.2;
         opacity: 0;
         transition: opacity 0.3s ease-in-out;
         pointer-events: none;
         z-index: 11;
         gap: 0.12em;
+        /* Optical nudge: text was sitting slightly above icon vertical center */
+        padding-top: 1px;
       }
       .pkg-banner-lead {
         flex-shrink: 0;
@@ -252,9 +257,9 @@ export class PackageQuestHUD {
         font-weight: 600;
       }
       .pkg-banner-name {
+        /* flex: 1 1 0% + min-width: 0 — reliable ellipsis; 0 1 auto + max-width:100% can starve the · Xm on WebKit */
+        flex: 1 1 0%;
         min-width: 0;
-        flex: 0 1 auto;
-        max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -336,6 +341,8 @@ export class PackageQuestHUD {
           left: 8px;
           right: calc(var(--hud-top-right-reserved, 120px) + 8px);
           font-size: 0.8rem;
+          min-height: 36px;
+          padding-top: 2px;
         }
       }
     `;

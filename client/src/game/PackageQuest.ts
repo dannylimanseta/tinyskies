@@ -40,6 +40,9 @@ const DEST_ARROW_BOB_AMP = 0.02;
 const DEST_ARROW_BOB_HZ = 0.85;
 const MIN_PAIR_DOT = 0.85;
 const MAX_PAIR_RETRIES = 20;
+/** When offering multiple delivery quests, pickup villages must be at least this “far” apart (lower dot = farther on the globe). */
+const MIN_ORIGIN_SEPARATION_DOTS = [0.4, 0.52, 0.62, 0.72, 0.85] as const;
+const OFFER_COUNT = 3;
 
 const STRING_LENGTH = 0.12;
 const SWING_GRAVITY = 8.0;
@@ -64,6 +67,14 @@ const enum QuestState {
   PickingUp,
   Carrying,
   Delivering,
+}
+
+interface OfferSlot {
+  origin: Landmark | null;
+  destination: Landmark | null;
+  originBeam: Group;
+  packageMesh: Group;
+  originAnimT: number;
 }
 
 /* ── Beam shader ────────────────────────────────────────────────────── */
@@ -209,9 +220,8 @@ export class PackageQuestManager {
   private lastDestination: Landmark | null = null;
   private villages: Landmark[] = [];
 
-  private originBeam: Group;
+  private offerSlots: OfferSlot[] = [];
   private destBeam: Group;
-  private packageMesh: Group;
   /** Root aligned to the destination village; child {@link ghostPackageContent} spins, {@link destDownArrow} bobs. */
   private ghostPackage: Group;
   private ghostPackageContent: Group;
@@ -230,7 +240,6 @@ export class PackageQuestManager {
   private swingVelX = 0;
   private swingVelZ = 0;
 
-  private originAnimT = -1;
   private destAnimT = -1;
 
   onPickup: ((originName: string, destName: string, npcName: string, dialogue: string) => void) | null = null;
@@ -269,9 +278,20 @@ export class PackageQuestManager {
     this.rand = seededRandom(seed * 4219);
     this.villages = registry.getByType("village");
 
-    this.originBeam = createBeamGroup(0xffd700);
+    for (let i = 0; i < OFFER_COUNT; i++) {
+      const slot: OfferSlot = {
+        origin: null,
+        destination: null,
+        originBeam: createBeamGroup(0xffd700),
+        packageMesh: createPackageMesh(false),
+        originAnimT: -1,
+      };
+      this.offerSlots.push(slot);
+      this.group.add(slot.originBeam);
+      this.group.add(slot.packageMesh);
+    }
+
     this.destBeam = createBeamGroup(0x88ccff);
-    this.packageMesh = createPackageMesh(false);
     this.ghostPackage = new Group();
     this.ghostPackageContent = createPackageMesh(true);
     this.destDownArrow = createDestinationDownArrow();
@@ -289,9 +309,7 @@ export class PackageQuestManager {
     carryPkg.position.y = -STRING_LENGTH;
     this.carryGroup.add(carryPkg);
 
-    this.group.add(this.originBeam);
     this.group.add(this.destBeam);
-    this.group.add(this.packageMesh);
     this.group.add(this.ghostPackage);
     this.group.add(this.carryGroup);
 
@@ -339,16 +357,29 @@ export class PackageQuestManager {
   private tickSpawning(dt: number) {
     this.spawnTimer += dt;
     if (this.spawnTimer >= this.spawnDelay) {
-      if (!this.pickVillagePair()) return;
-      this.showOrigin();
+      this.origin = null;
+      this.destination = null;
+      if (!this.pickQuestOffers()) return;
+      this.showAllOfferOrigins();
       this.state = QuestState.Available;
     }
   }
 
   private tickAvailable() {
-    if (this.inOriginZone()) {
-      this.progress = 0;
-      this.state = QuestState.PickingUp;
+    for (let i = 0; i < this.offerSlots.length; i++) {
+      const slot = this.offerSlots[i]!;
+      if (!slot.origin) continue;
+      if (this.inVillageZone(slot.origin)) {
+        this.origin = slot.origin;
+        this.destination = slot.destination;
+        for (let j = 0; j < this.offerSlots.length; j++) {
+          if (i === j) continue;
+          this.hideOfferSlot(j);
+        }
+        this.progress = 0;
+        this.state = QuestState.PickingUp;
+        return;
+      }
     }
   }
 
@@ -362,7 +393,7 @@ export class PackageQuestManager {
     this.onProgressChange?.(this.progress, "pickup");
 
     if (this.progress >= 1) {
-      this.hideOrigin();
+      this.hideActiveOfferOrigin();
       this.showDestination();
       this.state = QuestState.Carrying;
       this.progress = 0;
@@ -373,6 +404,7 @@ export class PackageQuestManager {
     } else if (this.progress <= 0) {
       this.state = QuestState.Available;
       this.onProgressChange?.(0, "pickup");
+      this.showAllOfferOrigins();
     }
   }
 
@@ -425,6 +457,11 @@ export class PackageQuestManager {
     return this._playerNormal.dot(this.origin.normal) > this.origin.enterDot;
   }
 
+  private inVillageZone(v: Landmark): boolean {
+    if (!this._allowInteraction) return false;
+    return this._playerNormal.dot(v.normal) > v.enterDot;
+  }
+
   private inDestZone(): boolean {
     if (!this.destination || !this._allowInteraction) return false;
     return this._playerNormal.dot(this.destination.normal) > this.destination.enterDot;
@@ -432,38 +469,118 @@ export class PackageQuestManager {
 
   /* ── Village pair selection ──────────────────────────────────────── */
 
-  private pickVillagePair(): boolean {
-    if (this.villages.length < 2) return false;
+  private clearOfferSlots() {
+    for (const s of this.offerSlots) {
+      s.origin = null;
+      s.destination = null;
+    }
+  }
 
+  private shuffleInPlace(a: Landmark[]) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rand() * (i + 1));
+      const t = a[i]!;
+      a[i] = a[j]!;
+      a[j] = t;
+    }
+  }
+
+  /**
+   * Fills up to 3 (origin, destination) offers with pickup villages spread apart.
+   * Falls back to a single best-effort pair if needed.
+   */
+  private pickQuestOffers(): boolean {
+    if (this.villages.length < 2) return false;
     const eligible = this.villages.filter((v) => v !== this.lastDestination);
     if (eligible.length < 2) return false;
 
+    this.clearOfferSlots();
+    const nWanted = Math.min(OFFER_COUNT, Math.max(1, Math.floor(eligible.length / 2)));
+
+    if (nWanted > 1) {
+      for (const maxOriginDot of MIN_ORIGIN_SEPARATION_DOTS) {
+        for (let t = 0; t < 100; t++) {
+          if (this.tryBuildSeparatedOffers(eligible, nWanted, maxOriginDot)) return true;
+        }
+      }
+    }
+
+    return this.pickOneOfferFallback(eligible);
+  }
+
+  private tryBuildSeparatedOffers(
+    eligible: Landmark[],
+    nWanted: number,
+    maxPairwiseOriginDot: number,
+  ): boolean {
+    if (nWanted < 2) return false;
+    const pool = eligible.slice();
+    for (let attempt = 0; attempt < 100; attempt++) {
+      this.shuffleInPlace(pool);
+      const origins: Landmark[] = [];
+      for (const o of pool) {
+        if (origins.length >= nWanted) break;
+        if (origins.some((p) => p.normal.dot(o.normal) > maxPairwiseOriginDot)) continue;
+        origins.push(o);
+      }
+      if (origins.length < nWanted) continue;
+
+      const pairs: { o: Landmark; d: Landmark }[] = [];
+      const usedD = new Set<Landmark>();
+      let failed = false;
+      for (const o of origins) {
+        const prefer = eligible.filter(
+          (v) => v !== o && o.normal.dot(v.normal) < MIN_PAIR_DOT && !usedD.has(v),
+        );
+        const anyOk = eligible.filter((v) => v !== o && o.normal.dot(v.normal) < MIN_PAIR_DOT);
+        const pickFrom = prefer.length > 0 ? prefer : anyOk;
+        if (pickFrom.length === 0) {
+          failed = true;
+          break;
+        }
+        const d = pickFrom[Math.floor(this.rand() * pickFrom.length)]!;
+        usedD.add(d);
+        pairs.push({ o, d });
+      }
+      if (failed) continue;
+      this.clearOfferSlots();
+      for (let i = 0; i < pairs.length; i++) {
+        const slot = this.offerSlots[i]!;
+        slot.origin = pairs[i]!.o;
+        slot.destination = pairs[i]!.d;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private pickOneOfferFallback(eligible: Landmark[]): boolean {
+    this.clearOfferSlots();
     let bestOrigin: Landmark | null = null;
     let bestDest: Landmark | null = null;
-
     for (let attempt = 0; attempt < MAX_PAIR_RETRIES; attempt++) {
       const oi = Math.floor(this.rand() * eligible.length);
-      const o = eligible[oi];
-
+      const o = eligible[oi]!;
       const others = eligible.filter((v) => v !== o);
       const di = Math.floor(this.rand() * others.length);
-      const d = others[di];
+      const d = others[di]!;
 
       if (o.normal.dot(d.normal) < MIN_PAIR_DOT) {
-        this.origin = o;
-        this.destination = d;
+        this.offerSlots[0]!.origin = o;
+        this.offerSlots[0]!.destination = d;
         return true;
       }
-
       if (!bestOrigin) {
         bestOrigin = o;
         bestDest = d;
       }
     }
-
-    this.origin = bestOrigin;
-    this.destination = bestDest;
-    return bestOrigin !== null;
+    if (bestOrigin && bestDest) {
+      this.offerSlots[0]!.origin = bestOrigin;
+      this.offerSlots[0]!.destination = bestDest;
+      return true;
+    }
+    return false;
   }
 
   /* ── 3D positioning & animation ──────────────────────────────────── */
@@ -477,33 +594,37 @@ export class PackageQuestManager {
   }
 
   private animatePackage(dt: number) {
-    if (!this.origin) return;
-    const n = this.origin.normal;
-    const disp = surfaceDisplacementAt(this.seed, this.terrainType, n.x, n.y, n.z);
-
-    let spawnScale = 1;
-    let spawnLift = 0;
-    if (this.originAnimT >= 0) {
-      this.originAnimT = Math.min(this.originAnimT + dt, SPAWN_ANIM_DUR);
-      const t = this.originAnimT / SPAWN_ANIM_DUR;
-      spawnScale = easeOutBack(t);
-      spawnLift = SPAWN_BOUNCE_LIFT * (1 - t);
-      if (this.originAnimT >= SPAWN_ANIM_DUR) this.originAnimT = -1;
-    }
-
-    const bob = PACKAGE_LIFT + spawnLift + Math.sin(this.time * 1.5) * PACKAGE_BOB_AMP;
-    const r = this.globeRadius + disp + bob;
-    this.packageMesh.position.set(n.x * r, n.y * r, n.z * r);
-
     this.spinAngle += SPIN_SPEED * dt;
-    this.packageMesh.quaternion.setFromUnitVectors(REF_UP, n);
-    this.packageMesh.rotateY(this.spinAngle);
-    this.packageMesh.scale.setScalar(spawnScale * BEAM_PACKAGE_SCALE);
+    for (let si = 0; si < this.offerSlots.length; si++) {
+      const slot = this.offerSlots[si]!;
+      if (!slot.origin || !slot.originBeam.visible) continue;
+      const n = slot.origin.normal;
+      const disp = surfaceDisplacementAt(this.seed, this.terrainType, n.x, n.y, n.z);
 
-    const beamBob = Math.sin(this.time * 0.8) * 0.015 + spawnLift;
-    const br = this.globeRadius + disp + beamBob;
-    this.originBeam.position.set(n.x * br, n.y * br, n.z * br);
-    this.originBeam.scale.setScalar(spawnScale);
+      let spawnScale = 1;
+      let spawnLift = 0;
+      if (slot.originAnimT >= 0) {
+        slot.originAnimT = Math.min(slot.originAnimT + dt, SPAWN_ANIM_DUR);
+        const t = slot.originAnimT / SPAWN_ANIM_DUR;
+        spawnScale = easeOutBack(t);
+        spawnLift = SPAWN_BOUNCE_LIFT * (1 - t);
+        if (slot.originAnimT >= SPAWN_ANIM_DUR) slot.originAnimT = -1;
+      }
+
+      const phase = this.time * 1.5 + si * 0.9;
+      const bob = PACKAGE_LIFT + spawnLift + Math.sin(phase) * PACKAGE_BOB_AMP;
+      const r = this.globeRadius + disp + bob;
+      slot.packageMesh.position.set(n.x * r, n.y * r, n.z * r);
+
+      slot.packageMesh.quaternion.setFromUnitVectors(REF_UP, n);
+      slot.packageMesh.rotateY(this.spinAngle + si * 0.7);
+      slot.packageMesh.scale.setScalar(spawnScale * BEAM_PACKAGE_SCALE);
+
+      const beamBob = Math.sin(this.time * 0.8 + si * 0.2) * 0.015 + spawnLift;
+      const br = this.globeRadius + disp + beamBob;
+      slot.originBeam.position.set(n.x * br, n.y * br, n.z * br);
+      slot.originBeam.scale.setScalar(spawnScale);
+    }
   }
 
   private animateGhost(dt: number) {
@@ -580,11 +701,13 @@ export class PackageQuestManager {
   }
 
   private updateBeamUniforms() {
-    this.originBeam.traverse((child) => {
-      if ((child as Mesh).material instanceof ShaderMaterial) {
-        ((child as Mesh).material as ShaderMaterial).uniforms.time.value = this.time;
-      }
-    });
+    for (const s of this.offerSlots) {
+      s.originBeam.traverse((child) => {
+        if ((child as Mesh).material instanceof ShaderMaterial) {
+          ((child as Mesh).material as ShaderMaterial).uniforms.time.value = this.time;
+        }
+      });
+    }
     this.destBeam.traverse((child) => {
       if ((child as Mesh).material instanceof ShaderMaterial) {
         ((child as Mesh).material as ShaderMaterial).uniforms.time.value = this.time;
@@ -594,24 +717,48 @@ export class PackageQuestManager {
 
   /* ── Visibility helpers ──────────────────────────────────────────── */
 
-  private showOrigin() {
-    if (!this.origin) return;
-    this.positionAtVillage(this.originBeam, this.origin, 0);
-    this.originBeam.visible = true;
-    this.packageMesh.visible = true;
+  private showAllOfferOrigins() {
+    for (const s of this.offerSlots) {
+      if (s.origin) {
+        s.originAnimT = 0;
+        this.positionAtVillage(s.originBeam, s.origin, 0);
+        s.originBeam.visible = true;
+        s.packageMesh.visible = true;
+      } else {
+        s.originAnimT = -1;
+        s.originBeam.visible = false;
+        s.packageMesh.visible = false;
+      }
+    }
     this.destBeam.visible = false;
     this.ghostPackage.visible = false;
     this.carryGroup.visible = false;
-    this.originAnimT = 0;
+  }
+
+  private hideOfferSlot(i: number) {
+    const s = this.offerSlots[i];
+    if (!s) return;
+    s.originBeam.visible = false;
+    s.packageMesh.visible = false;
+  }
+
+  private hideActiveOfferOrigin() {
+    const i = this.offerSlots.findIndex((s) => s.origin === this.origin);
+    if (i >= 0) {
+      this.offerSlots[i]!.originBeam.visible = false;
+      this.offerSlots[i]!.packageMesh.visible = false;
+    }
   }
 
   private showDestination() {
     if (!this.destination) return;
+    for (const s of this.offerSlots) {
+      s.originBeam.visible = false;
+      s.packageMesh.visible = false;
+    }
     this.positionAtVillage(this.destBeam, this.destination, 0);
     this.destBeam.visible = true;
     this.ghostPackage.visible = true;
-    this.originBeam.visible = false;
-    this.packageMesh.visible = false;
     this.carryGroup.visible = true;
     this.destAnimT = 0;
     this.swingOffsetX = 0;
@@ -622,15 +769,12 @@ export class PackageQuestManager {
     this.playerVel.set(0, 0, 0);
   }
 
-  private hideOrigin() {
-    this.originBeam.visible = false;
-    this.packageMesh.visible = false;
-  }
-
   private hideAll() {
-    this.originBeam.visible = false;
+    for (const s of this.offerSlots) {
+      s.originBeam.visible = false;
+      s.packageMesh.visible = false;
+    }
     this.destBeam.visible = false;
-    this.packageMesh.visible = false;
     this.ghostPackage.visible = false;
     this.carryGroup.visible = false;
   }

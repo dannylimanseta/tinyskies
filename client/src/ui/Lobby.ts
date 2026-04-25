@@ -64,6 +64,8 @@ export interface PlayOptions {
 }
 
 interface LobbyOptions {
+  /** API base (e.g. `http://localhost:3001`) for the save feed. */
+  serverUrl: string;
   playerName: string;
   mobile?: boolean;
   onPlay: (vehicle: Vehicle, options?: PlayOptions) => void;
@@ -154,6 +156,17 @@ export class Lobby {
               ${this.buildVehicleButtonsHTML()}
             </div>
             <button type="button" class="lobby-fly" id="btn-fly">GO!</button>
+          </div>
+          <div class="lobby-save-feed" id="lobby-save-feed" hidden>
+            <div class="lobby-save-feed-head" aria-hidden="true">
+              <span class="lobby-save-feed-deco"></span>
+              <svg class="lobby-save-feed-crown" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M3 20h18v-2H3v2zm0-3V9.5L6 6l2.2 2.1L12 2l3.8 6.1L18 6l3 3.5V17H3z"/>
+              </svg>
+              <span class="lobby-save-feed-deco"></span>
+            </div>
+            <ul class="lobby-save-feed-list" aria-label="Recent world saves"></ul>
+            <p class="lobby-save-feed-empty" hidden aria-live="polite">No one has saved the world yet.</p>
           </div>
         </div>
         <div class="lobby-unlock-modal" id="lobby-unlock-modal" aria-hidden="true">
@@ -298,8 +311,54 @@ export class Lobby {
     this.applyStyles();
   }
 
+  private loadSaveFeed() {
+    const host = this.options.serverUrl.replace(/\/$/, "");
+    const wrap = this.el.querySelector("#lobby-save-feed") as HTMLElement | null;
+    const list = wrap?.querySelector(".lobby-save-feed-list") as HTMLUListElement | null;
+    const emptyEl = wrap?.querySelector(".lobby-save-feed-empty") as HTMLElement | null;
+    if (!wrap || !list || !emptyEl) return;
+
+    const showFeedBlock = (hasEntries: boolean) => {
+      if (hasEntries) {
+        emptyEl.hidden = true;
+        list.removeAttribute("aria-hidden");
+      } else {
+        list.replaceChildren();
+        list.setAttribute("aria-hidden", "true");
+        emptyEl.hidden = false;
+      }
+      wrap.hidden = false;
+      requestAnimationFrame(() => {
+        wrap.classList.add("visible");
+      });
+    };
+
+    void fetch(`${host}/api/save-feed?limit=5`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("save-feed"))))
+      .then((data: { entries?: { playerName: string; worldName: string }[] }) => {
+        const entries = data.entries ?? [];
+        if (entries.length === 0) {
+          showFeedBlock(false);
+          return;
+        }
+        list.replaceChildren(
+          ...entries.map((e) => {
+            const li = document.createElement("li");
+            li.className = "lobby-save-feed-item";
+            li.textContent = `${e.playerName} saved ${e.worldName}.`;
+            return li;
+          }),
+        );
+        showFeedBlock(true);
+      })
+      .catch(() => {
+        showFeedBlock(false);
+      });
+  }
+
   show() {
     this.container.appendChild(this.el);
+    this.loadSaveFeed();
     requestAnimationFrame(() => {
       this.unlockPreview?.resize();
       this.el.querySelector(".lobby-header")?.classList.add("visible");
@@ -619,6 +678,94 @@ export class Lobby {
         transform: none;
       }
 
+      .lobby-save-feed {
+        position: relative;
+        align-self: center;
+        margin-top: 40px;
+        width: min(520px, calc(100% - 80px));
+        box-sizing: border-box;
+        padding: 0 4px;
+        pointer-events: none;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        transform: translateY(8px);
+        transition: opacity 0.45s ease-out, transform 0.45s ease-out, max-height 0.45s ease-out;
+        transition-delay: 0.62s;
+      }
+      .lobby-save-feed[hidden] { display: none; }
+      .lobby-save-feed:not([hidden]) {
+        max-height: 220px;
+      }
+      .lobby-save-feed.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .lobby-save-feed-head {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        color: #ffffff;
+      }
+      .lobby-save-feed-deco {
+        flex: 1;
+        min-width: 1.5rem;
+        max-width: 5.5rem;
+        height: 2px;
+        border: none;
+        border-radius: 1px;
+      }
+      .lobby-save-feed-deco:first-child {
+        background: linear-gradient(
+          to right,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.5) 100%
+        );
+      }
+      .lobby-save-feed-deco:last-child {
+        background: linear-gradient(
+          to left,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.5) 100%
+        );
+      }
+      .lobby-save-feed-crown {
+        flex-shrink: 0;
+        display: block;
+        width: 22px;
+        height: 22px;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+      }
+      .lobby-save-feed-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4em;
+        text-align: center;
+        font-size: 0.78rem;
+        font-weight: 450;
+        line-height: 1.4;
+        letter-spacing: 0.02em;
+        color: #ffffff;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+      }
+      .lobby-save-feed-item { margin: 0; }
+      .lobby-save-feed-empty {
+        margin: 0;
+        text-align: center;
+        font-size: 0.78rem;
+        font-weight: 450;
+        line-height: 1.4;
+        letter-spacing: 0.02em;
+        color: #ffffff;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+      }
+      .lobby-save-feed-empty[hidden] { display: none !important; }
+
       .lobby-unlock-modal {
         position: fixed;
         inset: 0;
@@ -727,6 +874,14 @@ export class Lobby {
         .lobby-vlabel { font-size: 0.75rem; }
         .lobby-vmeta { font-size: 0.58rem; }
         .lobby-fly { padding: 0 18px; font-size: 0.9rem; min-width: 52px; min-height: 44px; }
+        .lobby-save-feed {
+          width: min(520px, calc(100% - 40px));
+          margin-top: 32px;
+        }
+        .lobby-save-feed-head { gap: 10px; margin-bottom: 10px; }
+        .lobby-save-feed-crown { width: 20px; height: 20px; }
+        .lobby-save-feed-list { font-size: 0.72rem; }
+        .lobby-save-feed-empty { font-size: 0.72rem; }
         .lobby-unlock-panel {
           width: min(22rem, calc(100% - 32px));
           margin: 0 16px;
