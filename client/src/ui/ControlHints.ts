@@ -1,8 +1,14 @@
 import type { Vehicle } from "@globefly/shared";
 
-type Row = { keys: string[]; label: string };
+export type ControlHintRow = { keys: string[]; label: string };
 
-function rowsForVehicle(vehicle: Vehicle): Row[] {
+export interface VehicleTutorialHints {
+  root: HTMLElement;
+  setStep(index: number): void;
+  dispose(): void;
+}
+
+function rowsForVehicle(vehicle: Vehicle): ControlHintRow[] {
   if (vehicle === "plane") {
     return [
       { keys: ["W"], label: "Throttle" },
@@ -21,7 +27,7 @@ function rowsForVehicle(vehicle: Vehicle): Row[] {
       { keys: ["Space"], label: "Portal" },
     ];
   }
-  const base: Row[] = [
+  const base: ControlHintRow[] = [
     { keys: ["W", "↑"], label: "Throttle" },
     { keys: ["S", "↓"], label: "Slow" },
     { keys: ["A", "D", "←", "→"], label: "Turn" },
@@ -45,6 +51,13 @@ function injectStyles() {
       flex-direction: column;
       align-items: flex-end;
       gap: 0;
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .control-hints--hidden {
+      opacity: 0;
+      transform: translateY(8px);
     }
     .control-hints-title {
       font-size: 0.62rem;
@@ -90,6 +103,27 @@ function injectStyles() {
       min-width: 0;
       letter-spacing: 0.02em;
     }
+    .control-hints--tutorial .control-hints-title {
+      font-size: 0.93rem;
+      color: rgba(255, 255, 255, 0.62);
+      margin-bottom: 15px;
+    }
+    .control-hints--tutorial .control-hints-row {
+      gap: 15px;
+      margin-top: 0;
+      font-size: 1.17rem;
+    }
+    .control-hints--tutorial .control-hints-keys {
+      gap: 6px;
+      max-width: 180px;
+    }
+    .control-hints--tutorial .control-hints-keys kbd {
+      font-size: 0.975rem;
+      padding: 4.5px 9px;
+      min-width: 1.875rem;
+      border-width: 1.5px;
+      border-radius: 9px;
+    }
     @media (max-width: 520px) {
       .control-hints { display: none; }
     }
@@ -103,15 +137,29 @@ const TITLES: Record<Vehicle, string> = {
   carpet: "Carpet",
 };
 
-function buildHints(parent: HTMLElement, ariaLabel: string, rows: Row[]): HTMLElement {
+function appendKeys(parent: HTMLElement, keys: string[]) {
+  parent.replaceChildren();
+  for (const k of keys) {
+    const el = document.createElement("kbd");
+    el.textContent = k;
+    parent.appendChild(el);
+  }
+}
+
+function buildHints(
+  parent: HTMLElement,
+  ariaLabel: string,
+  rows: ControlHintRow[],
+  options: { title?: string; className?: string } = {},
+): HTMLElement {
   injectStyles();
   const wrap = document.createElement("div");
-  wrap.className = "control-hints";
+  wrap.className = `control-hints${options.className ? ` ${options.className}` : ""}`;
   wrap.setAttribute("aria-label", ariaLabel);
 
   const title = document.createElement("div");
   title.className = "control-hints-title";
-  title.textContent = "Controls";
+  title.textContent = options.title ?? "Controls";
   wrap.appendChild(title);
 
   for (const row of rows) {
@@ -120,11 +168,7 @@ function buildHints(parent: HTMLElement, ariaLabel: string, rows: Row[]): HTMLEl
 
     const keys = document.createElement("span");
     keys.className = "control-hints-keys";
-    for (const k of row.keys) {
-      const el = document.createElement("kbd");
-      el.textContent = k;
-      keys.appendChild(el);
-    }
+    appendKeys(keys, row.keys);
 
     const label = document.createElement("span");
     label.className = "control-hints-label";
@@ -145,10 +189,37 @@ export function mountControlHints(parent: HTMLElement, vehicle: Vehicle, desktop
   return buildHints(parent, `Keyboard controls (${TITLES[vehicle]})`, rowsForVehicle(vehicle));
 }
 
+/** Desktop-only first-time tutorial prompt that reuses the controls hint layout. */
+export function mountVehicleTutorialHints(
+  parent: HTMLElement,
+  desktop: boolean,
+  rows: ControlHintRow[],
+): VehicleTutorialHints | null {
+  if (!desktop || rows.length === 0) return null;
+  const root = buildHints(parent, "First flight tutorial", [rows[0]!], {
+    title: "First flight",
+    className: "control-hints--tutorial",
+  });
+  const keys = root.querySelector(".control-hints-keys") as HTMLElement;
+  const label = root.querySelector(".control-hints-label") as HTMLElement;
+
+  return {
+    root,
+    setStep(index: number) {
+      const row = rows[Math.max(0, Math.min(rows.length - 1, index))]!;
+      appendKeys(keys, row.keys);
+      label.textContent = row.label;
+    },
+    dispose() {
+      root.remove();
+    },
+  };
+}
+
 /** Desktop-only keyboard hints for the campsite scene. Returns the element. */
 export function mountCampsiteControlHints(parent: HTMLElement, desktop: boolean): HTMLElement | null {
   if (!desktop) return null;
-  const rows: Row[] = [
+  const rows: ControlHintRow[] = [
     { keys: ["W", "A", "S", "D"], label: "Move" },
     { keys: ["↑", "↓", "←", "→"], label: "Move" },
     { keys: ["Space"], label: "Jump" },

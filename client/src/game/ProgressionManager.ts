@@ -58,6 +58,8 @@ export interface SavedPlayerWorldState {
    * Set after the player survives all three void waves and collects the eternal flame.
    */
   voidPortalsClosed?: boolean;
+  /** Per-vehicle first-time controls tutorial completion. */
+  vehicleTutorialsCompleted?: Partial<Record<Vehicle, boolean>>;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;

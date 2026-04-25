@@ -57,6 +57,9 @@ const NPC_PORTRAIT_FILES: Record<string, string> = {
   "Fisherman Cork": "fisherman_cork.png",
   "Beekeeper Thyme": "beekeeper_thyme.png",
   "Clockmaker Gale": "clockmaster_gale.png",
+  "Professor Astrid": "professor_astrid.png",
+  "Stargazer Orion": "stargazer_orion.png",
+  "Doctor Celeste": "doctor_celeste.png",
 };
 
 export function getNpcPortraitUrl(npcName: string): string {

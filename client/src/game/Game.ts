@@ -70,7 +70,13 @@ import { VoidFlameShield } from "./VoidFlameShield";
 import { Lobby, generateWhimsicalName } from "../ui/Lobby";
 import { RemotePlayerNameLabels } from "../ui/RemotePlayerNameLabels";
 import { HUD } from "../ui/HUD";
-import { mountControlHints, mountCampsiteControlHints } from "../ui/ControlHints";
+import {
+  mountControlHints,
+  mountCampsiteControlHints,
+  mountVehicleTutorialHints,
+  type ControlHintRow,
+  type VehicleTutorialHints,
+} from "../ui/ControlHints";
 import { LandmarkHUD } from "../ui/LandmarkHUD";
 import { PackageQuestHUD } from "../ui/PackageQuestHUD";
 import { FlockFormationHUD } from "../ui/FlockFormationHUD";
@@ -247,6 +253,17 @@ const GONG_SFX_VOLUME = 0.55;
 /** Gremlin King eternal-flame reward sting. */
 const CHOIR_1_SFX_VOLUME = 0.58;
 const KING_ETERNAL_FLAME_REWARD_DELAY_MS = 1000;
+
+type VehicleTutorialStepId = "move" | "elevate" | "shoot";
+type VehicleTutorialStep = ControlHintRow & { id: VehicleTutorialStepId };
+
+const BIPLANE_TUTORIAL_STEPS: VehicleTutorialStep[] = [
+  { id: "move", keys: ["W", "A", "S", "D"], label: "Fly with WASD" },
+  { id: "elevate", keys: ["↑"], label: "Climb with Up Arrow" },
+  { id: "shoot", keys: ["Space"], label: "Shoot with Space" },
+];
+const VEHICLE_TUTORIAL_ADVANCE_DELAY_MS = 4000;
+const VEHICLE_TUTORIAL_FADE_MS = 350;
 
 const GREMLIN_HIT_SFX_IDS = [
   "gremlin_1",
@@ -442,6 +459,10 @@ export class Game {
   private campsiteScene: CampsiteScene | null = null;
   private vehicleHintsEl: HTMLElement | null = null;
   private campsiteHintsEl: HTMLElement | null = null;
+  private vehicleTutorialHints: VehicleTutorialHints | null = null;
+  private activeVehicleTutorial: { vehicle: Vehicle; stepIndex: number } | null = null;
+  private vehicleTutorialAdvanceTimeout: ReturnType<typeof setTimeout> | null = null;
+  private vehicleTutorialAdvancePending = false;
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
   private moonThreat: MoonThreat | null = null;
@@ -1308,6 +1329,7 @@ export class Game {
       this.oceanFish.setFishingLineResolution(this.container.clientWidth, this.container.clientHeight);
     }
     this.vehicleHintsEl = mountControlHints(this.hud.root, vehicle, !this.mobile);
+    this.startVehicleTutorialIfNeeded(vehicle);
     this.hud.hideUI();
 
     this.hud.setXP(
@@ -1614,6 +1636,14 @@ export class Game {
     this.controls?.dispose();
     this.touchControls?.dispose();
     this.touchControls = null;
+    this.vehicleTutorialHints?.dispose();
+    this.vehicleTutorialHints = null;
+    this.activeVehicleTutorial = null;
+    if (this.vehicleTutorialAdvanceTimeout != null) {
+      clearTimeout(this.vehicleTutorialAdvanceTimeout);
+      this.vehicleTutorialAdvanceTimeout = null;
+    }
+    this.vehicleTutorialAdvancePending = false;
     this.speedLines?.dispose();
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
@@ -2512,6 +2542,7 @@ export class Game {
 
     let { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
+    this.updateVehicleTutorial({ turnRate, forward, brake, elevate, paintball });
 
     // Twister spin: one burst per engagement, then cooldown (collision was re-arming every frame → infinite spin).
     if (!twisterSuppressed) {
@@ -4182,6 +4213,7 @@ export class Game {
 
     /* Swap control hints to campsite layout */
     if (this.vehicleHintsEl) this.vehicleHintsEl.style.display = "none";
+    if (this.vehicleTutorialHints) this.vehicleTutorialHints.root.style.display = "none";
     if (!this.campsiteHintsEl) {
       this.campsiteHintsEl = mountCampsiteControlHints(this.hud.root, !this.mobile);
     } else {
@@ -4206,7 +4238,10 @@ export class Game {
 
     /* Restore vehicle control hints */
     if (this.campsiteHintsEl) this.campsiteHintsEl.style.display = "none";
-    if (this.vehicleHintsEl) this.vehicleHintsEl.style.display = "";
+    if (this.vehicleHintsEl) {
+      this.vehicleHintsEl.style.display = this.activeVehicleTutorial ? "none" : "";
+    }
+    if (this.vehicleTutorialHints) this.vehicleTutorialHints.root.style.display = "";
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.localPlayer.qPosition.copy(this.campsiteMarker.surfaceQuat);
@@ -4247,6 +4282,135 @@ export class Game {
         row.style.display = visible ? "" : "none";
       }
     }
+  }
+
+  private startVehicleTutorialIfNeeded(vehicle: Vehicle) {
+    this.vehicleTutorialHints?.dispose();
+    this.vehicleTutorialHints = null;
+    this.activeVehicleTutorial = null;
+    if (this.vehicleTutorialAdvanceTimeout != null) {
+      clearTimeout(this.vehicleTutorialAdvanceTimeout);
+      this.vehicleTutorialAdvanceTimeout = null;
+    }
+    this.vehicleTutorialAdvancePending = false;
+
+    if (this.mobile || vehicle !== "plane") return;
+    const tutorials = ProgressionManager.loadPlayerWorldState().vehicleTutorialsCompleted;
+    if (tutorials?.[vehicle]) return;
+
+    this.activeVehicleTutorial = { vehicle, stepIndex: 0 };
+    if (this.vehicleHintsEl) {
+      this.vehicleHintsEl.classList.add("control-hints--hidden");
+      this.vehicleHintsEl.setAttribute("aria-hidden", "true");
+      this.vehicleHintsEl.style.display = "none";
+    }
+    this.vehicleTutorialHints = mountVehicleTutorialHints(
+      this.hud.root,
+      !this.mobile,
+      BIPLANE_TUTORIAL_STEPS,
+    );
+  }
+
+  private updateVehicleTutorial(input: {
+    turnRate: number;
+    forward: boolean;
+    brake: boolean;
+    elevate: boolean;
+    paintball: boolean;
+  }) {
+    if (!this.activeVehicleTutorial || this.vehicleTutorialAdvancePending) return;
+    const step = BIPLANE_TUTORIAL_STEPS[this.activeVehicleTutorial.stepIndex];
+    if (!step) {
+      this.finishVehicleTutorial();
+      return;
+    }
+
+    let completed = false;
+    if (step.id === "move") {
+      completed = input.forward || input.brake || Math.abs(input.turnRate) > 0;
+    } else if (step.id === "elevate") {
+      completed = input.elevate;
+    } else if (step.id === "shoot") {
+      completed = input.paintball;
+    }
+    if (!completed) return;
+
+    this.scheduleVehicleTutorialAdvance();
+  }
+
+  private scheduleVehicleTutorialAdvance() {
+    if (!this.activeVehicleTutorial || this.vehicleTutorialAdvancePending) return;
+    this.vehicleTutorialAdvancePending = true;
+    this.vehicleTutorialAdvanceTimeout = setTimeout(() => {
+      this.vehicleTutorialAdvanceTimeout = null;
+      if (!this.activeVehicleTutorial) {
+        this.vehicleTutorialAdvancePending = false;
+        return;
+      }
+
+      const nextStepIndex = this.activeVehicleTutorial.stepIndex + 1;
+      if (nextStepIndex >= BIPLANE_TUTORIAL_STEPS.length) {
+        this.finishVehicleTutorial();
+        return;
+      }
+
+      this.transitionVehicleTutorialToStep(nextStepIndex);
+    }, VEHICLE_TUTORIAL_ADVANCE_DELAY_MS);
+  }
+
+  private transitionVehicleTutorialToStep(nextStepIndex: number) {
+    const hints = this.vehicleTutorialHints;
+    if (!this.activeVehicleTutorial || !hints) {
+      this.vehicleTutorialAdvancePending = false;
+      return;
+    }
+
+    hints.root.classList.add("control-hints--hidden");
+    window.setTimeout(() => {
+      if (!this.activeVehicleTutorial || !this.vehicleTutorialHints) {
+        this.vehicleTutorialAdvancePending = false;
+        return;
+      }
+      this.activeVehicleTutorial.stepIndex = nextStepIndex;
+      this.vehicleTutorialHints.setStep(nextStepIndex);
+      requestAnimationFrame(() => {
+        this.vehicleTutorialHints?.root.classList.remove("control-hints--hidden");
+        this.vehicleTutorialAdvancePending = false;
+      });
+    }, VEHICLE_TUTORIAL_FADE_MS);
+  }
+
+  private finishVehicleTutorial() {
+    const tutorial = this.activeVehicleTutorial;
+    if (!tutorial) return;
+
+    if (this.vehicleTutorialAdvanceTimeout != null) {
+      clearTimeout(this.vehicleTutorialAdvanceTimeout);
+      this.vehicleTutorialAdvanceTimeout = null;
+    }
+    this.vehicleTutorialAdvancePending = false;
+
+    const prev = ProgressionManager.loadPlayerWorldState();
+    this.savePlayerWorldState({
+      vehicleTutorialsCompleted: {
+        ...(prev.vehicleTutorialsCompleted ?? {}),
+        [tutorial.vehicle]: true,
+      },
+    });
+
+    const hints = this.vehicleTutorialHints;
+    hints?.root.classList.add("control-hints--hidden");
+    this.vehicleTutorialHints = null;
+    this.activeVehicleTutorial = null;
+    window.setTimeout(() => {
+      hints?.dispose();
+      if (!this.vehicleHintsEl) return;
+      this.vehicleHintsEl.style.display = "";
+      this.vehicleHintsEl.removeAttribute("aria-hidden");
+      requestAnimationFrame(() => {
+        this.vehicleHintsEl?.classList.remove("control-hints--hidden");
+      });
+    }, VEHICLE_TUTORIAL_FADE_MS + 10);
   }
 
   private startVoidAmbientMusic() {
@@ -5161,6 +5325,8 @@ export class Game {
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
       completedMoonApproachRunCount:
         overrides.completedMoonApproachRunCount ?? prev.completedMoonApproachRunCount ?? 0,
+      vehicleTutorialsCompleted:
+        overrides.vehicleTutorialsCompleted ?? prev.vehicleTutorialsCompleted,
       ...overrides,
     };
     next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {
