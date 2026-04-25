@@ -1531,8 +1531,8 @@ export class Game {
       this.gremlinHearts = null;
     }
 
-    // NPC monoplane flyers — plane vehicle only, local-only (no server sync)
-    if (vehicle === "plane") {
+    // NPC monoplane flyers — plane and carpet vehicles, local-only (no server sync)
+    if (vehicle === "plane" || vehicle === "carpet") {
       this.npcPlanes = new NpcPlanes(this.scene, globeRadius, seed);
       if (this.paintballSystem) {
         this.npcPaintballUnsub = this.npcPlanes.registerPaintballListener(this.paintballSystem);
