@@ -7,6 +7,9 @@ import {
   Box3,
   CylinderGeometry,
   MeshPhongMaterial,
+  MeshLambertMaterial,
+  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   ShaderMaterial,
   BackSide,
   DoubleSide,
@@ -37,7 +40,7 @@ import {
   MOONSTONE_RAISE_MS,
   MOONSTONE_RUIN_COUNT,
 } from "@globefly/shared";
-import { addRimLight } from "./RimLight";
+import { addRimLight, addRimLightToStandard, addRimLightWithColor, globalRimColor } from "./RimLight";
 import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, sampleTerrain } from "./SimplexNoise";
 import { PROP_TERRAIN_SINK, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
@@ -202,6 +205,8 @@ export class Globe {
   readonly hotspringCenters: { normal: Vector3 }[] = [];
   readonly mushroomCenters: { normal: Vector3 }[] = [];
   readonly butterflyCenters: { normal: Vector3 }[] = [];
+  /** Single GLB pyramid — one per world, inland lowlands (low elevation + flat), not hills. */
+  readonly pyramidCenters: { normal: Vector3 }[] = [];
   /** Buried moonstone ring halves — giant ruin props; two sites, far apart. */
   readonly moonstoneRuinCenters: { normal: Vector3 }[] = [];
   private moonstoneRuins: MoonstoneRuinState[] = [];
@@ -351,6 +356,7 @@ export class Globe {
     this.createHotsprings();
     this.createMushrooms();
     this.createButterflyGardens();
+    this.createPyramid();
     this.createMoonstoneRuins();
     this.createFloatingTreeClusters();
     this.createBalloons();
@@ -3024,6 +3030,154 @@ transformed.z += sway2;`,
     }
   }
 
+  /** Inland `pyramid.glb` — exactly one in lowlands (low terrain elevation, not hills); flat, away from coasts. */
+  private createPyramid() {
+    /** Same idea as {@link createStonehenges} — exclude upland / hill terrain. */
+    const MIN_ELEVATION = 0.02;
+    const MAX_ELEVATION = 0.32;
+    const INLAND_CHECKS = 8;
+    const INLAND_CHECK_DIST = 0.07;
+    const MAX_WATER_RATIO = 0.26;
+    const ROUGH_RING_DIST = 0.085;
+    const MAX_ROUGHNESS = 0.26;
+
+    const rand = seededRandom(939191 + this.seed);
+
+    type Pooled = { normal: Vector3; elevation: number; rough: number };
+    const pool: Pooled[] = [];
+    let attempts = 0;
+
+    while (attempts < 12000 && pool.length < 400) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      pool.push({ normal, elevation, rough });
+    }
+
+    if (pool.length === 0) return;
+
+    // Prefer the lowest, flattest lowland (elevation first — avoids hilltops even within cap).
+    pool.sort((a, b) => a.elevation - b.elevation || a.rough - b.rough);
+    const best = pool[0]!;
+    const normal = best.normal.clone();
+    this.pyramidCenters.push({ normal: normal.clone() });
+
+    const displacement = surfaceDisplacementAt(
+      this.seed,
+      this.terrainType,
+      normal.x,
+      normal.y,
+      normal.z,
+    );
+    const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+    const spin = seededRandom(484848 + this.seed);
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const loader = new GLTFLoader();
+    loader.load(
+      "/3D/pyramid.glb",
+      (gltf) => {
+        const template = gltf.scene;
+        template.updateMatrixWorld(true);
+        const box = new Box3().setFromObject(template);
+        const size = new Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z, 1e-4);
+        const targetSize = 0.36;
+        const uniformScale = targetSize / maxDim;
+
+        const model = template.clone(true);
+        model.scale.setScalar(uniformScale);
+        model.position.copy(normal.clone().multiplyScalar(surfaceR));
+        model.quaternion.setFromUnitVectors(REF_UP, normal);
+        model.rotateY(spin() * Math.PI * 2);
+        model.updateMatrixWorld(true);
+        let minAlong = minMeshVertexProjectionAlongNormal(model, normal);
+        if (!Number.isFinite(minAlong)) {
+          const bb = new Box3().setFromObject(model);
+          const corners = [
+            new Vector3(bb.min.x, bb.min.y, bb.min.z),
+            new Vector3(bb.max.x, bb.min.y, bb.min.z),
+            new Vector3(bb.min.x, bb.max.y, bb.min.z),
+            new Vector3(bb.max.x, bb.max.y, bb.min.z),
+            new Vector3(bb.min.x, bb.min.y, bb.max.z),
+            new Vector3(bb.max.x, bb.min.y, bb.max.z),
+            new Vector3(bb.min.x, bb.max.y, bb.max.z),
+            new Vector3(bb.max.x, bb.max.y, bb.max.z),
+          ];
+          minAlong = Infinity;
+          for (const c of corners) {
+            const d = c.dot(normal);
+            if (d < minAlong) minAlong = d;
+          }
+        }
+        const lift = surfaceR - minAlong;
+        model.position.addScaledVector(normal, lift);
+
+        model.traverse((child) => {
+          if ((child as Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        this.applyRimLightToPyramid(model);
+        this.group.add(model);
+      },
+      undefined,
+      (err) => {
+        console.error("[Globe] Failed to load /3D/pyramid.glb:", err);
+      },
+    );
+  }
+
+  /** Fresnel rim on `pyramid.glb` meshes — matches {@link globalRimColor} / day–night. */
+  private applyRimLightToPyramid(root: Object3D) {
+    const RIM_I = 0.52;
+    const RIM_P = 2.75;
+    root.traverse((child) => {
+      if (!(child as Mesh).isMesh) return;
+      const mesh = child as Mesh;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        if (!m || m.userData.globePyramidRim) continue;
+        m.userData.globePyramidRim = true;
+        if (m instanceof MeshPhongMaterial) {
+          addRimLight(m, globalRimColor, RIM_I, RIM_P);
+        } else if (m instanceof MeshLambertMaterial) {
+          addRimLightWithColor(m, globalRimColor, RIM_I, RIM_P);
+        } else if (m instanceof MeshStandardMaterial || m instanceof MeshPhysicalMaterial) {
+          addRimLightToStandard(m, globalRimColor, RIM_I, RIM_P);
+        }
+      }
+    });
+  }
+
   /**
    * Two giant buried halves of the moonstone ring at inland sites (left / right GLB),
    * grounded on terrain and sunk along the surface normal for a ruin look.
@@ -3081,6 +3235,7 @@ transformed.z += sway2;`,
       if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.pyramidCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
 
       candidates.push({ normal, elevation });
     }

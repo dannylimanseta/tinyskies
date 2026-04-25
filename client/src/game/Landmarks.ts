@@ -13,7 +13,8 @@ export type LandmarkType =
   | "shrine"
   | "hotspring"
   | "mushroom"
-  | "butterfly";
+  | "butterfly"
+  | "pyramid";
 
 export interface Landmark {
   type: LandmarkType;
@@ -123,6 +124,15 @@ const BUTTERFLY_SUFFIXES = [
   " Garden", " Meadow", " Sanctuary", " Haven", " Bloom", " Rest", " Field", " Retreat",
 ];
 
+const PYRAMID_PREFIXES = [
+  "Sun", "Sand", "Lost", "Golden", "Ancient", "Silent", "Stone", "Desert", "Buried", "Forgotten",
+  "Lonely", "Dusk", "Ember", "Crimson", "Ivory", "Sunken", "Lone",
+];
+
+const PYRAMID_SUFFIXES = [
+  " Pyramid", " Monument", " Tomb", " Ziggurat", " Mausoleum", " Needle", " Spire", " Mound",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
   village:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   peak:         { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
@@ -137,6 +147,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   hotspring:    { prefixes: HOTSPRING_PREFIXES,   suffixes: HOTSPRING_SUFFIXES },
   mushroom:     { prefixes: MUSHROOM_PREFIXES,    suffixes: MUSHROOM_SUFFIXES },
   butterfly:    { prefixes: BUTTERFLY_PREFIXES,   suffixes: BUTTERFLY_SUFFIXES },
+  pyramid:      { prefixes: PYRAMID_PREFIXES,     suffixes: PYRAMID_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -313,6 +324,22 @@ export class LandmarkRegistry {
         type: "butterfly",
         name: names[i]!,
         normal: butterflies[i]!.normal.clone().normalize(),
+        enterDot: 0.995,
+        exitDot: 0.991,
+      });
+    }
+  }
+
+  registerPyramids(
+    pyramids: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, pyramids.length, "pyramid");
+    for (let i = 0; i < pyramids.length; i++) {
+      this.landmarks.push({
+        type: "pyramid",
+        name: names[i]!,
+        normal: pyramids[i]!.normal.clone().normalize(),
         enterDot: 0.995,
         exitDot: 0.991,
       });
