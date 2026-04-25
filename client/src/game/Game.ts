@@ -1261,8 +1261,12 @@ export class Game {
 
     this.collectVFX = new RingCollectVFX();
     this.scene.add(this.collectVFX.group);
-    // Pre-compiles the additive shard ShaderMaterial (× pool size); avoids a big hitch on first ring/heart collect.
+    // Pre-compiles shaders AND pre-uploads heart geometry to the GPU so there is no hitch
+    // on first ring or heart collect. Heart InstancedMeshes are briefly made visible so
+    // Three.js includes their buffers in the compile pass, then hidden again.
+    this.collectVFX.preWarmHearts();
     this.renderer.compile(this.collectVFX.group, this.cameraRig.camera, this.scene);
+    this.collectVFX.postWarmHearts();
 
     this.meteorShower = new MeteorShower(globeRadius, seed, terrainType);
     this.scene.add(this.meteorShower.group);

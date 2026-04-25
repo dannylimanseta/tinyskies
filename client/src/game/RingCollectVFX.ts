@@ -136,6 +136,8 @@ export class RingCollectVFX {
   private pool: VFXInstance[] = [];
   private shardGeos: BufferGeometry[] = [];
   private heartGeos: BufferGeometry[] = [];
+  /** All InstancedMeshes that need pre-uploading before first use. */
+  private readonly allHeartShards: InstancedMesh[] = [];
 
   constructor() {
     for (let i = 0; i < POOL_SIZE; i++) {
@@ -172,6 +174,7 @@ export class RingCollectVFX {
     heartShards.frustumCulled = false;
     heartShards.visible = false;
     vfxGroup.add(heartShards);
+    this.allHeartShards.push(heartShards);
 
     this.group.add(vfxGroup);
 
@@ -199,6 +202,22 @@ export class RingCollectVFX {
       upDir: new Vector3(0, 1, 0),
       shardTint: null,
     };
+  }
+
+  /**
+   * Pre-uploads all heart InstancedMesh geometry to the GPU before first use.
+   * Call this after adding `this.group` to the scene, right before `renderer.compile()`.
+   * The meshes are made briefly visible so Three.js includes them in the compile pass,
+   * then immediately hidden again — the pool groups are already invisible so nothing
+   * appears on screen.
+   */
+  preWarmHearts() {
+    for (const hs of this.allHeartShards) hs.visible = true;
+  }
+
+  /** Call immediately after `renderer.compile()` to restore hidden state. */
+  postWarmHearts() {
+    for (const hs of this.allHeartShards) hs.visible = false;
   }
 
   play(worldPos: Vector3, _tier: number, options?: RingCollectVFXOptions) {
