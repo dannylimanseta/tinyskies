@@ -58,13 +58,12 @@ void main() {
   float n2 = noise(p * 6.0 + vec3(0.0, uTime * 0.2, 0.0));
   
   // Combine to create sharp light shafts. Higher exponent = thinner, sparser rays.
-  float rays = pow(n1 * n2, 2.5) * 5.0;
+  float rays = pow(n1 * n2, 2.0) * 6.0;
   
   // Fade out at the top (near sun) to avoid hard edges and seeing the source point.
   // vUv.y goes from 0 at bottom (globe) to 1 at top (sun).
-  // We want to fade out way before reaching the sun, e.g. start fading at 0.5, fully transparent by 0.7.
-  // We also fade out at the bottom so it doesn't clip hard into the ground.
-  float fadeY = smoothstep(0.0, 0.2, vUv.y) * smoothstep(0.7, 0.4, vUv.y);
+  // Some GPUs compile smoothstep(max, min, x) poorly, so we do 1.0 - smoothstep(min, max, x).
+  float fadeY = smoothstep(0.0, 0.2, vUv.y) * (1.0 - smoothstep(0.4, 0.8, vUv.y));
   
   // Add a radial fade so the rays are focused in the center of the cone and don't wrap around the whole globe
   // vLocalPos.xz is the position on the disk at the current height.
@@ -73,7 +72,7 @@ void main() {
   float currentRadius = mix(8.0, 0.5, vUv.y);
   float radialDist = length(vLocalPos.xz) / currentRadius;
   // Fade out from center (0.0) to edge (1.0). Keep core solid, fade edges.
-  float fadeRadial = smoothstep(1.0, 0.4, radialDist);
+  float fadeRadial = 1.0 - smoothstep(0.5, 1.0, radialDist);
   
   float a = rays * fadeY * fadeRadial * uIntensity;
   
@@ -124,7 +123,7 @@ export class GodRays {
     
     // Modulate intensity: if sun is weak (night/evening), rays disappear
     // Reduced base dampening to make the rays globally softer and less overpowering
-    this.intensityUniform.value = sunIntensity * 0.10; 
+    this.intensityUniform.value = sunIntensity * 0.15; 
     
     this.group.position.copy(sunPos);
     
