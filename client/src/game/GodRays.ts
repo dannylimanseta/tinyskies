@@ -57,13 +57,25 @@ void main() {
   float n1 = noise(p * 3.0);
   float n2 = noise(p * 6.0 + vec3(0.0, uTime * 0.2, 0.0));
   
-  // Combine to create sharp light shafts
-  float rays = pow(n1 * n2, 1.5) * 4.0;
+  // Combine to create sharp light shafts. Higher exponent = thinner, sparser rays.
+  float rays = pow(n1 * n2, 2.5) * 5.0;
   
-  // Fade out at the top (near sun) to avoid hard edges, and bottom (terminating in ground)
-  float fadeY = smoothstep(0.0, 0.2, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+  // Fade out at the top (near sun) to avoid hard edges and seeing the source point.
+  // vUv.y goes from 0 at bottom (globe) to 1 at top (sun).
+  // We want to fade out way before reaching the sun, e.g. start fading at 0.5, fully transparent by 0.7.
+  // We also fade out at the bottom so it doesn't clip hard into the ground.
+  float fadeY = smoothstep(0.0, 0.2, vUv.y) * smoothstep(0.7, 0.4, vUv.y);
   
-  float a = rays * fadeY * uIntensity;
+  // Add a radial fade so the rays are focused in the center of the cone and don't wrap around the whole globe
+  // vLocalPos.xz is the position on the disk at the current height.
+  // The cone radius at vUv.y=0 (bottom) is 8.0, at vUv.y=1 (top) is 0.5.
+  // We can calculate a normalized radial distance [0, 1] from the center of the cone:
+  float currentRadius = mix(8.0, 0.5, vUv.y);
+  float radialDist = length(vLocalPos.xz) / currentRadius;
+  // Fade out from center (0.0) to edge (1.0). Keep core solid, fade edges.
+  float fadeRadial = smoothstep(1.0, 0.4, radialDist);
+  
+  float a = rays * fadeY * fadeRadial * uIntensity;
   
   gl_FragColor = vec4(uColor * a, a);
 }
@@ -111,7 +123,8 @@ export class GodRays {
     this.colorUniform.value.set(color);
     
     // Modulate intensity: if sun is weak (night/evening), rays disappear
-    this.intensityUniform.value = sunIntensity * 0.18; // Base dampening
+    // Reduced base dampening to make the rays globally softer and less overpowering
+    this.intensityUniform.value = sunIntensity * 0.10; 
     
     this.group.position.copy(sunPos);
     
