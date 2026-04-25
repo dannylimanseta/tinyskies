@@ -55,7 +55,7 @@ void main() {
   float n2 = noise(p * 8.0 + vec3(0.0, uTime * 0.15, 0.0));
   
   // High exponent = fewer, sharper, more sporadic distinct shafts
-  float rays = pow(n1 * n2, 3.5) * 6.0;
+  float rays = pow(n1 * n2, 2.5) * 6.0;
   
   // Aggressively fade near the source (top): invisible for the first 45% of the cone.
   // This hides the cone tip completely and makes rays appear to emerge mid-air.
