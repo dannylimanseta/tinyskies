@@ -131,7 +131,7 @@ export class CampsiteControls {
     this.jumpBtn.textContent = "↑";
     Object.assign(this.jumpBtn.style, {
       position: "absolute",
-      bottom: "190px",
+      bottom: "262px",
       right: "40px",
       width: "72px",
       height: "72px",
@@ -149,7 +149,7 @@ export class CampsiteControls {
     this.takeOffBtn.textContent = "✈";
     Object.assign(this.takeOffBtn.style, {
       position: "absolute",
-      bottom: "100px",
+      bottom: "172px",
       right: "40px",
       width: "72px",
       height: "72px",

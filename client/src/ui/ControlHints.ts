@@ -41,7 +41,8 @@ function injectStyles() {
   style.textContent = `
     .control-hints {
       position: absolute;
-      bottom: max(36px, calc(28px + env(safe-area-inset-bottom, 0px)));
+      /* Room above Vibe Jam 2026 entrant label (widget.js, bottom-right). */
+      bottom: max(108px, calc(100px + env(safe-area-inset-bottom, 0px)));
       right: max(36px, calc(28px + env(safe-area-inset-right, 0px)));
       z-index: 1;
       pointer-events: none;

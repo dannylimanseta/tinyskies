@@ -251,6 +251,16 @@ const DIALOGUE_LOOP_VOLUME = 0.28;
 /** Lower playback rate reads as a slightly deeper “male” bed under the same asset. */
 const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
 
+/** One-shots for {@link ETERNAL_FLAME_SPEAKER} package bubbles (void + brazier lines). */
+const FLAME_DIALOGUE_SFX_IDS = ["flame_dialogue_1", "flame_dialogue_2", "flame_dialogue_3"] as const;
+/** One-shots for {@link JELLYFISH_NPC_SPEAKER} sky-jellyfish lines. */
+const JELLYFISH_DIALOGUE_SFX_IDS = [
+  "jellyfish_dialogue_1",
+  "jellyfish_dialogue_2",
+  "jellyfish_dialogue_3",
+] as const;
+const FLAME_JELLY_DIALOGUE_SFX_VOLUME = 0.32;
+
 const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
 const LEVELUP_SFX_VOLUME = 0.42;
 
@@ -622,6 +632,12 @@ export class Game {
       for (const id of DIALOGUE_LOOP_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      for (const id of FLAME_DIALOGUE_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
+      for (const id of JELLYFISH_DIALOGUE_SFX_IDS) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
       for (const id of LEVELUP_SFX_IDS) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
@@ -707,6 +723,36 @@ export class Game {
       },
     });
     this.lobby.show();
+  }
+
+  /**
+   * Ambient bed under package-quest dialogue: dedicated one-shots for Eternal Flame and
+   * Sky Jellyfish; otherwise the generic dialogue hum loop.
+   */
+  private playPackageDialogueBed(npcName: string) {
+    const tryOneShots = (ids: readonly string[]): boolean => {
+      const id = ids[Math.floor(Math.random() * ids.length)]!;
+      if (!this.audioManager.hasSFX(id)) return false;
+      this.audioManager.resumeContextIfNeeded();
+      this.audioManager.playSFX(id, FLAME_JELLY_DIALOGUE_SFX_VOLUME);
+      return true;
+    };
+    if (npcName === ETERNAL_FLAME_SPEAKER) {
+      if (tryOneShots(FLAME_DIALOGUE_SFX_IDS)) return;
+    } else if (npcName === JELLYFISH_NPC_SPEAKER) {
+      if (tryOneShots(JELLYFISH_DIALOGUE_SFX_IDS)) return;
+    }
+
+    const id =
+      DIALOGUE_LOOP_IDS[Math.floor(Math.random() * DIALOGUE_LOOP_IDS.length)]!;
+    let rate = isNpcMale(npcName) ? DIALOGUE_MALE_PLAYBACK_RATE : 1;
+    const mp = this.moonThreat?.progress ?? 0;
+    if (mp >= 0.5) {
+      const dread = Math.min(1, (mp - 0.5) / 0.5);
+      rate *= 1.0 - dread * 0.25;
+    }
+    this.audioManager.startLoop(id, 0, rate);
+    this.audioManager.setLoopVolume(id, DIALOGUE_LOOP_VOLUME);
   }
 
   /** Always plays (no random / min-gap throttling) — use for gremlin + king kill feedback. */
@@ -1550,18 +1596,7 @@ export class Game {
         for (const id of DIALOGUE_LOOP_IDS) {
           this.audioManager.fadeOutLoop(id);
         }
-        const id =
-          DIALOGUE_LOOP_IDS[Math.floor(Math.random() * DIALOGUE_LOOP_IDS.length)]!;
-        let rate = isNpcMale(npcName)
-          ? DIALOGUE_MALE_PLAYBACK_RATE
-          : 1;
-        const mp = this.moonThreat?.progress ?? 0;
-        if (mp >= 0.50) {
-          const dread = Math.min(1, (mp - 0.50) / 0.50);
-          rate *= 1.0 - dread * 0.25;
-        }
-        this.audioManager.startLoop(id, 0, rate);
-        this.audioManager.setLoopVolume(id, DIALOGUE_LOOP_VOLUME);
+        this.playPackageDialogueBed(npcName);
       } else if (!visible) {
         for (const id of DIALOGUE_LOOP_IDS) {
           this.audioManager.fadeOutLoop(id);

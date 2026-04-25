@@ -398,16 +398,16 @@ export class TouchControls {
         user-select: none;
       }
       .tc-elevate-btn {
-        bottom: max(248px, calc(236px + env(safe-area-inset-bottom)));
+        bottom: max(320px, calc(308px + env(safe-area-inset-bottom)));
       }
       .tc-descend-btn {
-        bottom: max(180px, calc(168px + env(safe-area-inset-bottom)));
+        bottom: max(252px, calc(240px + env(safe-area-inset-bottom)));
       }
       .tc-carpet-flame-btn {
-        bottom: max(180px, calc(168px + env(safe-area-inset-bottom)));
+        bottom: max(252px, calc(240px + env(safe-area-inset-bottom)));
       }
       .tc-action-btn {
-        bottom: max(112px, calc(100px + env(safe-area-inset-bottom)));
+        bottom: max(184px, calc(172px + env(safe-area-inset-bottom)));
       }
       .tc-elevate-btn.active,
       .tc-descend-btn.active,
