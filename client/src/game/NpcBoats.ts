@@ -4,8 +4,8 @@ import { moveOnSphere, buildBoatMatrix, seededRandom, cartesianFromSpherical, ta
 import { randomOceanQuaternion } from "./Boat";
 import { isLand } from "./SimplexNoise";
 
-const NPC_COUNT = 8;
-const NPC_ALTITUDE = 0.015; // sit at ocean surface
+const NPC_COUNT = 16;
+const NPC_ALTITUDE = 0.0; // slightly above ocean surface
 /** World-units/sec — Boat cruise is 0.22, NPC boats are leisurely. */
 const NPC_SPEED = 0.14;
 /** Max heading change per wander nudge (radians). */

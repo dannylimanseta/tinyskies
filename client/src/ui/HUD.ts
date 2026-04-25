@@ -628,6 +628,11 @@ export class HUD {
         width: 1.6em;
         height: 1.6em;
       }
+      img.hud-qt-ico--carpet {
+        /* Jellyfish quest row: slightly larger than the base carpet slot */
+        width: 1.75em;
+        height: 1.75em;
+      }
       .hud-qt-ico--flame {
         color: rgba(255, 255, 255, 0.85);
       }

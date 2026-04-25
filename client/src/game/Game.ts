@@ -164,7 +164,7 @@ const CRICKETS_LOOP_MAX_VOL = 0.045;
 const PLAYER_LIGHT_NIGHT_INTENSITY = 0.38;
 
 const RAIN_LOOP_NAME = "rain_loop";
-const RAIN_LOOP_MAX_VOL = 0.18;
+const RAIN_LOOP_MAX_VOL = 0.58;
 
 const BIRDS_LOOP_NAME = "birds_loop";
 const BIRDS_LOOP_MAX_VOL = 0.04;

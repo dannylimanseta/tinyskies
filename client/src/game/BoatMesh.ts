@@ -280,7 +280,7 @@ export function createBoat(hullColor: number = 0xb83c2b): Group {
  */
 export function createSmallBoat(hullColor: number = 0x5588cc): Group {
   const boat = new Group();
-  const s = 0.021;
+  const s = 0.021 * 1.25; // 25% larger than original
 
   const hullMat = new MeshPhongMaterial({ color: hullColor, flatShading: true, shininess: 40 });
   addRimLight(hullMat, 0xffeedd, 0.22, 3.2);
@@ -288,6 +288,10 @@ export function createSmallBoat(hullColor: number = 0x5588cc): Group {
   addRimLight(deckMat, 0xffeebb, 0.18, 3.5);
   const metalMat = new MeshPhongMaterial({ color: 0x666a6d, flatShading: true, shininess: 45 });
   addRimLight(metalMat, 0xddeeff, 0.18, 3);
+  const cabinMat = new MeshPhongMaterial({ color: 0xddd5c0, flatShading: true, shininess: 28 });
+  addRimLight(cabinMat, 0xffeedd, 0.2, 3.5);
+  const glassMat = new MeshPhongMaterial({ color: 0x223344, flatShading: true, shininess: 80, transparent: true, opacity: 0.7 });
+  addRimLight(glassMat, 0x88ccff, 0.4, 3.0);
   const sailMat = new MeshPhongMaterial({ color: 0xf8f0e0, flatShading: true, shininess: 10 });
   addRimLight(sailMat, 0xfff8ee, 0.15, 3.5);
   const foamMat = new MeshBasicMaterial({
@@ -378,6 +382,30 @@ export function createSmallBoat(hullColor: number = 0x5588cc): Group {
     bowFoam.position.set(side * (s * bowHalfW * 0.5 + foamSide * 0.35), -s * 0.14, -s * (bowBackZ + bowTipZ) * 0.5);
     bowFoam.rotation.y = side * bowAngle;
     boat.add(bowFoam);
+  }
+
+  // ── Small cabin / wheelhouse (stern side, between mast and transom) ──
+  const cabinW = hullW * 0.72;
+  const cabinH = s * 0.62;
+  const cabinLen = s * 0.95;
+  const cabinZ = hullCenterZ + s * 0.7; // toward stern
+  // Main cabin walls
+  const cabin = new Mesh(new BoxGeometry(cabinW, cabinH, cabinLen), cabinMat);
+  cabin.position.set(0, deckY + cabinH * 0.5, cabinZ);
+  boat.add(cabin);
+  // Cabin roof (slightly wider, flat)
+  const cabinRoof = new Mesh(new BoxGeometry(cabinW + s * 0.08, s * 0.07, cabinLen + s * 0.06), metalMat);
+  cabinRoof.position.set(0, deckY + cabinH + s * 0.035, cabinZ);
+  boat.add(cabinRoof);
+  // Front window (faces the bow, -Z)
+  const winFront = new Mesh(new BoxGeometry(cabinW * 0.6, cabinH * 0.45, s * 0.04), glassMat);
+  winFront.position.set(0, deckY + cabinH * 0.55, cabinZ - cabinLen * 0.5 - s * 0.01);
+  boat.add(winFront);
+  // Side windows
+  for (const side of [-1, 1]) {
+    const winSide = new Mesh(new BoxGeometry(s * 0.04, cabinH * 0.38, cabinLen * 0.45), glassMat);
+    winSide.position.set(side * (cabinW * 0.5 + s * 0.01), deckY + cabinH * 0.55, cabinZ);
+    boat.add(winSide);
   }
 
   // ── Mast ──
