@@ -58,21 +58,19 @@ void main() {
   float n2 = noise(p * 6.0 + vec3(0.0, uTime * 0.2, 0.0));
   
   // Combine to create sharp light shafts. Higher exponent = thinner, sparser rays.
-  float rays = pow(n1 * n2, 2.0) * 6.0;
+  float rays = pow(n1 * n2, 2.0) * 8.0;
   
   // Fade out at the top (near sun) to avoid hard edges and seeing the source point.
-  // vUv.y goes from 0 at bottom (globe) to 1 at top (sun).
-  // Some GPUs compile smoothstep(max, min, x) poorly, so we do 1.0 - smoothstep(min, max, x).
-  float fadeY = smoothstep(0.0, 0.2, vUv.y) * (1.0 - smoothstep(0.4, 0.8, vUv.y));
+  // vUv.y goes from 0 at bottom (past globe) to 1 at top (sun).
+  // Ground is roughly at vUv.y = 0.36. 
+  // We want the rays to be strong near the ground and fade out completely before reaching the sun.
+  float fadeY = 1.0 - smoothstep(0.5, 0.9, vUv.y);
   
   // Add a radial fade so the rays are focused in the center of the cone and don't wrap around the whole globe
-  // vLocalPos.xz is the position on the disk at the current height.
-  // The cone radius at vUv.y=0 (bottom) is 8.0, at vUv.y=1 (top) is 0.5.
-  // We can calculate a normalized radial distance [0, 1] from the center of the cone:
   float currentRadius = mix(8.0, 0.5, vUv.y);
   float radialDist = length(vLocalPos.xz) / currentRadius;
-  // Fade out from center (0.0) to edge (1.0). Keep core solid, fade edges.
-  float fadeRadial = 1.0 - smoothstep(0.5, 1.0, radialDist);
+  // Keep the core solid, fade the edges out so it doesn't look like a hard cone
+  float fadeRadial = 1.0 - smoothstep(0.3, 0.8, radialDist);
   
   float a = rays * fadeY * fadeRadial * uIntensity;
   
@@ -122,8 +120,8 @@ export class GodRays {
     this.colorUniform.value.set(color);
     
     // Modulate intensity: if sun is weak (night/evening), rays disappear
-    // Reduced base dampening to make the rays globally softer and less overpowering
-    this.intensityUniform.value = sunIntensity * 0.15; 
+    // Base dampening: we increased shader math multipliers so this can remain modest.
+    this.intensityUniform.value = sunIntensity * 0.20; 
     
     this.group.position.copy(sunPos);
     
