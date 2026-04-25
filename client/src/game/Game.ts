@@ -5489,7 +5489,7 @@ export class Game {
     this.backLight.color.set(p.backColor);
     this.backLight.intensity = p.backIntensity;
 
-    this.godRays.update(this.clock.getElapsedTime(), this.sunLight.position, this.globe.group.position, p.sunColor, p.sunIntensity);
+    this.godRays.update(this.clock.getElapsedTime(), this.cameraRig.camera, this.sunLight.position, p.sunColor, p.sunIntensity);
 
     this.globe.setAtmosphereGlow(p.atmosphereGlow);
     this.globe.setCloudOpacity(p.cloudOpacity);
