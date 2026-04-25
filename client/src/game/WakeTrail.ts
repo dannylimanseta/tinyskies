@@ -30,7 +30,8 @@ void main() {
 const wakeFrag = `
 varying float vAlpha;
 void main() {
-  gl_FragColor = vec4(0.85, 0.95, 1.0, vAlpha);
+  vec3 color = vec3(0.85, 0.95, 1.0) * vAlpha;
+  gl_FragColor = vec4(color, 1.0);
 }
 `;
 
@@ -73,6 +74,8 @@ class WakeRibbon {
       depthWrite: false,
       side: DoubleSide,
       blending: AdditiveBlending,
+      premultipliedAlpha: true,
+      toneMapped: false,
     });
 
     this.mesh = new Mesh(this.geometry, mat);
@@ -130,7 +133,7 @@ class WakeRibbon {
       positions[i * 6 + 4] = p.y - _cross.y * w;
       positions[i * 6 + 5] = p.z - _cross.z * w;
 
-      const a = fade * fade * 0.45;
+      const a = fade * fade * 0.95;
       alphas[i * 2] = a;
       alphas[i * 2 + 1] = a;
     }

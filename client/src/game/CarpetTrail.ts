@@ -31,7 +31,8 @@ const frag = `
 uniform float uSpeedAlpha;
 varying float vAlpha;
 void main() {
-  gl_FragColor = vec4(0.95, 0.82, 0.3, vAlpha * uSpeedAlpha);
+  vec3 color = vec3(0.95, 0.82, 0.3) * vAlpha * uSpeedAlpha;
+  gl_FragColor = vec4(color, 1.0);
 }
 `;
 
@@ -76,6 +77,8 @@ class GoldenRibbon {
       depthWrite: false,
       side: DoubleSide,
       blending: AdditiveBlending,
+      premultipliedAlpha: true,
+      toneMapped: false,
     });
 
     this.mesh = new Mesh(this.geometry, this.material);
@@ -134,7 +137,7 @@ class GoldenRibbon {
       positions[i * 6 + 4] = p.y - _cross.y * w;
       positions[i * 6 + 5] = p.z - _cross.z * w;
 
-      const a = fadeIn * fadeOut * fadeOut * 0.6;
+      const a = fadeIn * fadeOut * fadeOut * 1.35;
       alphas[i * 2] = a;
       alphas[i * 2 + 1] = a;
     }
