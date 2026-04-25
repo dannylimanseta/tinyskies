@@ -60,8 +60,8 @@ void main() {
 
 /** Tighter, whiter, additive burst for void moth hits. */
 const MOTH_GLOW = {
-  n: 32,
-  scale: 0.36,
+  n: 46,
+  scale: 0.72,
 } as const;
 
 type P = {

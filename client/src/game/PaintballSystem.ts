@@ -518,10 +518,10 @@ export class PaintballSystem {
     this.onPaintballImpact?.(splatSeed, distant);
   }
 
-  /** Cosmic void moth: compact white additive spark burst (no paint splat / decal). */
+  /** Cosmic void moth: white additive spark burst (no paint splat / decal). */
   playMothSparkAtWorld(worldPos: Vector3, distant = false) {
     const seed = (Math.random() * 0xffffffff) >>> 0;
-    this.splashPool.play(this.scene, worldPos, 0xffffff, seed, 1, { mothGlow: true });
+    this.splashPool.play(this.scene, worldPos, 0xffffff, seed, 1.45, { mothGlow: true });
     this.onPaintballImpact?.(seed, distant);
   }
 

@@ -99,6 +99,8 @@ import {
   pickBrazierWhisper,
   THIRD_PACKAGE_DELIVERY_INDEX,
   ETERNAL_FLAME_SPEAKER,
+  JELLYFISH_NPC_SPEAKER,
+  getJellyfishCaptureLine,
   ETERNAL_FLAME_VOID_BUBBLES,
   VOID_WAVE_BETWEEN_DIALOGUE,
   VOID_SHIELD_LOW_HP_DIALOGUE,
@@ -1230,6 +1232,14 @@ export class Game {
         }
         this.vehicleFlashTimer = Math.max(this.vehicleFlashTimer, 0.2);
         this.cameraRig.shake(0.02, 0.15);
+
+        if (this.skyJellyfish) {
+          const n = this.skyJellyfish.getCollectedCount();
+          this.packageQuestHUD.showBubble(
+            JELLYFISH_NPC_SPEAKER,
+            getJellyfishCaptureLine(n, JELLY_COUNT),
+          );
+        }
 
         if (
           this.skyJellyfish &&

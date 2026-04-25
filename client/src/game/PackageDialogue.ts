@@ -68,6 +68,30 @@ export function getNpcPortraitUrl(npcName: string): string {
   return file ? `/npc/${file}` : "";
 }
 
+/** Carpet sky-jellyfish quest speaker (see {@link getJellyfishCaptureLine}). */
+export const JELLYFISH_NPC_SPEAKER = "Sky Jellyfish";
+
+/**
+ * Line after each sky jellyfish is caught. `collectedAfterCapture` is
+ * {@link SkyJellyfish#getCollectedCount} immediately after that catch (1…total).
+ */
+export function getJellyfishCaptureLine(
+  collectedAfterCapture: number,
+  total: number,
+): string {
+  const remaining = total - collectedAfterCapture;
+  if (collectedAfterCapture === 1) {
+    return `I am separated from my kin. Please find them. There are ${remaining} more to find.`;
+  }
+  if (remaining <= 0) {
+    return "All of us are together again. Thank you.";
+  }
+  if (remaining === 1) {
+    return "There is 1 more to find.";
+  }
+  return `There are ${remaining} more to find.`;
+}
+
 /** Cosmic-void intro; shown via {@link PackageQuestHUD#showBubble} as two sequential lines. */
 export const ETERNAL_FLAME_SPEAKER = "Eternal Flame";
 export const ETERNAL_FLAME_VOID_BUBBLES: readonly [string] = [
