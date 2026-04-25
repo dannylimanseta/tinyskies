@@ -4585,7 +4585,9 @@ transformed.z += sway2;`,
       vertexShader: `
         varying vec3 vNormal;
         varying vec3 vViewPosition;
+        varying vec3 vLocalPos;
         void main() {
+          vLocalPos = position;
           vNormal = normalize(normalMatrix * normal);
           vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
           vViewPosition = mvPos.xyz;
@@ -4597,10 +4599,16 @@ transformed.z += sway2;`,
         uniform float opacity;
         varying vec3 vNormal;
         varying vec3 vViewPosition;
+        varying vec3 vLocalPos;
         void main() {
           vec3 viewDir = normalize(-vViewPosition);
+          // Soften edges to camera
           float rim = abs(dot(vNormal, viewDir));
-          float soft = rim * rim * rim;
+          // Fade the bottom of the puffs to create a cohesive flat cloud base
+          // vLocalPos.y goes from -1 to 1.
+          float upFactor = smoothstep(-0.8, 0.2, vLocalPos.y);
+          
+          float soft = rim * rim * (0.3 + 0.7 * upFactor);
           gl_FragColor = vec4(cloudColor * soft, opacity * soft);
         }
       `,
@@ -4635,17 +4643,34 @@ transformed.z += sway2;`,
 
       for (let p = 0; p < puffCount; p++) {
         const puff = new Mesh(puffGeo, cloudMat);
-        const scale = sizeType.baseScale * MathUtils.lerp(0.6, 1.4, rand());
-        puff.scale.set(
-          scale * MathUtils.lerp(1.5, 2.8, rand()),
-          scale * MathUtils.lerp(0.5, 1.0, rand()),
-          scale * MathUtils.lerp(1.2, 2.2, rand()),
-        );
+        
+        // First puff is the core, others scatter around it
+        const isCenter = p === 0;
+        const distRatio = isCenter ? 0 : Math.pow(rand(), 0.6); // 0 to 1, biased toward center
+        const dist = distRatio * spread;
         const angle = rand() * Math.PI * 2;
-        const dist = rand() * spread;
+        
+        const baseRadius = sizeType.baseScale * MathUtils.lerp(0.9, 1.1, rand());
+        
+        // Puffs get smaller the further they are from the center
+        const sizeFalloff = 1.0 - (distRatio * 0.6); 
+        
+        const sx = baseRadius * sizeFalloff * MathUtils.lerp(1.2, 2.0, rand());
+        // Y scale (height) shrinks even more at the edges to create a domed top
+        const sy = baseRadius * sizeFalloff * sizeFalloff * MathUtils.lerp(1.0, 1.8, rand());
+        const sz = baseRadius * sizeFalloff * MathUtils.lerp(1.2, 2.0, rand());
+        
+        puff.scale.set(sx, sy, sz);
+        
+        // Align the bottoms to create a flatter cumulus cloud base
+        // Sphere ranges from -1 to +1, so the bottom is at -sy.
+        // We set Y position to +sy so the bottom is roughly at Y=0.
+        const bottomAlign = sy * 0.8;
+        const jitterY = (rand() - 0.5) * sy * 0.3;
+
         puff.position.set(
           Math.cos(angle) * dist,
-          (rand() - 0.5) * spread * 0.15,
+          bottomAlign + jitterY,
           Math.sin(angle) * dist * 0.7,
         );
         puff.castShadow = true;
