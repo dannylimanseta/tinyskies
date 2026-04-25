@@ -27,8 +27,9 @@ void main() {
 const trailFrag = `
 varying float vAlpha;
 void main() {
-  // Premultiplied white — with premultipliedAlpha + AdditiveBlending uses ONE+ONE (true additive)
-  gl_FragColor = vec4(vAlpha, vAlpha, vAlpha, 1.0);
+  // Additive glow with a very subtle icy blue tint
+  vec3 color = vec3(0.9, 0.95, 1.0) * vAlpha;
+  gl_FragColor = vec4(color, 1.0);
 }
 `;
 
@@ -133,7 +134,7 @@ class Trail {
       positions[i * 6 + 4] = p.y - _cross.y * w;
       positions[i * 6 + 5] = p.z - _cross.z * w;
 
-      const a = fade * fade * 0.2;
+      const a = fade * fade * 0.55;
       alphas[i * 2] = a;
       alphas[i * 2 + 1] = a;
     }
