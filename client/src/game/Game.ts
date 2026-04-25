@@ -261,7 +261,7 @@ const JELLYFISH_DIALOGUE_SFX_IDS = [
   "flame_dialogue_2",
   "flame_dialogue_3",
 ] as const;
-const FLAME_JELLY_DIALOGUE_SFX_VOLUME = 0.32;
+const FLAME_JELLY_DIALOGUE_SFX_VOLUME = 0.46;
 
 const LEVELUP_SFX_IDS = ["levelup_1", "levelup_2", "levelup_3"] as const;
 const LEVELUP_SFX_VOLUME = 0.42;
@@ -1263,12 +1263,8 @@ export class Game {
 
     this.collectVFX = new RingCollectVFX();
     this.scene.add(this.collectVFX.group);
-    // Pre-compiles shaders AND pre-uploads heart geometry to the GPU so there is no hitch
-    // on first ring or heart collect. Heart InstancedMeshes are briefly made visible so
-    // Three.js includes their buffers in the compile pass, then hidden again.
-    this.collectVFX.preWarmHearts();
+    // Pre-compile the shard ShaderMaterial pool so first collect has no hitch.
     this.renderer.compile(this.collectVFX.group, this.cameraRig.camera, this.scene);
-    this.collectVFX.postWarmHearts();
 
     this.meteorShower = new MeteorShower(globeRadius, seed, terrainType);
     this.scene.add(this.meteorShower.group);
@@ -1458,7 +1454,9 @@ export class Game {
     this.remotePlayerNameLabels = new RemotePlayerNameLabels(this.hud.root);
 
     if (this.skyJellyfish) {
-      this.jellyfishCaptureRing = new CircularProgressRing(this.hud.root);
+      this.jellyfishCaptureRing = new CircularProgressRing(this.hud.root, {
+        centerIcon: "jellyfish",
+      });
     }
     if (vehicle === "plane" && this.paintballSystem) {
       this.skyGremlins = new SkyGremlins(
@@ -1517,7 +1515,6 @@ export class Game {
         this.cameraRig.shake(0.022, 0.2);
         this.collectVFX.play(worldPos, 0, {
           shardRgb: [1, 0.2, 0.32],
-          isHeart: true,
         });
         this.audioManager.resumeContextIfNeeded();
         const id =

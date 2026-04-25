@@ -25,7 +25,7 @@ export class PackageQuestHUD {
   onVisibilityChange?: (visible: boolean, npcName?: string) => void;
 
   constructor(parent: HTMLElement) {
-    this.progressRing = new CircularProgressRing(parent);
+    this.progressRing = new CircularProgressRing(parent, { centerIcon: "package" });
 
     this.bubbleEl = document.createElement("div");
     this.bubbleEl.className = "pkg-bubble";
