@@ -60,6 +60,7 @@ const NPC_PORTRAIT_FILES: Record<string, string> = {
   "Professor Astrid": "professor_astrid.png",
   "Stargazer Orion": "stargazer_orion.png",
   "Doctor Celeste": "doctor_celeste.png",
+  "Sky Jellyfish": "jellyfish.png",
 };
 
 export function getNpcPortraitUrl(npcName: string): string {
