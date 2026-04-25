@@ -3,6 +3,7 @@ export class DebugMenu {
   private menu: HTMLElement;
   private isVisible = false;
   private onSpawnEternalFlame: () => void;
+  private onEnterCosmicVoid: () => void;
   private onExitCosmicVoid: () => void;
   private onVoidVictory: () => void;
   private onShieldToZero: () => void;
@@ -10,12 +11,14 @@ export class DebugMenu {
   constructor(
     container: HTMLElement,
     onSpawnEternalFlame: () => void,
+    onEnterCosmicVoid: () => void,
     onExitCosmicVoid: () => void,
     onVoidVictory: () => void,
     onShieldToZero: () => void,
   ) {
     this.container = container;
     this.onSpawnEternalFlame = onSpawnEternalFlame;
+    this.onEnterCosmicVoid = onEnterCosmicVoid;
     this.onExitCosmicVoid = onExitCosmicVoid;
     this.onVoidVictory = onVoidVictory;
     this.onShieldToZero = onShieldToZero;
@@ -26,6 +29,7 @@ export class DebugMenu {
     this.menu.innerHTML = `
       <h3>Debug Menu</h3>
       <button id="debug-spawn-eternal-flame">Spawn Eternal Flame</button>
+      <button id="debug-enter-cosmic-void">Enter Cosmic Void (carpet)</button>
       <button id="debug-exit-cosmic-void">Exit Cosmic Void</button>
       <button id="debug-void-victory">Void Victory</button>
       <button id="debug-shield-to-zero">Energy Shield → 0</button>
@@ -35,6 +39,11 @@ export class DebugMenu {
 
     this.menu.querySelector("#debug-spawn-eternal-flame")?.addEventListener("click", () => {
       this.onSpawnEternalFlame();
+      this.hide();
+    });
+
+    this.menu.querySelector("#debug-enter-cosmic-void")?.addEventListener("click", () => {
+      this.onEnterCosmicVoid();
       this.hide();
     });
 

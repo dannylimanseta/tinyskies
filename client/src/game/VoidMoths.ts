@@ -33,6 +33,12 @@ const FLIGHT_SPEED = 0.18;
 const TURN_SPEED = 0.9;
 /** Slightly above the carpet’s spherical shell so moths read a bit “higher” in the void. */
 const MOTH_RADIAL_LIFT = 0.05;
+/** Moth spawns: ring distance from the flame in the void plane (world units). */
+const VOID_SPAWN_RING_MIN = 2.6;
+const VOID_SPAWN_RING_SPAN = 2.2;
+/** After taking damage, flight speed is multiplied by this for {@link MOTH_POST_HIT_SLOW_SEC} seconds. */
+const MOTH_POST_HIT_SLOW_MULT = 0.26;
+const MOTH_POST_HIT_SLOW_SEC = 1.0;
 const JITTER_AMP = 0.62;
 const MOTH_MAX_HP = 3;
 const MOTH_VISUAL_SCALE = 1.3;
@@ -403,6 +409,8 @@ class VoidMoth {
   private vNav = new Vector3();
   private hitWobbleAmp = 0;
   private hitWobblePhase = 0;
+  /** >0: reduced pursuing speed after being hit (see {@link MOTH_POST_HIT_SLOW_SEC}). */
+  private postHitSlowTimer = 0;
 
   health: number;
   maxHealth: number;
@@ -518,7 +526,11 @@ class VoidMoth {
   applyDamage() {
     if (this.isDead) return;
     this.health = Math.max(0, this.health - 2);
-    if (this.health <= 0) this.isDead = true;
+    if (this.health <= 0) {
+      this.isDead = true;
+      return;
+    }
+    this.postHitSlowTimer = MOTH_POST_HIT_SLOW_SEC;
   }
 
   get hitRadius(): number {
@@ -552,7 +564,14 @@ class VoidMoth {
       (Math.sin(time * 9.2 + jt) + Math.cos(time * 6.4 + jt)) * 0.4,
       (Math.cos(time * 10.5 + jt) + Math.sin(time * 8.0 + jt * 0.7)) * 0.5,
     );
-    this.scratch.multiplyScalar((this.isElder ? ELDER_JITTER_AMP : JITTER_AMP) * dt);
+    const inPostHitSlow = this.postHitSlowTimer > 0;
+    if (inPostHitSlow) {
+      this.postHitSlowTimer = Math.max(0, this.postHitSlowTimer - dt);
+    }
+    const slowK = inPostHitSlow ? MOTH_POST_HIT_SLOW_MULT : 1;
+    this.scratch.multiplyScalar(
+      (this.isElder ? ELDER_JITTER_AMP : JITTER_AMP) * dt * (0.35 + 0.65 * slowK),
+    );
     this.velocity.add(this.scratch);
 
     this.toTargetW.subVectors(target, this.group.position);
@@ -560,7 +579,8 @@ class VoidMoth {
 
     if (distSq > 0.0004) {
       this.toTargetW.normalize();
-      this.vNav.copy(this.toTargetW).multiplyScalar(this.isElder ? ELDER_FLIGHT_SPEED : FLIGHT_SPEED);
+      const base = this.isElder ? ELDER_FLIGHT_SPEED : FLIGHT_SPEED;
+      this.vNav.copy(this.toTargetW).multiplyScalar(base * slowK);
       this.velocity.lerp(this.vNav, TURN_SPEED * dt);
       this.group.position.addScaledVector(this.velocity, dt);
 
@@ -834,7 +854,7 @@ export class VoidMothsManager {
       const moth = new VoidMoth(isElder);
       this.group.add(moth.getHpBarRoot());
       const angle = Math.random() * Math.PI * 2;
-      const ring = 4.2 + Math.random() * 2.8;
+      const ring = VOID_SPAWN_RING_MIN + Math.random() * VOID_SPAWN_RING_SPAN;
       if (voidPlane) {
         const { planeN, planeE, planeUp, flamePos } = voidPlane;
         this._spawnRing

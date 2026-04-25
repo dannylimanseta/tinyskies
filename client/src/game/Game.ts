@@ -1483,19 +1483,30 @@ export class Game {
     this.eternalFlameUI = new EternalFlameUI(this.container, this.hud.root);
     this.eternalFlameUI.syncFromSave();
 
-    this.debugMenu = new DebugMenu(this.container, () => {
-      const prev = ProgressionManager.loadPlayerWorldState();
-      this.savePlayerWorldState({
-        eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
-      });
-      this.eternalFlameUI?.playKingLootSequence();
-    }, () => {
-      if (this.inCosmicVoid) void this.exitCosmicVoid();
-    }, () => {
-      void this.handleVoidVictory();
-    }, () => {
-      this.voidFlameShield?.deplete();
-    });
+    this.debugMenu = new DebugMenu(
+      this.container,
+      () => {
+        const prev = ProgressionManager.loadPlayerWorldState();
+        this.savePlayerWorldState({
+          eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
+        });
+        this.eternalFlameUI?.playKingLootSequence();
+      },
+      () => {
+        if (this.playerVehicle !== "carpet" || !(this.localPlayer instanceof Carpet)) return;
+        if (this.inCosmicVoid || !this.transitionOverlay) return;
+        void this.doEnterCosmicVoid();
+      },
+      () => {
+        if (this.inCosmicVoid) void this.exitCosmicVoid();
+      },
+      () => {
+        void this.handleVoidVictory();
+      },
+      () => {
+        this.voidFlameShield?.deplete();
+      },
+    );
 
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
@@ -4503,12 +4514,17 @@ export class Game {
     this.voidEternalFlameIntroTimeouts = [];
   }
 
-  /** Wave configs: [totalMoths, maxConcurrent, spawnMinSec, spawnMaxSec]. */
+  /** Wave configs: [totalMoths, maxConcurrent, spawnMinSec, spawnMaxSec, elderChance]. */
   private static readonly VOID_WAVE_CONFIGS: readonly [number, number, number, number, number][] = [
     [5,  4,  1.4, 2.2, 0.0],  // wave 1 — small scouting brood, leisurely pace
     [9,  6,  0.9, 1.6, 0.0],  // wave 2 — Hungering Flight, faster spawns
     [14, 9,  0.5, 1.1, 0.35], // wave 3 — Mothwing Eldest lead the relentless tide
   ];
+  private static readonly VOID_BETWEEN_WAVE_PAUSE_MS = 350;
+  /** Time after `pause` before the next wave’s spawns start (must fit dialogue; shorter = snappier). */
+  private static readonly VOID_BETWEEN_WAVE_TO_NEXT_MS = 2600;
+  /** Off-screen red arrows only when a moth is within this distance of the eternal flame. */
+  private static readonly VOID_ENEMY_ARROW_MAX_FLAME_DIST = 1.4;
 
   /**
    * Show the intro bubble, then start wave 1.
@@ -4592,8 +4608,8 @@ export class Game {
       this.voidWavePendingTransition = true;
       const nextWave = this.voidWave + 1;
       const betweenLine = VOID_WAVE_BETWEEN_DIALOGUE[this.voidWave - 1];
-      const bubbleMs = 4800;
-      const pauseBeforeMs = 1200;
+      const pauseBeforeMs = Game.VOID_BETWEEN_WAVE_PAUSE_MS;
+      const toNextMs = Game.VOID_BETWEEN_WAVE_TO_NEXT_MS;
 
       // Brief pause, then show between-wave dialogue, then start next wave
       const t1 = setTimeout(() => {
@@ -4605,7 +4621,7 @@ export class Game {
       const t2 = setTimeout(() => {
         if (!this.inCosmicVoid || !this.voidMoths) return;
         this.startVoidWave(nextWave);
-      }, pauseBeforeMs + bubbleMs);
+      }, pauseBeforeMs + toNextMs);
       this.voidEternalFlameIntroTimeouts.push(t1, t2);
     }
   }
@@ -4817,6 +4833,12 @@ export class Game {
 
   private updateVoidEnemyArrows() {
     if (!this.voidMoths || this.voidEnemyArrowEls.length === 0) return;
+    const flame = this.voidEternalFlame?.group.position;
+    if (!flame) {
+      for (const el of this.voidEnemyArrowEls) el.style.display = "none";
+      return;
+    }
+    const maxD2 = Game.VOID_ENEMY_ARROW_MAX_FLAME_DIST * Game.VOID_ENEMY_ARROW_MAX_FLAME_DIST;
     const cam = this.cameraRig.camera;
     const cw = this.container.clientWidth || window.innerWidth;
     const ch = this.container.clientHeight || window.innerHeight;
@@ -4830,6 +4852,7 @@ export class Game {
       const el = this.voidEnemyArrowEls[i]!;
       const pos = this._enemyArrowPosScratch[i];
       if (!pos) { el.style.display = "none"; continue; }
+      if (pos.distanceToSquared(flame) > maxD2) { el.style.display = "none"; continue; }
       this._enemyArrowNdc.copy(pos).project(cam);
       const ndcX = this._enemyArrowNdc.x;
       const ndcY = this._enemyArrowNdc.y;
