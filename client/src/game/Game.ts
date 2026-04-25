@@ -302,7 +302,19 @@ const VEHICLE_TUTORIAL_FINISH_LABELS: Record<Vehicle, string> = {
   boat: "That's it. Enjoy boating!",
 };
 const VEHICLE_TUTORIAL_ADVANCE_DELAY_MS = 4000;
+/** After Space / portal travel steps, advance quickly so the next prompt is not buried. */
+const VEHICLE_TUTORIAL_CARPET_PORTAL_ADVANCE_MS = 300;
 const VEHICLE_TUTORIAL_FADE_MS = 350;
+
+function vehicleTutorialAdvanceDelayMs(vehicle: Vehicle, completedStepIndex: number): number {
+  if (vehicle !== "carpet") return VEHICLE_TUTORIAL_ADVANCE_DELAY_MS;
+  const step = VEHICLE_TUTORIAL_STEPS.carpet[completedStepIndex];
+  if (!step) return VEHICLE_TUTORIAL_ADVANCE_DELAY_MS;
+  if (step.id === "portal1" || step.id === "portal2" || step.id === "portalTravel") {
+    return VEHICLE_TUTORIAL_CARPET_PORTAL_ADVANCE_MS;
+  }
+  return VEHICLE_TUTORIAL_ADVANCE_DELAY_MS;
+}
 
 function vehicleTutorialRows(vehicle: Vehicle): ControlHintRow[] {
   return [
@@ -4526,6 +4538,10 @@ export class Game {
   private scheduleVehicleTutorialAdvance() {
     if (!this.activeVehicleTutorial || this.vehicleTutorialAdvancePending) return;
     this.vehicleTutorialAdvancePending = true;
+    const delay = vehicleTutorialAdvanceDelayMs(
+      this.activeVehicleTutorial.vehicle,
+      this.activeVehicleTutorial.stepIndex,
+    );
     this.vehicleTutorialAdvanceTimeout = setTimeout(() => {
       this.vehicleTutorialAdvanceTimeout = null;
       if (!this.activeVehicleTutorial) {
@@ -4541,7 +4557,7 @@ export class Game {
       }
 
       this.transitionVehicleTutorialToStep(nextStepIndex);
-    }, VEHICLE_TUTORIAL_ADVANCE_DELAY_MS);
+    }, delay);
   }
 
   private transitionVehicleTutorialToStep(nextStepIndex: number, finishAfterHold = false) {
