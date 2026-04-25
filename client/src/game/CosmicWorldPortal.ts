@@ -1,14 +1,17 @@
 import {
   AdditiveBlending,
+  BufferGeometry,
   Camera,
   CanvasTexture,
   CircleGeometry,
   DoubleSide,
+  Float32BufferAttribute,
   Group,
   Mesh,
   MeshBasicMaterial,
   NormalBlending,
   PlaneGeometry,
+  Points,
   Quaternion,
   ShaderMaterial,
   Sprite,
@@ -84,6 +87,8 @@ class CosmicWorldPortalVisual {
   private readonly innerMat: MeshBasicMaterial;
   private readonly halo: Sprite;
   private readonly haloMat: SpriteMaterial;
+  private readonly stars: Points;
+  private readonly starsMat: ShaderMaterial;
   private readonly timePhase: number;
 
   constructor(timePhase: number) {
@@ -141,6 +146,69 @@ class CosmicWorldPortalVisual {
     this.inner.renderOrder = 0;
     this.inner.scale.setScalar(portalDiameter * 1.5); // Make it large enough
     this.scaledGroup.add(this.inner);
+
+    // Sparkling stars
+    const starCount = 80;
+    const starGeo = new BufferGeometry();
+    const starPos = new Float32Array(starCount * 3);
+    const starPhase = new Float32Array(starCount);
+    const starSize = new Float32Array(starCount);
+    for (let i = 0; i < starCount; i++) {
+      let r = Math.random();
+      let theta = Math.random() * Math.PI * 2;
+      r = Math.sqrt(r) * (portalDiameter * 0.7); // Spread across the rift
+      starPos[i * 3 + 0] = Math.cos(theta) * r;
+      starPos[i * 3 + 1] = Math.sin(theta) * r;
+      starPos[i * 3 + 2] = (Math.random() - 0.5) * 0.1 + 0.05; // Slightly in front
+      starPhase[i] = Math.random() * Math.PI * 2;
+      starSize[i] = 0.5 + Math.random() * 1.5;
+    }
+    starGeo.setAttribute("position", new Float32BufferAttribute(starPos, 3));
+    starGeo.setAttribute("aPhase", new Float32BufferAttribute(starPhase, 1));
+    starGeo.setAttribute("aSize", new Float32BufferAttribute(starSize, 1));
+
+    this.starsMat = new ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 1.0 },
+      },
+      vertexShader: `
+        uniform float uTime;
+        attribute float aPhase;
+        attribute float aSize;
+        varying float vAlpha;
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          gl_PointSize = (10.0 * aSize) * (1.0 / -mvPosition.z);
+          float twinkle = sin(uTime * 3.5 + aPhase);
+          vAlpha = 0.2 + 0.8 * twinkle;
+          vAlpha = max(0.0, vAlpha);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying float vAlpha;
+        void main() {
+          vec2 coord = gl_PointCoord - vec2(0.5);
+          float dist = length(coord);
+          if (dist > 0.5) discard;
+          // Soft glowing dot
+          float core = exp(-dist * dist * 35.0);
+          float halo = exp(-dist * dist * 10.0) * 0.5;
+          float alpha = (core + halo) * vAlpha * uOpacity;
+          gl_FragColor = vec4(vec3(0.9, 0.95, 1.0), alpha);
+        }
+      `,
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+    });
+
+    this.stars = new Points(starGeo, this.starsMat);
+    this.stars.renderOrder = 1;
+    this.scaledGroup.add(this.stars);
   }
 
   applyPose(worldPosition: Vector3) {
@@ -156,6 +224,9 @@ class CosmicWorldPortalVisual {
     if (this.innerMat.userData.shader) {
       this.innerMat.userData.shader.uniforms.uTime.value = time + this.timePhase;
     }
+
+    this.starsMat.uniforms.uTime.value = time + this.timePhase;
+    this.starsMat.uniforms.uOpacity.value = opacity;
 
     // Keep the portal standing upright relative to the planet surface, while facing the camera.
     // This stops the tall oval shape from banking/rolling when the player's camera banks.
@@ -178,6 +249,8 @@ class CosmicWorldPortalVisual {
     this.innerMat.dispose();
     this.inner.geometry.dispose();
     this.haloMat.dispose();
+    this.starsMat.dispose();
+    this.stars.geometry.dispose();
   }
 }
 
