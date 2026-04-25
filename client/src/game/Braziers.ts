@@ -849,6 +849,28 @@ export class Braziers {
 
   /* ── Per-frame update ────────────────────────────────────────── */
 
+  /**
+   * Dev/test: force every slot lit with an eternal flame (reveal braziers first if still rising).
+   * @returns true when the world has a full brazier set; otherwise no-op and false.
+   */
+  debugLightAllEternalFlames(): boolean {
+    if (this.states.length < BRAZIER_COUNT) return false;
+    this.revealStarted = true;
+    this.revealTimer =
+      BRAZIER_REVEAL_SEC + BRAZIER_REVEAL_STAGGER_SEC * (this.states.length - 1) + 0.05;
+    this.revealComplete = true;
+    for (const s of this.states) {
+      this.applyRevealPose(s, 1);
+      s.group.visible = true;
+      s.eternal = true;
+      s.lit = true;
+      s.burnEndsAtMs = null;
+      s.fadeInT = 1;
+      s.fadeOutT = 0;
+    }
+    return true;
+  }
+
   /** Extinguish every brazier immediately (e.g. all-five shield). */
   extinguishAll() {
     for (const s of this.states) {

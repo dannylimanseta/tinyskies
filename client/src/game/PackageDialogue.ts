@@ -673,9 +673,9 @@ const BRAZIER_ALL_LIT = [
   "All five braziers are lit — the moon should slow down. If you used eternal flame on each, it lasts forever.",
 ];
 
-/** All five burning with eternal flame — moon stopped for good. */
+/** All five burning with eternal flame; moon stopped for good. */
 const BRAZIER_ALL_ETERNAL_VICTORY = [
-  "Every flame is an eternal flame. The moon has stopped — the inscription says: the world is saved.",
+  "Every flame is an eternal flame. The moon has stopped. The inscription says: the world is saved.",
   "Five blue eternal flames. The Gremlin King would be proud. The moon hangs frozen in the sky.",
   "You did it. Eternal flame on all five braziers. The moon won't fall again.",
 ];

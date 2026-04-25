@@ -490,6 +490,8 @@ export class Game {
   private moonstoneUnionShotSide = new Vector3();
   private moonstoneUnionShotForward = new Vector3();
   private returningToMenuAfterMoon = false;
+  /** Stops the game loop and runs the outro after all five braziers are lit with eternal flame. */
+  private eternalVictoryReturnInProgress = false;
   private playerGremlinDeathReturnInProgress = false;
   private campsiteMarker: CampsiteMarker | null = null;
   private campsiteScene: CampsiteScene | null = null;
@@ -1516,6 +1518,14 @@ export class Game {
       () => {
         this.voidFlameShield?.deplete();
       },
+      () => {
+        if (!this.braziers) return;
+        if (!this.braziers.debugLightAllEternalFlames()) return;
+        this.lastBrazierProgress = this.braziers.getBurnProgressSnapshot();
+        this.hud.updateBrazierStatus(this.lastBrazierProgress);
+        this.prevAllFiveBraziers = true;
+        this.applyEternalFlamesMoonSave();
+      },
     );
 
     const landmarkRegistry = new LandmarkRegistry();
@@ -1863,6 +1873,15 @@ export class Game {
   private static readonly MOON_EPITAPH_FADE_IN_MS = 2500;
   private static readonly MOON_EPITAPH_HOLD_MS = 2000;
   private static readonly MOON_EPITAPH_FADE_OUT_MS = 2000;
+
+  private static readonly ETERNAL_VICTORY_DELAY_BEFORE_FADE_SEC = 3;
+  private static readonly ETERNAL_VICTORY_FADE_TO_BLACK_SEC = 4.2;
+  private static readonly ETERNAL_VICTORY_HOLD_ON_BLACK_SEC = 6.5;
+  private static readonly ETERNAL_VICTORY_END_TEXT = [
+    "Five braziers burn with Eternal Flame.",
+    "Their light together holds the moon in the sky, now and for good.",
+    "The world is saved.",
+  ].join("\n\n");
   /** Matches fadeOut1 so other players see us fade out instead of freezing in place. */
   private static readonly MOON_NETWORK_VISIBILITY_FADE_SEC = 0.7;
 
@@ -2131,18 +2150,65 @@ export class Game {
     this.hud.showBrazierMoonSlowed();
   }
 
-  /** All five braziers lit with eternal flames — moon stopped for good (saved). */
+  /** All five braziers lit with eternal flames; moon stopped for good (saved). */
   private applyEternalFlamesMoonSave() {
     this.braziers?.extinguishAll();
     const elapsed = this.moonThreat?.approachElapsedSeconds ?? 0;
     this.savePlayerWorldState({
       moonFrozenByEternalFlames: true,
       moonFrozenElapsedSec: elapsed,
+      pendingEternalVictoryCelebration: true,
     });
     this.maybeReportSaveFeed();
     this.moonThreat?.freezeApproachForever();
     this.shouldShowBrazierMoonResume = false;
-    this.hud.showEternalFlamesMoonSaved();
+    void this.returnToMainMenuAfterEternalVictory();
+  }
+
+  /** Slow fade to black, victory text, tear down, main menu, then lobby victory modal. */
+  private async returnToMainMenuAfterEternalVictory() {
+    if (this.eternalVictoryReturnInProgress) return;
+    this.eternalVictoryReturnInProgress = true;
+    this.running = false;
+    try {
+      if (!this.transitionOverlay) {
+        this.transitionOverlay = new TransitionOverlay(this.container);
+      }
+      await new Promise<void>((r) =>
+        setTimeout(r, Game.ETERNAL_VICTORY_DELAY_BEFORE_FADE_SEC * 1000),
+      );
+      await this.transitionOverlay.fadeOut({
+        durationSec: Game.ETERNAL_VICTORY_FADE_TO_BLACK_SEC,
+        message: Game.ETERNAL_VICTORY_END_TEXT,
+        holdAtFullSec: Game.ETERNAL_VICTORY_HOLD_ON_BLACK_SEC,
+      });
+      this.teardownGameplaySession();
+      this.dayNightCycle.moonProgress = 0;
+      this.moonThreat?.reset();
+      this.shouldShowBrazierMoonResume = false;
+      this.applyDayNightPreset();
+      this.gamePhase = "flying";
+      this.moonCinematicStep = "done";
+      this.moonCinematicCamera = null;
+      this.introActive = false;
+      this.vehicleHintsEl = null;
+      this.campsiteHintsEl = null;
+      this.mountLobby();
+      this.previewActive = true;
+      window.addEventListener("resize", this.onPreviewResize);
+      this.onPreviewResize();
+      const previewDt = Math.min(this.clock.getDelta(), 0.05);
+      this.stepPreview(previewDt);
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      requestAnimationFrame(this.previewTick);
+      if (this.transitionOverlay) {
+        await this.transitionOverlay.fadeIn();
+        this.transitionOverlay.dispose();
+        this.transitionOverlay = null;
+      }
+    } finally {
+      this.eternalVictoryReturnInProgress = false;
+    }
   }
 
   private initNetworking(slug: string) {
@@ -2909,8 +2975,11 @@ export class Game {
           : undefined,
       );
       if (newlyLitIndices.length > 0) {
+        const allFiveEternalNow = this.braziers?.allFiveEternalAndLit() ?? false;
         if (newlyLitUsedEternalFlame) {
-          this.hud.showBrazierEternalFlameLit();
+          if (!allFiveEternalNow) {
+            this.hud.showBrazierEternalFlameLit();
+          }
         } else {
           this.hud.showBrazierLit();
         }
@@ -5430,6 +5499,8 @@ export class Game {
         overrides.vehicleTutorialsCompleted ?? prev.vehicleTutorialsCompleted,
       ...overrides,
     };
+    next.pendingEternalVictoryCelebration =
+      overrides.pendingEternalVictoryCelebration ?? prev.pendingEternalVictoryCelebration ?? false;
     next.brazierBurnEndsAtMs = Array.from({ length: BRAZIER_COUNT }, (_unused, i) => {
       const end = next.brazierBurnEndsAtMs?.[i];
       return typeof end === "number" && Number.isFinite(end) ? end : null;

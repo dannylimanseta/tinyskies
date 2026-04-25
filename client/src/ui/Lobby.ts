@@ -77,7 +77,7 @@ export class Lobby {
   private el: HTMLDivElement;
   private options: LobbyOptions;
   private selectedVehicle: Vehicle = "plane";
-  private unlockQueue: ("carpet" | "boat")[] = [];
+  private unlockQueue: ("worldSaved" | "carpet" | "boat")[] = [];
   private unlockPreview: VehicleUnlockPreview | null = null;
 
   constructor(container: HTMLElement, options: LobbyOptions) {
@@ -259,29 +259,43 @@ export class Lobby {
       });
     });
 
-    this.unlockQueue = [...ProgressionManager.getPendingUnlockCelebrations()];
+    this.unlockQueue = [];
+    if (ProgressionManager.loadPlayerWorldState().pendingEternalVictoryCelebration) {
+      this.unlockQueue.push("worldSaved");
+    }
+    this.unlockQueue.push(...ProgressionManager.getPendingUnlockCelebrations());
 
     const showNextUnlockModal = () => {
       if (this.unlockQueue.length === 0) {
         this.unlockPreview?.hide();
         unlockModal.classList.remove("open");
+        unlockModal.classList.remove("lobby-unlock-modal--epilogue");
         unlockModal.setAttribute("aria-hidden", "true");
         flyBtn.disabled = false;
         return;
       }
       const kind = this.unlockQueue[0]!;
-      if (!this.unlockPreview) {
-        this.unlockPreview = new VehicleUnlockPreview(unlockPreviewHost);
-      }
-      this.unlockPreview?.show(kind);
-      if (kind === "carpet") {
-        unlockTitle.textContent = "Magic Carpet unlocked";
+      if (kind === "worldSaved") {
+        this.unlockPreview?.hide();
+        unlockModal.classList.add("lobby-unlock-modal--epilogue");
+        unlockTitle.textContent = "The world is safe";
         unlockBody.textContent =
-          "You reached level 2 on a run. Take to the skies as a sightseeing capybara on a magic carpet!";
+          "All five braziers now hold Eternal Flame. The moon will not fall on this world again. Whenever you play Tiny Skies, you can wander the sky without that last threat closing in. Thank you for flying for us all.";
       } else {
-        unlockTitle.textContent = "Boat unlocked";
-        unlockBody.textContent =
-          "You reached level 4 with the biplane or carpet. The ocean is yours to sail.";
+        unlockModal.classList.remove("lobby-unlock-modal--epilogue");
+        if (!this.unlockPreview) {
+          this.unlockPreview = new VehicleUnlockPreview(unlockPreviewHost);
+        }
+        this.unlockPreview?.show(kind);
+        if (kind === "carpet") {
+          unlockTitle.textContent = "Magic Carpet unlocked";
+          unlockBody.textContent =
+            "You reached level 2 on a run. Take to the skies as a sightseeing capybara on a magic carpet!";
+        } else {
+          unlockTitle.textContent = "Boat unlocked";
+          unlockBody.textContent =
+            "You reached level 4 with the biplane or carpet. The ocean is yours to sail.";
+        }
       }
       unlockModal.classList.add("open");
       unlockModal.setAttribute("aria-hidden", "false");
@@ -292,7 +306,15 @@ export class Lobby {
     unlockOk.addEventListener("click", () => {
       if (this.unlockQueue.length === 0) return;
       const kind = this.unlockQueue.shift()!;
-      ProgressionManager.acknowledgeUnlockCelebration(kind);
+      if (kind === "worldSaved") {
+        const ws = ProgressionManager.loadPlayerWorldState();
+        ProgressionManager.savePlayerWorldState({
+          ...ws,
+          pendingEternalVictoryCelebration: false,
+        });
+      } else {
+        ProgressionManager.acknowledgeUnlockCelebration(kind);
+      }
       showNextUnlockModal();
     });
 
@@ -818,6 +840,9 @@ export class Lobby {
         width: 100%;
         height: 100%;
         display: block;
+      }
+      #lobby-unlock-modal.lobby-unlock-modal--epilogue .lobby-unlock-preview-canvas {
+        display: none;
       }
       .lobby-unlock-title {
         font-size: clamp(1.05rem, 3.6vw, 1.25rem);
