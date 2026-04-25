@@ -33,19 +33,6 @@ void main() {
 }
 `;
 
-const ringFrag = `
-uniform float opacity;
-uniform vec3 color;
-uniform float innerRadius;
-varying vec2 vUv;
-void main() {
-  vec2 c = vUv - 0.5;
-  float d = length(c) * 2.0;
-  float ring = smoothstep(innerRadius - 0.08, innerRadius, d) * (1.0 - smoothstep(1.0 - 0.08, 1.0, d));
-  gl_FragColor = vec4(color, ring * opacity);
-}
-`;
-
 const hexFrag = `
 uniform float opacity;
 uniform vec3 color;
@@ -83,7 +70,6 @@ export class LensFlare {
       { frag: circleFrag, color: [1.0, 0.95, 0.8], size: 0.45, offset: 0, uniforms: { softness: { value: 0.8 } } }, // Main sun glare, bigger and softer
       { frag: circleFrag, color: [1.0, 0.9, 0.6], size: 0.18, offset: 0.25, uniforms: { softness: { value: 0.7 } } }, // Secondary glare
       { frag: hexFrag, color: [0.8, 0.85, 1.0], size: 0.12, offset: 0.4 }, // Hex artifact 1
-      { frag: ringFrag, color: [0.9, 0.8, 1.0], size: 0.25, offset: 0.55, uniforms: { innerRadius: { value: 0.7 } } }, // Ring artifact
       { frag: circleFrag, color: [1.0, 0.85, 0.5], size: 0.08, offset: 0.7, uniforms: { softness: { value: 0.5 } } }, // Small glare
       { frag: hexFrag, color: [0.7, 0.9, 1.0], size: 0.15, offset: 0.85 }, // Hex artifact 2
       { frag: circleFrag, color: [1.0, 0.95, 0.9], size: 0.09, offset: 1.0, uniforms: { softness: { value: 0.8 } } }, // Edge glare
