@@ -45,6 +45,7 @@ import { isMobile } from "../utils/isMobile";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
 import { PaintballSystem } from "./PaintballSystem";
+import { GodRays } from "./GodRays";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
 import { WakeTrail } from "./WakeTrail";
@@ -582,6 +583,7 @@ export class Game {
   private fillLight!: DirectionalLight;
   private fill2Light!: DirectionalLight;
   private backLight!: DirectionalLight;
+  private godRays!: GodRays;
   private skyCanvas!: HTMLCanvasElement;
   private skyTexture!: CanvasTexture;
 
@@ -980,6 +982,10 @@ export class Game {
     this.sunLight.shadow.blurSamples = 16;
     this.sunLight.shadow.bias = -0.0005;
     this.scene.add(this.sunLight);
+    
+    this.godRays = new GodRays();
+    this.scene.add(this.godRays.group);
+    
     this.fillLight = new DirectionalLight(preset.fillColor, preset.fillIntensity);
     this.fillLight.position.set(-8, -5, -10);
     this.scene.add(this.fillLight);
@@ -5483,6 +5489,8 @@ export class Game {
     this.backLight.color.set(p.backColor);
     this.backLight.intensity = p.backIntensity;
 
+    this.godRays.update(this.clock.getElapsedTime(), this.sunLight.position, this.globe.group.position, p.sunColor, p.sunIntensity);
+
     this.globe.setAtmosphereGlow(p.atmosphereGlow);
     this.globe.setCloudOpacity(p.cloudOpacity);
     globalRimColor.set(p.rimColor);
@@ -6106,6 +6114,7 @@ export class Game {
     this.removeVoidEternalFlame();
     this.localPlayer?.dispose();
     this.globe?.dispose();
+    this.godRays?.dispose();
     this.renderer?.dispose();
     this.landmarkHUD?.dispose();
     this.packageQuest?.dispose();
