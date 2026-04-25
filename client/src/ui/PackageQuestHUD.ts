@@ -257,9 +257,10 @@ export class PackageQuestHUD {
         font-weight: 600;
       }
       .pkg-banner-name {
-        /* flex: 1 1 0% + min-width: 0 — reliable ellipsis; 0 1 auto + max-width:100% can starve the · Xm on WebKit */
-        flex: 1 1 0%;
+        /* Intrinisc width + ellipsis — do not flex-grow or "Deliver to …" pins to the left of the full bar */
+        flex: 0 1 auto;
         min-width: 0;
+        max-width: min(58vw, 24rem);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -343,6 +344,9 @@ export class PackageQuestHUD {
           font-size: 0.8rem;
           min-height: 36px;
           padding-top: 2px;
+        }
+        .pkg-banner-name {
+          max-width: min(50vw, 18rem);
         }
       }
     `;

@@ -2342,7 +2342,11 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.gameTime += dt;
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
-    /** Twister collision/audio uses world position; the mesh is only hidden in void, so we must also disable logic. */
+    /**
+     * Twister *player* effects (forced spin, proximity audio) off in void and during
+     * carpet void transitions. World twister visuals use a separate check — always sim
+     * time when the ocean twisters are visible, or the shader time uniform stalls.
+     */
     const twisterSuppressed = this.inCosmicVoid || this.coastCarpetDuringCosmicTransition;
     const voidCamTarget = this.inCosmicVoid || this.voidEntryInProgress ? 1 : 0;
     this.voidCameraBlend += (voidCamTarget - this.voidCameraBlend) * (1 - Math.exp(-VOID_CAMERA_BLEND_SPEED * dt));
@@ -3073,7 +3077,8 @@ export class Game {
       this.localPlayer.heading,
       questPlayerPos,
     );
-    if (!twisterSuppressed) {
+    /* Advance twister VFX / splash sim whenever we're not in the cosmic void (group hidden there). */
+    if (!this.inCosmicVoid) {
       this.waterSpouts?.update(dt);
     }
 
