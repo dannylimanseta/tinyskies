@@ -39,6 +39,13 @@ const T = BASE_TUBE_RADIUS * COSMIC_WORLD_PORTAL_SCALE;
 /** Extra altitude above surface + {@link CARPET_HOVER_HEIGHT} so the rim always floats above the terrain. */
 const PORTAL_CLEARANCE_ABOVE_HOVER = 0.22;
 
+/** How many void-entry portals to place in the overworld; keep Game spawn loop in sync. */
+export const COSMIC_VOID_PORTAL_COUNT = 2;
+
+/** Reject a candidate that is too close to any already-placed portal (radians, surface angle). */
+const MIN_VOID_PORTAL_ANGULAR_SEP = 1.2;
+const MAX_DIR_DOT = Math.cos(MIN_VOID_PORTAL_ANGULAR_SEP);
+
 function seededUnit(seed: number): () => number {
   let s = seed;
   return () => {
@@ -259,13 +266,16 @@ function pickWorldPose(
   worldSeed: number,
   terrainType: string,
   rand: () => number,
-  /** Bias the starting heading to a 120°-wide sector so portals spread across the globe. */
-  sectorAngle = 0,
+  /** Sector centre so N portals are evenly spaced in azimuth. */
+  sectorAngle: number,
+  portalCount: number,
+  /** Unit directions of portals already placed; new portal must sit ≥ {@link MIN_VOID_PORTAL_ANGULAR_SEP} from each. */
+  existingUnitDirs: Vector3[],
 ): { qPosition: Quaternion; heading: number; altitude: number } {
   for (let k = 0; k < 500; k++) {
     const q = new Quaternion();
-    // Restrict start heading to ±60° of the sector centre so each portal lives in its own third.
-    const h0 = sectorAngle + (rand() - 0.5) * ((Math.PI * 2) / 3);
+    // Sector width: `2π / portalCount` so each has its own wedge; 2 → opposite hemispheres.
+    const h0 = sectorAngle + (rand() - 0.5) * ((Math.PI * 2) / Math.max(1, portalCount));
     const a0 = 0.35 + rand() * 2.2;
     const q1 = moveOnSphere(q, h0, a0);
     const h1 = rand() * Math.PI * 2;
@@ -278,6 +288,19 @@ function pickWorldPose(
     const minAlt =
       surfaceAltitudeAt(worldSeed, terrainType, frame.up.x, frame.up.y, frame.up.z) + CARPET_HOVER_HEIGHT;
     const altitude = minAlt + PORTAL_CLEARANCE_ABOVE_HOVER;
+    if (existingUnitDirs.length > 0) {
+      const wDir = cartesianFromSpherical(finalQ, altitude, globeRadius)
+        .clone()
+        .normalize();
+      let tooClose = false;
+      for (const d of existingUnitDirs) {
+        if (d.dot(wDir) > MAX_DIR_DOT) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+    }
     const heading = rand() * Math.PI * 2;
     return { qPosition: finalQ, heading, altitude };
   }
@@ -306,17 +329,22 @@ export class CosmicWorldPortal {
     seed: number,
     terrainType: string,
     index: number,
+    /** Unit directions of portals already placed; updated when this instance registers its direction. */
+    existingUnitDirs: Vector3[],
   ) {
     const rand = seededUnit(seed + 19023841 + index * 9999);
-    const sectorAngle = (index / 3) * Math.PI * 2;
+    const sectorAngle = (index / COSMIC_VOID_PORTAL_COUNT) * Math.PI * 2;
     const { qPosition, heading, altitude } = pickWorldPose(
       globeRadius,
       seed + index * 100,
       terrainType,
       rand,
       sectorAngle,
+      COSMIC_VOID_PORTAL_COUNT,
+      existingUnitDirs,
     );
     this.worldPosition.copy(cartesianFromSpherical(qPosition, altitude, globeRadius));
+    existingUnitDirs.push(this.worldPosition.clone().normalize());
 
     this.visual = new CosmicWorldPortalVisual(seed * 0.0012 + index * 10);
     this.visual.applyPose(this.worldPosition);

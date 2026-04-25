@@ -63,7 +63,7 @@ import { RingCollectVFX } from "./RingCollectVFX";
 import { pickRandomVehicleColor } from "./vehicleColors";
 import { CarpetPortalSystem } from "./CarpetPortalSystem";
 import { CapybaraFlameShots } from "./CapybaraFlameShots";
-import { CosmicWorldPortal } from "./CosmicWorldPortal";
+import { CosmicWorldPortal, COSMIC_VOID_PORTAL_COUNT } from "./CosmicWorldPortal";
 import { EternalFlameWorld } from "./EternalFlameWorld";
 import { VoidMothsManager, type VoidMothPlaneContext } from "./VoidMoths";
 import { VoidFlameShield } from "./VoidFlameShield";
@@ -87,6 +87,7 @@ import { FireflyCluster, FIREFLY_CLUSTER_COUNT, FIREFLY_XP } from "./FireflyClus
 import { Volcano, VOLCANO_COUNT, VOLCANO_XP } from "./Volcano";
 import { Braziers, BRAZIER_COUNT, type SavedBrazierState } from "./Braziers";
 import { SkyGremlins, SKY_GREMLIN_KING_XP, SKY_GREMLIN_XP } from "./SkyGremlins";
+import { NpcPlanes } from "./NpcPlanes";
 import { GremlinHearts } from "./GremlinHearts";
 import { LandmarkRegistry, LandmarkDetector } from "./Landmarks";
 import { PackageQuestManager } from "./PackageQuest";
@@ -434,6 +435,8 @@ export class Game {
   private volcanoes: Volcano[] = [];
   private braziers: Braziers | null = null;
   private skyGremlins: SkyGremlins | null = null;
+  private npcPlanes: NpcPlanes | null = null;
+  private npcPaintballUnsub: (() => void) | null = null;
   private gremlinHearts: GremlinHearts | null = null;
   private lastGremlinHitSfxAt = 0;
   private lastVoidMothHitSfxAt = 0;
@@ -1225,8 +1228,9 @@ export class Game {
       this.scene.add(this.carpetPortalSystem.group);
       this.carpetPortalSystem.syncToCarpet(this.localPlayer as Carpet);
       if (!ProgressionManager.loadPlayerWorldState().voidPortalsClosed) {
-        for (let i = 0; i < 3; i++) {
-          const portal = new CosmicWorldPortal(globeRadius, seed, terrainType, i);
+        const voidPortalDirs: Vector3[] = [];
+        for (let i = 0; i < COSMIC_VOID_PORTAL_COUNT; i++) {
+          const portal = new CosmicWorldPortal(globeRadius, seed, terrainType, i, voidPortalDirs);
           this.cosmicWorldPortals.push(portal);
           this.scene.add(portal.group);
         }
@@ -1528,6 +1532,14 @@ export class Game {
       this.gremlinHearts = null;
     }
 
+    // NPC monoplane flyers — plane vehicle only, local-only (no server sync)
+    if (vehicle === "plane") {
+      this.npcPlanes = new NpcPlanes(this.scene, globeRadius, seed);
+      if (this.paintballSystem) {
+        this.npcPaintballUnsub = this.npcPlanes.registerPaintballListener(this.paintballSystem);
+      }
+    }
+
     this.flockFormationHUD = new FlockFormationHUD(this.hud.root);
     for (let fi = 0; fi < BIRD_FLOCK_COUNT; fi++) {
       this.birdFlocks.push(new BirdFlock(this.scene, globeRadius, seed, fi));
@@ -1798,6 +1810,10 @@ export class Game {
     this.skyGremlins = null;
     this.lastGremlinHitSfxAt = 0;
     this.lastVoidMothHitSfxAt = 0;
+    this.npcPaintballUnsub?.();
+    this.npcPaintballUnsub = null;
+    this.npcPlanes?.dispose();
+    this.npcPlanes = null;
     if (this.kingEternalFlameRewardTimeout != null) {
       clearTimeout(this.kingEternalFlameRewardTimeout);
       this.kingEternalFlameRewardTimeout = null;
@@ -2866,6 +2882,14 @@ export class Game {
     this.globe.update(dt);
 
     this.remotePlanes.update(dt, this.cameraRig.camera);
+
+    if (this.npcPlanes && !this.inCosmicVoid) {
+      const _npcPlayerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
+      this.npcPlanes.update(dt, _npcPlayerPos, (msg) => {
+        this.hud.showAmbientToast(msg);
+      });
+    }
+
     if (this.localPlayer instanceof Plane && this.skyGremlins) {
       if (this.gameTime >= Game.SKY_GREMLIN_SPAWN_DELAY_SEC) {
         this.skyGremlins.setSuspended(false);
@@ -5104,6 +5128,7 @@ export class Game {
       if (this.gremlinHearts) this.gremlinHearts.group.visible = false;
       if (this.packageQuest) this.packageQuest.group.visible = false;
       if (this.collectVFX) this.collectVFX.group.visible = false;
+      this.npcPlanes?.setVisible(false);
 
       this.packageQuestHUD.hideBubble();
       this.packageQuestHUD.hideDeliveryTarget();
@@ -5236,6 +5261,7 @@ export class Game {
     if (this.gremlinHearts) this.gremlinHearts.group.visible = true;
     if (this.packageQuest) this.packageQuest.group.visible = true;
     if (this.collectVFX) this.collectVFX.group.visible = true;
+    this.npcPlanes?.setVisible(true);
     this.setPortalHintVisible(true);
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
     this.hud.setPlayerCountVisible(true);
@@ -5953,6 +5979,10 @@ export class Game {
     this.paintballSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
+    this.npcPaintballUnsub?.();
+    this.npcPaintballUnsub = null;
+    this.npcPlanes?.dispose();
+    this.npcPlanes = null;
     if (this.gremlinHearts) {
       this.scene.remove(this.gremlinHearts.group);
       this.gremlinHearts.dispose();

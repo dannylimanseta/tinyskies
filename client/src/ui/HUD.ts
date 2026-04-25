@@ -220,6 +220,11 @@ export class HUD {
     setTimeout(() => banner.remove(), 2000);
   }
 
+  /** Generic one-liner toast — used for NPC wave greetings and similar ambient messages. */
+  showAmbientToast(message: string, durationMs = 2800) {
+    this.showCenteredToast("hud-ambient-toast", message, durationMs);
+  }
+
   /** Shown when bird flock formation completes; matches XP popup line + float styling, below the flock ring. */
   showFlockFormationCelebrate() {
     this.showCenteredToast("hud-flock-celebration", "You flew with the birds", 1600);
