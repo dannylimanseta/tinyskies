@@ -257,9 +257,9 @@ const DIALOGUE_MALE_PLAYBACK_RATE = 0.88;
 const FLAME_DIALOGUE_SFX_IDS = ["flame_dialogue_1", "flame_dialogue_2", "flame_dialogue_3"] as const;
 /** One-shots for {@link JELLYFISH_NPC_SPEAKER} sky-jellyfish lines. */
 const JELLYFISH_DIALOGUE_SFX_IDS = [
-  "jellyfish_dialogue_1",
-  "jellyfish_dialogue_2",
-  "jellyfish_dialogue_3",
+  "flame_dialogue_1",
+  "flame_dialogue_2",
+  "flame_dialogue_3",
 ] as const;
 const FLAME_JELLY_DIALOGUE_SFX_VOLUME = 0.32;
 
