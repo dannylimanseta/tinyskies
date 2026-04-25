@@ -4,8 +4,7 @@ import { VehicleUnlockPreview } from "./VehicleUnlockPreview";
 
 const VEHICLE_ORDER: Vehicle[] = ["plane", "carpet", "boat"];
 
-/** Lucide-style padlock for locked vehicle slots (vehicle type hidden). */
-const LOCK_SVG = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+const LOCK_ICON_SRC = "/2D/icon_lock.svg";
 
 const SHORT_LABELS: Record<Vehicle, string> = {
   plane: "Biplane",
@@ -117,7 +116,7 @@ export class Lobby {
           aria-checked="false"
           aria-disabled="true"
           aria-label="Locked vehicle">
-          <span class="lobby-vicon lobby-vicon--lock" aria-hidden="true">${LOCK_SVG}</span>
+          <span class="lobby-vicon lobby-vicon--lock" aria-hidden="true"><img class="lobby-vicon-asset lobby-vicon-asset--lock" src="${LOCK_ICON_SRC}" alt="" width="28" height="28" decoding="async" /></span>
         </button>`;
       }
       return `
@@ -577,7 +576,7 @@ export class Lobby {
       .lobby-vbtn.active .lobby-vicon-asset {
         filter: none;
       }
-      .lobby-vicon--lock svg { width: 28px; height: 28px; }
+      .lobby-vicon-asset--lock { width: 28px; height: 28px; }
       .lobby-vlabel {
         font-size: 0.8rem;
         font-weight: 600;
@@ -724,7 +723,7 @@ export class Lobby {
         }
         .lobby-vbtn { padding: 8px 4px 10px; min-height: 80px; }
         .lobby-vicon-asset { width: 22px; height: 22px; }
-        .lobby-vicon--lock svg { width: 26px; height: 26px; }
+        .lobby-vicon-asset--lock { width: 26px; height: 26px; }
         .lobby-vlabel { font-size: 0.75rem; }
         .lobby-vmeta { font-size: 0.58rem; }
         .lobby-fly { padding: 0 18px; font-size: 0.9rem; min-width: 52px; min-height: 44px; }
