@@ -67,7 +67,7 @@ void main() {
 }
 `;
 
-const TREE_COUNT = 5100;
+const TREE_COUNT = 10000;
 const ROCK_COUNT = 400;
 const COCONUT_CLUSTERS = 270;
 const VILLAGE_COUNT = 20;
