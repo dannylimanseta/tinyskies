@@ -3102,20 +3102,17 @@ transformed.z += sway2;`,
 
     if (pool.length === 0) return;
 
-    // Prefer the lowest, flattest lowland (elevation first — avoids hilltops even within cap).
+    // Prefer the lowest, flattest lowland. Pick 2 well-separated sites.
     pool.sort((a, b) => a.elevation - b.elevation || a.rough - b.rough);
-    const best = pool[0]!;
-    const normal = best.normal.clone();
-    this.pyramidCenters.push({ normal: normal.clone() });
 
-    const displacement = surfaceDisplacementAt(
-      this.seed,
-      this.terrainType,
-      normal.x,
-      normal.y,
-      normal.z,
-    );
-    const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+    const chosen: Vector3[] = [];
+    const MIN_SEPARATION_DOT = 0.80; // ~37° apart — ensures pyramids are far apart
+    for (const candidate of pool) {
+      if (chosen.some((c) => c.dot(candidate.normal) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(candidate.normal.clone());
+      if (chosen.length >= 2) break;
+    }
+
     const spin = seededRandom(484848 + this.seed);
     const REF_UP = new Vector3(0, 1, 0);
 
@@ -3132,42 +3129,55 @@ transformed.z += sway2;`,
         const targetSize = 0.36;
         const uniformScale = targetSize / maxDim;
 
-        const model = template.clone(true);
-        model.scale.setScalar(uniformScale);
-        model.position.copy(normal.clone().multiplyScalar(surfaceR));
-        model.quaternion.setFromUnitVectors(REF_UP, normal);
-        model.rotateY(spin() * Math.PI * 2);
-        model.updateMatrixWorld(true);
-        let minAlong = minMeshVertexProjectionAlongNormal(model, normal);
-        if (!Number.isFinite(minAlong)) {
-          const bb = new Box3().setFromObject(model);
-          const corners = [
-            new Vector3(bb.min.x, bb.min.y, bb.min.z),
-            new Vector3(bb.max.x, bb.min.y, bb.min.z),
-            new Vector3(bb.min.x, bb.max.y, bb.min.z),
-            new Vector3(bb.max.x, bb.max.y, bb.min.z),
-            new Vector3(bb.min.x, bb.min.y, bb.max.z),
-            new Vector3(bb.max.x, bb.min.y, bb.max.z),
-            new Vector3(bb.min.x, bb.max.y, bb.max.z),
-            new Vector3(bb.max.x, bb.max.y, bb.max.z),
-          ];
-          minAlong = Infinity;
-          for (const c of corners) {
-            const d = c.dot(normal);
-            if (d < minAlong) minAlong = d;
-          }
-        }
-        const lift = surfaceR - minAlong;
-        model.position.addScaledVector(normal, lift);
+        for (const normal of chosen) {
+          this.pyramidCenters.push({ normal: normal.clone() });
 
-        model.traverse((child) => {
-          if ((child as Mesh).isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
+          const displacement = surfaceDisplacementAt(
+            this.seed,
+            this.terrainType,
+            normal.x,
+            normal.y,
+            normal.z,
+          );
+          const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+          const model = template.clone(true);
+          model.scale.setScalar(uniformScale);
+          model.position.copy(normal.clone().multiplyScalar(surfaceR));
+          model.quaternion.setFromUnitVectors(REF_UP, normal);
+          model.rotateY(spin() * Math.PI * 2);
+          model.updateMatrixWorld(true);
+          let minAlong = minMeshVertexProjectionAlongNormal(model, normal);
+          if (!Number.isFinite(minAlong)) {
+            const bb = new Box3().setFromObject(model);
+            const corners = [
+              new Vector3(bb.min.x, bb.min.y, bb.min.z),
+              new Vector3(bb.max.x, bb.min.y, bb.min.z),
+              new Vector3(bb.min.x, bb.max.y, bb.min.z),
+              new Vector3(bb.max.x, bb.max.y, bb.min.z),
+              new Vector3(bb.min.x, bb.min.y, bb.max.z),
+              new Vector3(bb.max.x, bb.min.y, bb.max.z),
+              new Vector3(bb.min.x, bb.max.y, bb.max.z),
+              new Vector3(bb.max.x, bb.max.y, bb.max.z),
+            ];
+            minAlong = Infinity;
+            for (const c of corners) {
+              const d = c.dot(normal);
+              if (d < minAlong) minAlong = d;
+            }
           }
-        });
-        this.applyRimLightToPyramid(model);
-        this.group.add(model);
+          const lift = surfaceR - minAlong;
+          model.position.addScaledVector(normal, lift);
+
+          model.traverse((child) => {
+            if ((child as Mesh).isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          this.applyRimLightToPyramid(model);
+          this.group.add(model);
+        }
       },
       undefined,
       (err) => {
