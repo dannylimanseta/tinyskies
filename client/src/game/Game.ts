@@ -606,6 +606,8 @@ export class Game {
   private previewCamera!: PerspectiveCamera;
   private previewActive = false;
   private previewAngle = 0;
+  /** Time elapsed in the intro zoom-in (seconds). Resets on first load only. */
+  private previewZoomElapsed = 0;
   private loadingEl: HTMLDivElement | null = null;
   private reservationId?: string;
   /** Set in `start()` via {@link resolveServerUrl}; used by {@link getServerUrl}. */
@@ -1104,6 +1106,7 @@ export class Game {
 
     this.previewCamera = new PerspectiveCamera(60, w / h, 0.1, 100);
     this.previewAngle = 0;
+    this.previewZoomElapsed = 0; // reset only on first load — triggers the intro zoom
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     for (let vi = 0; vi < VOLCANO_COUNT; vi++) {
@@ -1119,9 +1122,20 @@ export class Game {
 
   /** One preview frame (shared by the RAF loop and return-to-menu while overlay stays black). */
   private stepPreview(dt: number) {
-    this.previewAngle += 0.05 * dt;
+    const ZOOM_DURATION = 3.5;
+    const endRadius  = this.mobile ? 17 : 12;
+    const startRadius = endRadius * 2.4;
 
-    const radius = this.mobile ? 17 : 12;
+    this.previewZoomElapsed = Math.min(this.previewZoomElapsed + dt, ZOOM_DURATION);
+    const t = this.previewZoomElapsed / ZOOM_DURATION;
+    // Ease-out cubic: fast start, gentle settle
+    const eased = 1 - Math.pow(1 - t, 3);
+    const radius = startRadius + (endRadius - startRadius) * eased;
+
+    // Slow the globe rotation slightly while zooming in for a cinematic feel
+    const rotSpeed = 0.05 * (0.3 + 0.7 * eased);
+    this.previewAngle += rotSpeed * dt;
+
     const tiltY = Math.sin(-0.26) * radius;
     const tiltXZ = Math.cos(-0.26) * radius;
     this.previewCamera.position.set(
