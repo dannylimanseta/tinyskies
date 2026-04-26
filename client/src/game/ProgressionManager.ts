@@ -62,6 +62,8 @@ export interface SavedPlayerWorldState {
   voidPortalsClosed?: boolean;
   /** Per-vehicle first-time controls tutorial completion. */
   vehicleTutorialsCompleted?: Partial<Record<Vehicle, boolean>>;
+  /** One-time eternal flame from completing the plane time-trial race. */
+  raceEternalFlameClaimed?: boolean;
 }
 
 type AllVehicleProgress = Partial<Record<Vehicle, SavedVehicleProgress>>;
@@ -101,8 +103,8 @@ export class ProgressionManager {
 
     this.onXPChanged?.(this.xp, this.getXPForNextLevel(), this.getXPForCurrentLevel(), this.level);
 
+    this.save();
     if (this.level > prevLevel) {
-      this.save();
       this.onLevelUp?.(this.level);
     }
   }

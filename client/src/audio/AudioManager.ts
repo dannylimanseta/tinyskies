@@ -232,6 +232,13 @@ export class AudioManager {
    * One-shot SFX. `playbackRate` shifts pitch (and length); use >1 for slightly higher combo tones.
    * `endFadeFraction` (0–1): linear fade to silence over the last fraction of playback (e.g. 0.05 = last 5%).
    */
+  /** Short UI feedback; uses `click_1` SFX (load in Game bootstrap). */
+  playUIClick(volume = 0.42) {
+    if (!this.hasSFX("click_1")) return;
+    this.resumeContextIfNeeded();
+    this.playSFX("click_1", volume);
+  }
+
   playSFX(name: string, volume = 1.0, playbackRate = 1.0, endFadeFraction = 0) {
     if (!this.ctx || !this.masterGain || this._muted) return;
     const buffer = this.sfxBuffers.get(name);

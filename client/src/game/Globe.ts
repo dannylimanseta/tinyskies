@@ -30,6 +30,7 @@ import {
   Points,
   PointsMaterial,
   CanvasTexture,
+  FrontSide,
   type Scene,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -43,7 +44,7 @@ import {
 import { addRimLight, addRimLightToStandard, addRimLightWithColor, globalRimColor } from "./RimLight";
 import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, sampleTerrain } from "./SimplexNoise";
-import { PROP_TERRAIN_SINK, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
+import { PROP_TERRAIN_SINK, surfaceAltitudeAt, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
 import { getVolcanoPlacementNormal, VOLCANO_COUNT } from "./Volcano";
 
 const ATMOSPHERE_VERTEX = `
@@ -222,6 +223,13 @@ export class Globe {
   private raceBanners: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; }[] = [];
   private raceBannerMat: MeshPhongMaterial | null = null;
   private raceBannerTex: CanvasTexture | null = null;
+  private raceBannerMatBack: MeshPhongMaterial | null = null;
+  private raceBannerTexBack: CanvasTexture | null = null;
+  /** FINISH procedural banner: front tex + H-mirrored back (same pattern as world START). */
+  private raceFinishBannerMat: MeshPhongMaterial | null = null;
+  private raceFinishBannerTex: CanvasTexture | null = null;
+  private raceFinishBannerMatBack: MeshPhongMaterial | null = null;
+  private raceFinishBannerTexBack: CanvasTexture | null = null;
   /** Buried moonstone ring halves — giant ruin props; two sites, far apart. */
   readonly moonstoneRuinCenters: { normal: Vector3 }[] = [];
   private moonstoneRuins: MoonstoneRuinState[] = [];
@@ -4703,6 +4711,100 @@ transformed.z += sway2;`,
     return balloon;
   }
 
+  /**
+   * Same layout as race start markers: two balloons + double-sided banner (readable from both sides).
+   * Used for the procedural finish line in {@link RaceManager}.
+   */
+  populateRaceBannerDecorGroup(
+    bannerGroup: Group,
+    matFront: MeshPhongMaterial,
+    matBack: MeshPhongMaterial,
+    width: number,
+    height: number,
+    salt: number,
+  ): void {
+    const rand = seededRandom(887766 + this.seed + Math.imul(salt, 131));
+    const halfW = width * 0.5;
+    const [p1, s1] = BALLOON_SCHEMES[Math.floor(rand() * BALLOON_SCHEMES.length)]!;
+    const leftBalloon = this.createBalloonMesh(p1, s1);
+    leftBalloon.position.set(-halfW, 0, 0);
+    bannerGroup.add(leftBalloon);
+
+    const [p2, s2] = BALLOON_SCHEMES[Math.floor(rand() * BALLOON_SCHEMES.length)]!;
+    const rightBalloon = this.createBalloonMesh(p2, s2);
+    rightBalloon.position.set(halfW, 0, 0);
+    bannerGroup.add(rightBalloon);
+
+    const geo = new PlaneGeometry(width, height, 16, 2);
+    this.addDoubleSidedRaceBannerPlanes(bannerGroup, matFront, matBack, geo, -0.11);
+  }
+
+  /** Front + back planes so checker/text read correctly from either viewing direction. */
+  private drawRaceBannerLabelCanvas(ctx: CanvasRenderingContext2D, label: string) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = "#000000";
+    for (let x = 0; x < 8; x++) {
+      for (let y = 0; y < 2; y++) {
+        if ((x + y) % 2 === 0) {
+          ctx.fillRect(x * 64, y * 64, 64, 64);
+        }
+      }
+    }
+    ctx.font = "bold 56px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = "#000000";
+    ctx.strokeText(label, 256, 64);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(label, 256, 64);
+  }
+
+  private applyRaceBannerFabricSway(mat: MeshPhongMaterial) {
+    const base = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, renderer) => {
+      base?.(shader, renderer);
+      shader.uniforms.oceanTime = this.oceanTime;
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        '#include <common>\nuniform float oceanTime;'
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        float swayMask = cos(position.x * 6.28318);
+        transformed.z += sin(oceanTime * 4.0 + position.x * 12.0) * 0.04 * swayMask;
+        transformed.y += sin(oceanTime * 5.0 + position.x * 15.0) * 0.01 * swayMask;
+        `
+      );
+    };
+  }
+
+  private addDoubleSidedRaceBannerPlanes(
+    parent: Group,
+    matFront: MeshPhongMaterial,
+    matBack: MeshPhongMaterial,
+    geo: PlaneGeometry,
+    y: number,
+  ) {
+    const zOff = 0.0025;
+    const front = new Mesh(geo, matFront);
+    front.position.set(0, y, zOff);
+    front.castShadow = true;
+    parent.add(front);
+    const back = new Mesh(geo, matBack);
+    back.position.set(0, y, -zOff);
+    back.rotation.y = Math.PI;
+    const sameMat = matFront === matBack;
+    if (sameMat) back.scale.x = -1;
+    else back.scale.set(1, 1, 1);
+    back.castShadow = true;
+    parent.add(back);
+  }
+
   private createBalloons() {
     const rand = seededRandom(999 + this.seed);
     const REF_UP = new Vector3(0, 1, 0);
@@ -4797,41 +4899,54 @@ transformed.z += sway2;`,
     canvas.width = 512;
     canvas.height = 128;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, 512, 128);
-    ctx.fillStyle = "#000000";
-    for (let x = 0; x < 8; x++) {
-      for (let y = 0; y < 2; y++) {
-        if ((x + y) % 2 === 0) {
-          ctx.fillRect(x * 64, y * 64, 64, 64);
-        }
-      }
-    }
+    this.drawRaceBannerLabelCanvas(ctx, "START");
     const sharedTex = new CanvasTexture(canvas);
-    const sharedMat = new MeshPhongMaterial({ map: sharedTex, side: DoubleSide });
+    const sharedMat = new MeshPhongMaterial({ map: sharedTex, side: FrontSide });
     addRimLight(sharedMat, 0xffeedd, 0.3, 3.0);
-    
-    // Inject vertex sway
-    const baseCompile = sharedMat.onBeforeCompile;
-    sharedMat.onBeforeCompile = (shader, renderer) => {
-      baseCompile(shader, renderer);
-      shader.uniforms.oceanTime = this.oceanTime;
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <common>',
-        '#include <common>\nuniform float oceanTime;'
-      );
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        float swayMask = cos(position.x * 6.28318);
-        transformed.z += sin(oceanTime * 4.0 + position.x * 12.0) * 0.04 * swayMask;
-        transformed.y += sin(oceanTime * 5.0 + position.x * 15.0) * 0.01 * swayMask;
-        `
-      );
-    };
+    this.applyRaceBannerFabricSway(sharedMat);
 
     this.raceBannerTex = sharedTex;
     this.raceBannerMat = sharedMat;
+
+    const startBackCanvas = document.createElement("canvas");
+    startBackCanvas.width = 512;
+    startBackCanvas.height = 128;
+    const sbctx = startBackCanvas.getContext("2d")!;
+    sbctx.translate(startBackCanvas.width, 0);
+    sbctx.scale(-1, 1);
+    this.drawRaceBannerLabelCanvas(sbctx, "START");
+    const sharedTexBack = new CanvasTexture(startBackCanvas);
+    const sharedMatBack = new MeshPhongMaterial({ map: sharedTexBack, side: FrontSide });
+    addRimLight(sharedMatBack, 0xffeedd, 0.3, 3.0);
+    this.applyRaceBannerFabricSway(sharedMatBack);
+    this.raceBannerTexBack = sharedTexBack;
+    this.raceBannerMatBack = sharedMatBack;
+
+    const finishCanvas = document.createElement("canvas");
+    finishCanvas.width = 512;
+    finishCanvas.height = 128;
+    const fctx = finishCanvas.getContext("2d")!;
+    this.drawRaceBannerLabelCanvas(fctx, "FINISH");
+    const finishTex = new CanvasTexture(finishCanvas);
+    const finishMat = new MeshPhongMaterial({ map: finishTex, side: FrontSide });
+    addRimLight(finishMat, 0xffeedd, 0.3, 3.0);
+    this.applyRaceBannerFabricSway(finishMat);
+    this.raceFinishBannerTex = finishTex;
+    this.raceFinishBannerMat = finishMat;
+
+    const finishBackCanvas = document.createElement("canvas");
+    finishBackCanvas.width = 512;
+    finishBackCanvas.height = 128;
+    const fbctx = finishBackCanvas.getContext("2d")!;
+    fbctx.translate(finishBackCanvas.width, 0);
+    fbctx.scale(-1, 1);
+    this.drawRaceBannerLabelCanvas(fbctx, "FINISH");
+    const finishTexBack = new CanvasTexture(finishBackCanvas);
+    const finishMatBack = new MeshPhongMaterial({ map: finishTexBack, side: FrontSide });
+    addRimLight(finishMatBack, 0xffeedd, 0.3, 3.0);
+    this.applyRaceBannerFabricSway(finishMatBack);
+    this.raceFinishBannerTexBack = finishTexBack;
+    this.raceFinishBannerMatBack = finishMatBack;
 
     for (const normal of chosen) {
       this.raceBannerCenters.push({ normal: normal.clone() });
@@ -4849,10 +4964,7 @@ transformed.z += sway2;`,
       bannerGroup.add(rightBalloon);
 
       const bannerGeo = new PlaneGeometry(0.5, 0.12, 16, 2);
-      const bannerMesh = new Mesh(bannerGeo, sharedMat);
-      bannerMesh.position.set(0, -0.11, 0);
-      bannerMesh.castShadow = true;
-      bannerGroup.add(bannerMesh);
+      this.addDoubleSidedRaceBannerPlanes(bannerGroup, sharedMat, sharedMatBack, bannerGeo, -0.11);
 
       const baseAlt = this.radius + BALLOON_ALTITUDE + (rand() - 0.5) * 0.2;
       const spin = rand() * Math.PI * 2;
@@ -5421,6 +5533,7 @@ transformed.z += sway2;`,
     }
 
     for (const b of this.raceBanners) {
+      if (!b.pivot.visible) continue;
       const bob = Math.sin(this.balloonTime * 1.2 + b.phase) * 0.06;
       const alt = b.baseAlt + bob;
       b.pivot.position.copy(b.normal).multiplyScalar(alt);
@@ -5428,6 +5541,37 @@ transformed.z += sway2;`,
       const tiltZ = Math.sin(this.balloonTime * 0.8 + b.phase * 1.5) * 0.08;
       const tiltX = Math.cos(this.balloonTime * 0.6 + b.phase * 0.8) * 0.04;
       b.inner.rotation.set(tiltX, 0, tiltZ);
+    }
+  }
+
+  /** Surface altitude at unit normal (same units as player `altitude`). */
+  getSurfaceAltitudeAt(nx: number, ny: number, nz: number): number {
+    return surfaceAltitudeAt(this.seed, this.terrainType, nx, ny, nz);
+  }
+
+  /** Front + H-mirrored-back (no shared-mat scale hack — matches world START banners). */
+  getRaceFinishBannerMaterials(): { front: MeshPhongMaterial; back: MeshPhongMaterial } | null {
+    if (!this.raceFinishBannerMat || !this.raceFinishBannerMatBack) return null;
+    return { front: this.raceFinishBannerMat, back: this.raceFinishBannerMatBack };
+  }
+
+  getWorldSeed(): number {
+    return this.seed;
+  }
+
+  getRaceBanners(): readonly { pivot: Group; normal: Vector3; baseAlt: number; index: number }[] {
+    return this.raceBanners.map((b, index) => ({
+      pivot: b.pivot,
+      normal: b.normal,
+      baseAlt: b.baseAlt,
+      index,
+    }));
+  }
+
+  /** When `visible` is false, only the banner at `exceptIndex` stays visible (if in range). */
+  setRaceBannersVisible(visible: boolean, exceptIndex = -1) {
+    for (let i = 0; i < this.raceBanners.length; i++) {
+      this.raceBanners[i]!.pivot.visible = visible ? true : i === exceptIndex;
     }
   }
 
@@ -5468,5 +5612,11 @@ transformed.z += sway2;`,
     moonstoneDustSpriteTexture = null;
     this.raceBannerTex?.dispose();
     this.raceBannerMat?.dispose();
+    this.raceBannerTexBack?.dispose();
+    this.raceBannerMatBack?.dispose();
+    this.raceFinishBannerTex?.dispose();
+    this.raceFinishBannerMat?.dispose();
+    this.raceFinishBannerTexBack?.dispose();
+    this.raceFinishBannerMatBack?.dispose();
   }
 }

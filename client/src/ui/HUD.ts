@@ -52,6 +52,7 @@ export class HUD {
   private brazierFillEls: Element[] = [];
   private brazierTrackerShown = false;
   private centeredToastEls: HTMLDivElement[] = [];
+  private raceConfettiEl: HTMLElement | null = null;
 
   private questTrackersEl: HTMLElement | null = null;
   private lastQuestTrackerSig = "";
@@ -477,6 +478,67 @@ export class HUD {
     }
   }
 
+  /** Hide flame tracker during time trial so it does not sit under the race timer. */
+  setBrazierTrackerRaceHidden(hidden: boolean) {
+    if (!this.brazierTrackerEl) return;
+    this.brazierTrackerEl.classList.toggle("hud-brazier-tracker--race-hidden", hidden);
+  }
+
+  /** After 3–2–1 when the timed lap begins. */
+  showRaceGoToast() {
+    this.showAmbientToast("GO!", 1400);
+  }
+
+  /** Full-viewport falling confetti when the plane time trial is completed. */
+  showRaceWinConfetti(durationMs = 4200) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    this.raceConfettiEl?.remove();
+    this.raceConfettiEl = null;
+
+    const wrap = document.createElement("div");
+    wrap.className = "hud-race-confetti";
+    wrap.setAttribute("aria-hidden", "true");
+
+    const colors = [
+      "#ff6b6b",
+      "#ffd93d",
+      "#6bcb77",
+      "#4d96ff",
+      "#c56cf0",
+      "#ffffff",
+      "#ff922b",
+      "#339af0",
+    ];
+    const n = 72;
+    for (let i = 0; i < n; i++) {
+      const bit = document.createElement("div");
+      bit.className = "hud-race-confetti__piece";
+      const w = 5 + Math.random() * 8;
+      const h = 6 + Math.random() * 12;
+      bit.style.width = `${w}px`;
+      bit.style.height = `${h}px`;
+      bit.style.left = `${Math.random() * 100}%`;
+      bit.style.top = `${-30 - Math.random() * 50}px`;
+      bit.style.background = colors[Math.floor(Math.random() * colors.length)]!;
+      bit.style.setProperty("--dur", `${2.4 + Math.random() * 2.4}s`);
+      bit.style.setProperty("--delay", `${Math.random() * 0.95}s`);
+      bit.style.setProperty("--drift", `${(Math.random() - 0.5) * 200}px`);
+      bit.style.setProperty("--spin", `${(Math.random() - 0.5) * 1080}deg`);
+      bit.style.borderRadius = Math.random() > 0.45 ? "2px" : "50%";
+      wrap.appendChild(bit);
+    }
+
+    this.el.appendChild(wrap);
+    this.raceConfettiEl = wrap;
+    requestAnimationFrame(() => wrap.classList.add("hud-race-confetti--active"));
+    const fadeAt = Math.max(800, durationMs - 550);
+    setTimeout(() => wrap.classList.add("hud-race-confetti--out"), fadeAt);
+    setTimeout(() => {
+      wrap.remove();
+      if (this.raceConfettiEl === wrap) this.raceConfettiEl = null;
+    }, durationMs);
+  }
+
   disposeBrazierTracker() {
     this.brazierTrackerEl?.remove();
     this.brazierTrackerEl = null;
@@ -556,6 +618,37 @@ export class HUD {
         pointer-events: none;
         font-family: 'Inter', system-ui, sans-serif;
         color: rgba(255, 255, 255, 0.85);
+      }
+
+      @keyframes hudRaceConfettiFall {
+        0% {
+          transform: translateY(0) translateX(0) rotate(0deg);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(110vh) translateX(var(--drift)) rotate(var(--spin));
+          opacity: 0.9;
+        }
+      }
+
+      .hud-race-confetti {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 220;
+        overflow: hidden;
+      }
+      .hud-race-confetti--active .hud-race-confetti__piece {
+        animation: hudRaceConfettiFall var(--dur) linear var(--delay) forwards;
+      }
+      .hud-race-confetti--out .hud-race-confetti__piece {
+        opacity: 0;
+        transition: opacity 0.5s ease-out;
+      }
+      .hud-race-confetti__piece {
+        position: absolute;
+        opacity: 1;
+        box-shadow: 0 0 1px rgba(0, 0, 0, 0.15);
       }
       #hud::before {
         content: '';
@@ -789,6 +882,23 @@ export class HUD {
         color: rgba(255, 255, 255, 1.0);
         font-size: 1.45rem;
         text-shadow: none;
+      }
+
+      /* NPC greetings, race "GO!", etc. — must match other .hud-center-toast variants (position + fade). */
+      .hud-ambient-toast {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        font-size: 1.35rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        color: rgba(255, 255, 255, 1);
+        text-shadow: none;
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        white-space: nowrap;
+        z-index: 14;
       }
 
       .hud-flock-celebration {
@@ -1133,6 +1243,10 @@ export class HUD {
         z-index: 14;
       }
       .hud-brazier-tracker.visible { opacity: 1; }
+      .hud-brazier-tracker.hud-brazier-tracker--race-hidden {
+        opacity: 0 !important;
+        visibility: hidden;
+      }
 
       /* Each icon is a stacking context for the two SVG layers */
       .hud-brazier-tracker-icon {
@@ -1443,6 +1557,11 @@ export class HUD {
         .hud-xp-popup-bonus { font-size: 1.2rem; }
         .hud-xp-popup::before, .hud-xp-popup::after { width: 32px; }
 
+        .hud-ambient-toast {
+          font-size: 1.1rem;
+          letter-spacing: 0.08em;
+        }
+
         .hud-flock-celebration {
           font-size: 0.95rem;
           gap: 8px;
@@ -1649,6 +1768,8 @@ export class HUD {
     window.removeEventListener("resize", this.onResize);
     document.removeEventListener("fullscreenchange", this.onFullscreenChange);
     document.removeEventListener("webkitfullscreenchange", this.onFullscreenChange);
+    this.raceConfettiEl?.remove();
+    this.raceConfettiEl = null;
     this.el.remove();
   }
 }

@@ -60,6 +60,7 @@ import { globalRimColor } from "./RimLight";
 import { Aurora } from "./Aurora";
 import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
+import { RaceManager } from "./RaceManager";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { pickRandomVehicleColor } from "./vehicleColors";
 import { CarpetPortalSystem } from "./CarpetPortalSystem";
@@ -354,6 +355,18 @@ const VOID_MUSIC_LOOP_MAX_VOL = 0.3;
 const SHIELD_IMPACT_ENERGY_SFX = "impact_energy_1";
 const SHIELD_IMPACT_ENERGY_SFX_VOL = 0.58;
 
+const UI_CLICK_SELECTOR = [
+  "button:not(:disabled)",
+  '[role="button"]:not([aria-disabled="true"])',
+  "a[href]",
+  'input[type="button"]:not(:disabled)',
+  'input[type="submit"]:not(:disabled)',
+  'input[type="checkbox"]',
+  'input[type="radio"]',
+  "select",
+  "label",
+].join(", ");
+
 export class Game {
   private container: HTMLElement;
   private renderer!: WebGLRenderer;
@@ -412,6 +425,7 @@ export class Game {
   private aurora: Aurora | null = null;
   private playerLight: PointLight | null = null;
   private ringManager!: RingManager;
+  private raceManager: RaceManager | null = null;
   private collectVFX!: RingCollectVFX;
 
   private socketClient: SocketClient | null = null;
@@ -597,6 +611,16 @@ export class Game {
   /** Last “world saved” feed post time per world slug. */
   private lastSaveFeedAtBySlug = new Map<string, number>();
 
+  private readonly onUiClickSound = (e: MouseEvent) => {
+    if (e.button !== 0) return;
+    const raw = e.target;
+    const el = raw instanceof Element ? raw : (raw as Node).parentElement;
+    if (!el) return;
+    if (el.closest(".touch-controls")) return;
+    if (!el.closest(UI_CLICK_SELECTOR)) return;
+    this.audioManager.playUIClick();
+  };
+
   constructor(container: HTMLElement) {
     this.container = container;
   }
@@ -667,6 +691,10 @@ export class Game {
       for (const id of ["impact_1", "impact_2", "impact_3"] as const) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
+      this.audioManager.loadSFX("click_1", "/audio/sfx/click_1.mp3");
+      this.audioManager.loadSFX("chime_1", "/audio/sfx/chime_1.mp3");
+      this.audioManager.loadSFX("celebrate_1", "/audio/sfx/celebrate_1.mp3");
+      this.audioManager.loadSFX("race_start_1", "/audio/sfx/race_start_1.mp3");
       this.audioManager.loadSFX("camera", "/audio/sfx/camera.mp3");
       this.audioManager.loadSFX("portal_1", "/audio/sfx/portal_1.mp3");
       this.audioManager.loadSFX("portal_open", "/audio/sfx/portal_open.mp3");
@@ -696,6 +724,40 @@ export class Game {
     this.removeLoadingOverlay();
 
     this.mountLobby();
+    this.container.addEventListener("click", this.onUiClickSound);
+  }
+
+  /** VFX, combo SFX, camera shake, vehicle flash, and speed boost for plane diamonds (world + race bonus). */
+  private triggerPlaneDiamondCollectEffects(worldPos: Vector3, tier: number) {
+    this.collectVFX.play(worldPos, tier);
+    if (this.vehicleFeatures.collectibleDiamonds) {
+      const now = performance.now();
+      const state = this.progression.upgrades.state;
+      const windowMs = DIAMOND_COMBO_WINDOW_MS * state.comboWindowMs;
+      const maxSteps = Math.round(DIAMOND_COMBO_MAX_STEPS * state.comboMaxSteps);
+      const ratePerStep = DIAMOND_COMBO_RATE_PER_STEP * state.comboRatePerStep;
+      if (now - this.lastDiamondCollectAt > windowMs) {
+        this.diamondComboStep = 0;
+      } else {
+        this.diamondComboStep = Math.min(this.diamondComboStep + 1, maxSteps);
+      }
+      this.lastDiamondCollectAt = now;
+      const rate = 1 + this.diamondComboStep * ratePerStep;
+      const pick = DIAMOND_SFX_IDS[Math.floor(Math.random() * DIAMOND_SFX_IDS.length)]!;
+      this.audioManager.playSFX(pick, DIAMOND_SFX_VOLUME, rate);
+    }
+    this.vehicleFlashTimer = 0.35;
+    this.cameraRig.shake();
+    if (
+      this.localPlayer instanceof Plane ||
+      this.localPlayer instanceof Carpet ||
+      this.localPlayer instanceof Boat
+    ) {
+      this.localPlayer.speedBoost();
+      const boostPick =
+        SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
+      this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
+    }
   }
 
   private mountLobby() {
@@ -1337,40 +1399,9 @@ export class Game {
       };
     }
 
-      this.ringManager.onCollect = (xp, worldPos, tier) => {
-      this.collectVFX.play(worldPos, tier);
-      let comboXpMult = 1;
-      if (this.vehicleFeatures.collectibleDiamonds) {
-        const now = performance.now();
-        const state = this.progression.upgrades.state;
-        const windowMs = DIAMOND_COMBO_WINDOW_MS * state.comboWindowMs;
-        const maxSteps = Math.round(DIAMOND_COMBO_MAX_STEPS * state.comboMaxSteps);
-        const ratePerStep = DIAMOND_COMBO_RATE_PER_STEP * state.comboRatePerStep;
-        if (now - this.lastDiamondCollectAt > windowMs) {
-          this.diamondComboStep = 0;
-        } else {
-          this.diamondComboStep = Math.min(this.diamondComboStep + 1, maxSteps);
-        }
-        this.lastDiamondCollectAt = now;
-        const rate = 1 + this.diamondComboStep * ratePerStep;
-        const pick =
-          DIAMOND_SFX_IDS[Math.floor(Math.random() * DIAMOND_SFX_IDS.length)]!;
-        this.audioManager.playSFX(pick, DIAMOND_SFX_VOLUME, rate);
-        comboXpMult = 1 + this.diamondComboStep * DIAMOND_COMBO_XP_PER_STEP;
-      }
-      this.vehicleFlashTimer = 0.35;
-      this.cameraRig.shake();
-      if (
-        this.localPlayer instanceof Plane ||
-        this.localPlayer instanceof Carpet ||
-        this.localPlayer instanceof Boat
-      ) {
-        this.localPlayer.speedBoost();
-        const boostPick =
-          SPEED_BOOST_SFX_IDS[Math.floor(Math.random() * SPEED_BOOST_SFX_IDS.length)]!;
-        this.audioManager.playSFX(boostPick, SPEED_BOOST_SFX_VOLUME);
-      }
-    };
+      this.ringManager.onCollect = (_xp, worldPos, tier) => {
+        this.triggerPlaneDiamondCollectEffects(worldPos, tier);
+      };
 
     this.progression.onXPChanged = (xp, xpForNext, xpForCurrent, level) => {
       this.hud.setXP(xp, xpForNext, xpForCurrent, level);
@@ -1641,6 +1672,41 @@ export class Game {
       }
     };
 
+    this.raceManager?.dispose();
+    this.raceManager = new RaceManager({
+      globe: this.globe,
+      audioManager: this.audioManager,
+      hud: this.hud,
+      hudParent: this.hud.root,
+      uiContainer: this.container,
+      isPlane: () => this.playerVehicle === "plane" && this.localPlayer instanceof Plane,
+      getWorldPos: () =>
+        this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
+      getQPosition: () => this.localPlayer.qPosition,
+      getHeading: () => this.localPlayer.heading,
+      onWin: () => {
+        this.hud.showRaceWinConfetti();
+        this.hud.showXPGain(100);
+        // Every win: +100 XP (ProgressionManager.addXP always save()s). Eternal flame below is once only.
+        this.progression.addXP(100);
+        const ws = ProgressionManager.loadPlayerWorldState();
+        if (!ws.raceEternalFlameClaimed) {
+          this.savePlayerWorldState({
+            eternalFlameCount: (ws.eternalFlameCount ?? 0) + 1,
+            raceEternalFlameClaimed: true,
+          });
+          this.eternalFlameUI?.syncFromSave();
+          this.eternalFlameUI?.playKingLootSequence();
+        }
+      },
+      onBonusDiamondCollected: (worldPos) => {
+        this.triggerPlaneDiamondCollectEffects(worldPos, 0);
+      },
+      onRingCheckpointBurst: (worldPos) => {
+        this.collectVFX.play(worldPos, 0, { shardRgb: [0.32, 0.82, 1.0] });
+      },
+    });
+
     const balloonN = this.globe.balloonCount;
     this.balloonInRange = new Array(balloonN).fill(false);
     this.balloonGreetCooldown = new Array(balloonN).fill(0);
@@ -1809,6 +1875,8 @@ export class Game {
     this.lensFlare?.dispose();
     this.rainOverlay?.dispose();
     this.ringManager?.dispose();
+    this.raceManager?.dispose();
+    this.raceManager = null;
     if (this.gremlinHearts) {
       this.scene.remove(this.gremlinHearts.group);
       this.gremlinHearts.dispose();
@@ -2797,6 +2865,15 @@ export class Game {
 
     this.localPlayer.visibility = 1;
     this.localPlayer.update(dt, turnRate, forward, brake, elevate, paintball, descend);
+    this.localPlayer.group.updateMatrixWorld(true);
+    if (
+      this.raceManager &&
+      this.gamePhase === "flying" &&
+      !this.inCosmicVoid &&
+      !this.voidEntryInProgress
+    ) {
+      this.raceManager.update(dt);
+    }
 
     if (
       specialAction &&
@@ -3392,6 +3469,7 @@ export class Game {
 
   private startMoonImpactCinematic() {
     if (this.gamePhase === "moonImpact") return;
+    this.raceManager?.abort();
     this.meteorShower?.reset();
     this.skyJellyfish?.reset();
     this.gamePhase = "moonImpact";
@@ -3562,6 +3640,7 @@ export class Game {
     if (String(this.gamePhase) === "moonstoneUnion" || String(this.gamePhase) === "moonImpact") return;
     if (this.globe.isMoonstonePostUnionActive()) return;
     if (this.globe.getMoonstoneCount() < 2) return;
+    this.raceManager?.abort();
     this.ensureBraziersSpawned();
 
     this.gamePhase = "moonstoneUnion";
@@ -5147,6 +5226,7 @@ export class Game {
 
   private async doEnterCosmicVoid() {
     if (!this.transitionOverlay || this.inCosmicVoid) return;
+    this.raceManager?.abort();
     this.coastCarpetDuringCosmicTransition = true;
     this.voidEntryInProgress = true;
     this.twisterSpinTimer = 0;
@@ -5637,6 +5717,7 @@ export class Game {
       jellyfishSetEternalFlameClaimed: !!prev.jellyfishSetEternalFlameClaimed,
       packageThirdDeliveryEternalFlameClaimed: !!prev.packageThirdDeliveryEternalFlameClaimed,
       boatMysteryOctopusEternalFlameClaimed: !!prev.boatMysteryOctopusEternalFlameClaimed,
+      raceEternalFlameClaimed: !!prev.raceEternalFlameClaimed,
       moonFrozenByEternalFlames:
         overrides.moonFrozenByEternalFlames ?? prev.moonFrozenByEternalFlames ?? false,
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
@@ -6041,6 +6122,7 @@ export class Game {
   /* ── Cleanup ─────────────────────────────────────────────────────── */
 
   dispose() {
+    this.container.removeEventListener("click", this.onUiClickSound);
     this.running = false;
     this.previewActive = false;
     this.paintballSystem?.dispose();
@@ -6113,6 +6195,8 @@ export class Game {
     this.starfield?.dispose();
     this.aurora?.dispose();
     this.ringManager?.dispose();
+    this.raceManager?.dispose();
+    this.raceManager = null;
     this.collectVFX?.dispose();
     this.removeVoidEternalFlame();
     this.localPlayer?.dispose();

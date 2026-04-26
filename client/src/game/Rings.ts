@@ -30,6 +30,13 @@ const DIAMOND_COUNT_PLANE = 15;
 const DIAMOND_COUNT_BOAT = 24;
 const DIAMOND_COUNT_CARPET = 15;
 const DIAMOND_SIZE = 0.09;
+
+/** Same octahedron used for plane-mode world collectibles (race bonus diamonds reuse this). */
+export function createPlaneCollectibleDiamondGeometry(): OctahedronGeometry {
+  const geometry = new OctahedronGeometry(DIAMOND_SIZE, 0);
+  geometry.scale(1, 1.5, 1);
+  return geometry;
+}
 /** Boat diamonds use a smaller mesh than planes (same shape). */
 const BOAT_DIAMOND_SCALE = 0.55;
 const DIAMOND_XP = 10;
@@ -167,12 +174,13 @@ export class RingManager {
     this.seed = options?.seed ?? 0;
     this.terrainType = options?.terrainType ?? "default";
 
-    const baseSize =
-      this.mode === "boat" || this.mode === "carpet"
-        ? DIAMOND_SIZE * BOAT_DIAMOND_SCALE
-        : DIAMOND_SIZE;
-    this.geometry = new OctahedronGeometry(baseSize, 0);
-    this.geometry.scale(1, 1.5, 1);
+    if (this.mode === "plane") {
+      this.geometry = createPlaneCollectibleDiamondGeometry();
+    } else {
+      const baseSize = DIAMOND_SIZE * BOAT_DIAMOND_SCALE;
+      this.geometry = new OctahedronGeometry(baseSize, 0);
+      this.geometry.scale(1, 1.5, 1);
+    }
 
     const initialCount =
       this.mode === "boat"
