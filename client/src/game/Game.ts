@@ -1036,20 +1036,21 @@ export class Game {
     this.ambientLight = new AmbientLight(preset.ambientColor, preset.ambientIntensity);
     this.scene.add(this.ambientLight);
     this.sunLight = new DirectionalLight(preset.sunColor, preset.sunIntensity);
-    this.sunLight.position.set(10, 12, 5);
+    // Very low sun angle (~9°) for long dramatic shadows across the globe.
+    this.sunLight.position.set(12, 2, 5);
     this.sunLight.castShadow = true;
     const shadowRes = this.mobile ? 1024 : 2048;
     this.sunLight.shadow.mapSize.width = shadowRes;
     this.sunLight.shadow.mapSize.height = shadowRes;
     this.sunLight.shadow.camera.near = 1;
-    this.sunLight.shadow.camera.far = 30;
-    this.sunLight.shadow.camera.left = -10;
-    this.sunLight.shadow.camera.right = 10;
-    this.sunLight.shadow.camera.top = 10;
-    this.sunLight.shadow.camera.bottom = -10;
-    this.sunLight.shadow.radius = 4;
-    this.sunLight.shadow.blurSamples = 16;
-    this.sunLight.shadow.bias = -0.0005;
+    this.sunLight.shadow.camera.far = 40;
+    this.sunLight.shadow.camera.left = -22;
+    this.sunLight.shadow.camera.right = 22;
+    this.sunLight.shadow.camera.top = 22;
+    this.sunLight.shadow.camera.bottom = -22;
+    this.sunLight.shadow.radius = 2.5;
+    this.sunLight.shadow.blurSamples = 12;
+    this.sunLight.shadow.bias = -0.0015;
     this.scene.add(this.sunLight);
     
     this.godRays = new GodRays();
@@ -2883,6 +2884,19 @@ export class Game {
         this.renderer.domElement,
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       );
+
+      // Focus shadow camera on the player for high-resolution local shadows.
+      // Covers ±5 world units around the player (2048/10 = 205 texels/unit vs 47 at globe-wide).
+      const _shadowPlayerPos = this.localPlayerWorldScratch.setFromMatrixPosition(
+        this.localPlayer.group.matrixWorld,
+      );
+      this.sunLight.target.position.copy(_shadowPlayerPos);
+      this.sunLight.target.updateMatrixWorld();
+      this.sunLight.shadow.camera.left   = -5;
+      this.sunLight.shadow.camera.right  =  5;
+      this.sunLight.shadow.camera.top    =  5;
+      this.sunLight.shadow.camera.bottom = -5;
+      this.sunLight.shadow.camera.updateProjectionMatrix();
 
       this.renderer.render(this.scene, this.cameraRig.camera);
 
