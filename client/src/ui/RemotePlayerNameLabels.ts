@@ -43,7 +43,7 @@ export class RemotePlayerNameLabels {
         inset: 0;
         z-index: 5;
         pointer-events: none;
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: 'Domine', Georgia, serif;
       }
       .hud-remote-name-pill {
         position: absolute;

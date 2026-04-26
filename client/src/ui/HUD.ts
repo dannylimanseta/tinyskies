@@ -578,7 +578,7 @@ export class HUD {
         background: "rgba(0,0,0,0.55)",
         borderRadius: "12px",
         color: "#fff",
-        fontFamily: "'Nunito', 'Quicksand', sans-serif",
+        fontFamily: "'Domine', Georgia, serif",
         fontSize: "15px",
         fontWeight: "600",
         letterSpacing: "0.5px",
@@ -634,7 +634,7 @@ export class HUD {
         --hud-top-right-reserved: 120px;
         position: fixed; inset: 0; z-index: 100;
         pointer-events: none;
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: 'Domine', Georgia, serif;
         color: rgba(255, 255, 255, 0.85);
       }
 

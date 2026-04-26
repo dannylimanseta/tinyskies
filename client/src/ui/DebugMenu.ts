@@ -127,7 +127,7 @@ export class DebugMenu {
         gap: 16px;
         z-index: 9999;
         color: white;
-        font-family: sans-serif;
+        font-family: 'Domine', Georgia, serif;
         min-width: 240px;
         backdrop-filter: blur(8px);
       }

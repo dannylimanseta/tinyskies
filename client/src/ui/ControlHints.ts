@@ -46,7 +46,7 @@ function injectStyles() {
       right: max(36px, calc(28px + env(safe-area-inset-right, 0px)));
       z-index: 1;
       pointer-events: none;
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: 'Domine', Georgia, serif;
       display: flex;
       flex-direction: column;
       align-items: flex-end;

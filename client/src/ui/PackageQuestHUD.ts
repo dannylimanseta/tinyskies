@@ -283,7 +283,7 @@ export class PackageQuestHUD {
         max-width: 400px;
         width: max-content;
         text-align: left;
-        font-style: italic;
+        font-style: normal;
         font-size: 1.0rem;
         font-weight: 400;
         color: rgba(255, 255, 255, 0.80);

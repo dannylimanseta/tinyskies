@@ -943,7 +943,7 @@ export class Game {
       alignItems: "center",
       justifyContent: "center",
       background: "#000",
-      fontFamily: "'Darumadrop One', 'Inter', system-ui, sans-serif",
+      fontFamily: "'Darumadrop One', 'Domine', Georgia, serif",
     });
     const title = this.loadingEl.querySelector(".loading-title") as HTMLElement;
     Object.assign(title.style, {
@@ -976,7 +976,7 @@ export class Game {
     if (!this.loadingEl) return;
     this.loadingEl.innerHTML = `
       <div style="text-align:center;padding:0 24px;">
-        <h1 class="loading-title" style="font-family:'Darumadrop One', 'Inter', system-ui, sans-serif;font-size:clamp(2.8rem,11.2vw,4.2rem);font-weight:800;margin:0;
+        <h1 class="loading-title" style="font-family:'Darumadrop One', 'Domine', Georgia, serif;font-size:clamp(2.8rem,11.2vw,4.2rem);font-weight:800;margin:0;
           background:linear-gradient(135deg,#4488ff,#44ddff);
           -webkit-background-clip:text;-webkit-text-fill-color:transparent;
           background-clip:text;animation:none;">Tiny Skies</h1>
@@ -2072,10 +2072,9 @@ export class Game {
       justifyContent: "center",
       margin: "0",
       padding: "0 2rem",
-      fontFamily: "'Inter', system-ui, sans-serif",
+      fontFamily: "'Domine', Georgia, serif",
       fontSize: "clamp(1rem, 3vw, 1.4rem)",
       fontWeight: "400",
-      fontStyle: "italic",
       color: "rgba(255, 255, 255, 0.75)",
       textAlign: "center",
       lineHeight: "1.6",
@@ -2126,7 +2125,7 @@ export class Game {
     const title = document.createElement("h1");
     title.textContent = "Tiny Skies";
     Object.assign(title.style, {
-      fontFamily: "'Darumadrop One', 'Inter', system-ui, sans-serif",
+      fontFamily: "'Darumadrop One', 'Domine', Georgia, serif",
       fontSize: "clamp(3.5rem, 14vw, 8.4rem)",
       fontWeight: "800",
       margin: "0",
@@ -2136,7 +2135,7 @@ export class Game {
     const byline = document.createElement("p");
     byline.textContent = "By Danny Limanseta";
     Object.assign(byline.style, {
-      fontFamily: "'Inter', system-ui, sans-serif",
+      fontFamily: "'Domine', Georgia, serif",
       fontSize: "clamp(0.95rem, 2.5vw, 1.2rem)",
       fontWeight: "500",
       margin: "1.25rem 0 0",
@@ -2460,7 +2459,7 @@ export class Game {
       background: "rgba(0, 0, 0, 0.7)",
       backdropFilter: this.mobile ? "none" : "blur(12px)",
       color: "white",
-      fontFamily: "'Inter', system-ui, sans-serif",
+      fontFamily: "'Domine', Georgia, serif",
       fontSize: this.mobile ? "0.85rem" : "0.95rem",
       zIndex: "300",
     });

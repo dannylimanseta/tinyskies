@@ -15,7 +15,7 @@ const CSS = `
   pointer-events: auto;
   opacity: 0;
   transition: opacity 0.35s ease-out;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Domine', Georgia, serif;
   color: rgba(255, 255, 255, 0.85);
 }
 .levelup-overlay--visible {

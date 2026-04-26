@@ -36,7 +36,7 @@ export class TransitionOverlay {
           alignItems: "center",
           justifyContent: "center",
           pointerEvents: "none",
-          fontFamily: 'system-ui, "Segoe UI", Roboto, sans-serif',
+          fontFamily: "'Domine', Georgia, serif",
           fontSize: "1.45rem",
           fontWeight: "500",
           letterSpacing: "0.04em",

@@ -421,7 +421,7 @@ export class Lobby {
       .lobby-overlay {
         position: fixed; inset: 0; z-index: 100;
         pointer-events: none;
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: 'Domine', Georgia, serif;
         transition: opacity 0.6s ease-out;
       }
       .lobby-overlay.fade-out {
@@ -457,7 +457,7 @@ export class Lobby {
         padding-bottom: clamp(0.28rem, 0.9vw, 0.5rem);
       }
       .lobby-tagline {
-        font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
+        font-family: 'Darumadrop One', 'Domine', Georgia, serif;
         font-size: clamp(1.05rem, 3.3vw, 1.32rem);
         font-weight: 400;
         margin: 0 0 -0.24em;
@@ -467,7 +467,7 @@ export class Lobby {
         text-shadow: none;
       }
       .lobby-title {
-        font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
+        font-family: 'Darumadrop One', 'Domine', Georgia, serif;
         font-size: clamp(3.5rem, 14vw, 8.4rem);
         font-weight: 800;
         margin: 0;
@@ -681,7 +681,7 @@ export class Lobby {
         border-radius: 10px;
         background: #000000;
         color: #ffffff;
-        font-family: 'Darumadrop One', 'Inter', system-ui, sans-serif;
+        font-family: 'Darumadrop One', 'Domine', Georgia, serif;
         font-size: 1.5rem;
         font-weight: 700;
         letter-spacing: 0.06em;
@@ -795,7 +795,7 @@ export class Lobby {
         display: none;
         align-items: center;
         justify-content: center;
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: 'Domine', Georgia, serif;
         -webkit-font-smoothing: antialiased;
       }
       .lobby-unlock-modal.open {
