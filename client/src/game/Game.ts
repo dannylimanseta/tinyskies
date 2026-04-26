@@ -4618,12 +4618,12 @@ export class Game {
       });
     } else if (v === "carpet") {
       const jelly = this.skyJellyfish?.getCollectedCount() ?? 0;
-      const raceCompleted = !!ProgressionManager.loadPlayerWorldState().raceEternalFlameClaimed;
+      const eternalFlameActive = !!ProgressionManager.loadPlayerWorldState().moonFrozenByEternalFlames;
       this.hud.setQuestTrackers({
         vehicle: "carpet",
         jelly: { current: jelly, max: JELLY_COUNT },
         brazierHint: true,
-        raceCompleted,
+        eternalFlameActive,
       });
     } else if (v === "boat") {
       this.hud.setQuestTrackers({

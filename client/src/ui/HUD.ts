@@ -15,7 +15,7 @@ export type QuestTrackerState =
       vehicle: "carpet";
       jelly: { current: number; max: number };
       brazierHint: boolean;
-      raceCompleted: boolean;
+      eternalFlameActive: boolean;
     }
   | { vehicle: "boat"; fish: { current: number; max: number } };
 
@@ -25,8 +25,10 @@ const QT_ICONS = {
   package: `<img class="hud-qt-ico" src="/2D/icon_package.svg" alt="" draggable="false" />`,
   jellyfish: `<img class="hud-qt-ico hud-qt-ico--carpet" src="/2D/icon_jellyfish.svg" alt="" draggable="false" />`,
   fish: `<img class="hud-qt-ico" src="/2D/icon_fish.svg" alt="" draggable="false" />`,
-  /** Brazier hint — no art asset; inline flame only. */
-  flame: `<svg class="hud-qt-ico hud-qt-ico--flame hud-qt-ico--carpet" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2s2.5 3.2 2.5 6.5c0 1.2-.3 2.1-.5 2.5.8-.3 1.3-1.1 1.3-2.1 0-1.5-.4-2.3-.4-2.3S18 8.2 18 12c0 3.3-2.7 6-6 6s-6-2.7-6-6c0-3.5 1.2-4.3 1.2-4.3s1 1.3 1 3.2c0 1.4-.4 1.7-.4 1.7s-.1-1.3-.1-2.3C6.5 5.2 12 2 12 2z"/></svg>`,
+  /** Brazier pot icon (smaller than carpet standard; −40%). */
+  brazier: `<img class="hud-qt-ico hud-qt-ico--brazier" src="/2D/icon_brazier.svg" alt="" draggable="false" />`,
+  /** Inline flame for the eternal-flame defend quest. */
+  flame: `<svg class="hud-qt-ico hud-qt-ico--flame-quest" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2s2.5 3.2 2.5 6.5c0 1.2-.3 2.1-.5 2.5.8-.3 1.3-1.1 1.3-2.1 0-1.5-.4-2.3-.4-2.3S18 8.2 18 12c0 3.3-2.7 6-6 6s-6-2.7-6-6c0-3.5 1.2-4.3 1.2-4.3s1 1.3 1 3.2c0 1.4-.4 1.7-.4 1.7s-.1-1.3-.1-2.3C6.5 5.2 12 2 12 2z"/></svg>`,
   race: `<img class="hud-qt-ico hud-qt-ico--race" src="/2D/icon_race.svg" alt="" draggable="false" />`,
 } as const;
 
@@ -251,13 +253,13 @@ export class HUD {
       const parts: string[] = [row(`${QT_ICONS.jellyfish}${frac(j.current, j.max)}`)];
       if (state.brazierHint) {
         parts.push(
-          row(`${QT_ICONS.flame}<span class="hud-quest-hint">Figure out how to raise the braziers</span>`),
+          row(`${QT_ICONS.brazier}<span class="hud-quest-hint">Figure out how to raise the braziers</span>`),
         );
       }
-      const raceLabel = state.raceCompleted
-        ? `<span class="hud-quest-done">Finish a race ✓</span>`
-        : `<span class="hud-quest-hint">Finish a race</span>`;
-      parts.push(row(`${QT_ICONS.race}${raceLabel}`));
+      const flameLabel = state.eternalFlameActive
+        ? `<span class="hud-quest-done">Defend the eternal flame ✓</span>`
+        : `<span class="hud-quest-hint">Defend the eternal flame</span>`;
+      parts.push(row(`${QT_ICONS.flame}${flameLabel}`));
       this.questTrackersEl.innerHTML = parts.join("");
     } else {
       const f = state.fish;
@@ -742,22 +744,26 @@ export class HUD {
         width: 1.75em;
         height: 1.75em;
       }
-      .hud-qt-ico--flame {
+      .hud-qt-ico--brazier {
+        /* Keep 1.75em flex space so text columns align; scale visually −40%. */
+        width: 1.75em;
+        height: 1.75em;
+        transform: scale(0.6);
+        transform-origin: center;
+      }
+      .hud-qt-ico--flame-quest {
         color: rgba(255, 255, 255, 0.85);
-      }
-      .hud-qt-ico--carpet.hud-qt-ico--flame {
-        /* Slightly larger than jelly asset so the flame holds its own. */
-        width: 1.68em;
-        height: 1.68em;
-      }
-      .hud-qt-ico--race {
-        /* Match the standard carpet icon size so the row height is consistent. */
         width: 1.6em;
         height: 1.6em;
+        flex-shrink: 0;
+      }
+      .hud-qt-ico--race {
+        width: 1.28em;
+        height: 1.28em;
       }
       img.hud-qt-ico--race {
-        width: 1.68em;
-        height: 1.68em;
+        width: 1.344em;
+        height: 1.344em;
       }
       .hud-quest-done,
       .hud-quest-hint {
