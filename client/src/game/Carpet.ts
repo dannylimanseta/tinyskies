@@ -41,6 +41,22 @@ const CARPET_TURN_MULT = 1.45;
 /** Space (climb) ramps 0→1; matches plane. */
 const ELEVATE_INPUT_SMOOTH = 6;
 
+// ── Drift ─────────────────────────────────────────────────────────────────────
+/** Minimum speed (normalised 0–MAX_SPEED) before a drift can engage. */
+const DRIFT_MIN_SPEED = 0.52;
+/** Turn-input magnitude required to break traction and start drifting. */
+const DRIFT_TURN_THRESHOLD = 0.62;
+/** Velocity-heading snaps toward facing at this rate while gripping normally. */
+const TRACTION_NORMAL = 5.0;
+/** Reduced traction while actively drifting. */
+const TRACTION_DRIFT = 1.4;
+/** Braking restores grip faster. */
+const TRACTION_BRAKING = 8.0;
+/** How strongly drifting adds to visual bank on top of the turn bank. */
+const DRIFT_BANK_SCALE = 0.55;
+/** Cap on the extra bank contributed by drift angle alone. */
+const DRIFT_BANK_MAX = Math.PI / 5;
+
 /** Default hover clearance above terrain surface. */
 export const CARPET_HOVER_HEIGHT = 0.03;
 /** Height above terrain when elevate is held. */
@@ -98,6 +114,12 @@ export class Carpet {
   private elevateBlend = 0;
   /** Remaining time at `DIAMOND_BOOST_SPEED` after `speedBoost()` (diamond pickup). */
   private boostTimer = 0;
+
+  // ── Drift state ────────────────────────────────────────────────────────────
+  /** Actual travel direction on the sphere surface (may lag behind `heading`). */
+  private velocityHeading = 0;
+  /** Whether the carpet is currently in a drift state. */
+  private drifting = false;
 
   /**
    * Cosmic void: fly on a fixed world tangent plane (flat floor) with u/v in north×east, not
@@ -192,6 +214,7 @@ export class Carpet {
     const spawn = randomSpawnQuaternionAndHeading(seed + spawnSalt);
     this.qPosition.copy(spawn.qPosition);
     this.heading = spawn.heading;
+    this.velocityHeading = spawn.heading;
 
     const up = tangentFrame(this.qPosition).up;
     const surfaceAlt = surfaceAltitudeAt(seed, terrainType, up.x, up.y, up.z);
@@ -254,6 +277,28 @@ export class Carpet {
     this.heading += this.turnInputSmoothed * dt;
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
+    // ── Drift: decouple velocity heading from visual heading ────────────────
+    if (!this.voidPlaneActive) {
+      const speedFrac = this.speed / (MAX_SPEED * this.upgrades.maxSpeedMult);
+      const sharpTurn = Math.abs(this.turnInputSmoothed) > DRIFT_TURN_THRESHOLD && speedFrac > DRIFT_MIN_SPEED / MAX_SPEED;
+      if (sharpTurn && !brake) {
+        this.drifting = true;
+      } else if (speedFrac <= DRIFT_MIN_SPEED / MAX_SPEED || Math.abs(this.turnInputSmoothed) < 0.08) {
+        this.drifting = false;
+      }
+
+      // Pull velocity heading toward facing heading with speed-based traction
+      const traction = brake ? TRACTION_BRAKING : this.drifting ? TRACTION_DRIFT : TRACTION_NORMAL;
+      let driftGap = this.heading - this.velocityHeading;
+      // Wrap to [-π, π]
+      driftGap = ((driftGap + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      this.velocityHeading += driftGap * Math.min(1, traction * dt);
+      this.velocityHeading = ((this.velocityHeading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    } else {
+      this.velocityHeading = this.heading;
+      this.drifting = false;
+    }
+
     if (this.voidPlaneActive) {
       this.voidPlaneU += Math.cos(this.heading) * this.speed * dt;
       this.voidPlaneV += Math.sin(this.heading) * this.speed * dt;
@@ -261,7 +306,7 @@ export class Carpet {
       this.pitch += (0 - this.pitch) * Math.min(1, 5.0 * dt);
     } else {
       const arcAngle = (this.speed * dt) / this.globeRadius;
-      this.qPosition = moveOnSphere(this.qPosition, this.heading, arcAngle);
+      this.qPosition = moveOnSphere(this.qPosition, this.velocityHeading, arcAngle);
 
       const up = tangentFrame(this.qPosition).up;
       this.isOverWater = !isLand(this.seed, this.terrainType, up.x, up.y, up.z);
@@ -299,7 +344,13 @@ export class Carpet {
       this.pitch += (targetPitch - this.pitch) * Math.min(1, 4.0 * dt);
     }
 
-    const targetBank = Math.max(-MAX_BANK, Math.min(MAX_BANK, -this.turnInputSmoothed * MAX_BANK * 0.5));
+    // Drift lean: extra bank in the direction of the skid
+    let driftGapBank = this.heading - this.velocityHeading;
+    driftGapBank = ((driftGapBank + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    const driftBank = Math.max(-DRIFT_BANK_MAX, Math.min(DRIFT_BANK_MAX, driftGapBank * DRIFT_BANK_SCALE));
+
+    const turnBank = -this.turnInputSmoothed * MAX_BANK * 0.5;
+    const targetBank = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnBank + driftBank));
     this.bankAngle += (targetBank - this.bankAngle) * Math.min(1, BANK_RESPONSIVENESS * this.upgrades.bankMult * dt);
 
     const targetCurl = this.speedRatio * Carpet.TASSEL_CURL_MAX;
@@ -332,6 +383,8 @@ export class Carpet {
   teleportTo(qPosition: Quaternion, heading: number, altitude: number, speed = this.speed) {
     this.qPosition.copy(qPosition);
     this.heading = ((heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    this.velocityHeading = this.heading;
+    this.drifting = false;
     this.altitude = altitude;
     this.prevAltitude = altitude;
     const up = tangentFrame(this.qPosition).up;
@@ -339,6 +392,11 @@ export class Carpet {
     this.cliffGlideBonus = 0;
     this.speed = Math.min(speed, ABSOLUTE_MAX_SPEED);
     this.applyMatrix();
+  }
+
+  /** True while in an active skid (velocity heading lags behind facing). */
+  get isDrifting(): boolean {
+    return this.drifting;
   }
 
   applyMatrix() {

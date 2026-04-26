@@ -27,8 +27,7 @@ const QT_ICONS = {
   fish: `<img class="hud-qt-ico" src="/2D/icon_fish.svg" alt="" draggable="false" />`,
   /** Brazier hint — no art asset; inline flame only. */
   flame: `<svg class="hud-qt-ico hud-qt-ico--flame hud-qt-ico--carpet" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2s2.5 3.2 2.5 6.5c0 1.2-.3 2.1-.5 2.5.8-.3 1.3-1.1 1.3-2.1 0-1.5-.4-2.3-.4-2.3S18 8.2 18 12c0 3.3-2.7 6-6 6s-6-2.7-6-6c0-3.5 1.2-4.3 1.2-4.3s1 1.3 1 3.2c0 1.4-.4 1.7-.4 1.7s-.1-1.3-.1-2.3C6.5 5.2 12 2 12 2z"/></svg>`,
-  /** Inline checkered-flag icon for the time-trial race tracker. */
-  race: `<svg class="hud-qt-ico hud-qt-ico--race" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2v20M6 2l12 4-12 4 12 4-12 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  race: `<img class="hud-qt-ico hud-qt-ico--race" src="/2D/icon_race.svg" alt="" draggable="false" />`,
 } as const;
 
 export class HUD {
@@ -752,16 +751,15 @@ export class HUD {
         height: 1.68em;
       }
       .hud-qt-ico--race {
-        color: rgba(255, 255, 255, 0.85);
-        width: 1.35em;
-        height: 1.35em;
+        /* Match the standard carpet icon size so the row height is consistent. */
+        width: 1.6em;
+        height: 1.6em;
       }
-      .hud-quest-done {
-        font-size: 0.9em;
-        font-weight: 600;
-        color: rgba(255, 255, 255, 0.75);
-        opacity: 0.75;
+      img.hud-qt-ico--race {
+        width: 1.68em;
+        height: 1.68em;
       }
+      .hud-quest-done,
       .hud-quest-hint {
         font-size: 1em;
         font-weight: 600;
