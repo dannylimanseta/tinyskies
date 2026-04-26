@@ -1619,6 +1619,7 @@ export class Game {
     landmarkRegistry.registerMushrooms(this.globe.mushroomCenters, seed);
     landmarkRegistry.registerButterflies(this.globe.butterflyCenters, seed);
     landmarkRegistry.registerPyramids(this.globe.pyramidCenters, seed);
+    landmarkRegistry.registerRaceBanners(this.globe.raceBannerCenters, seed);
     this.landmarkDetector = new LandmarkDetector(landmarkRegistry);
     this.landmarkHUD = new LandmarkHUD(this.hud.root);
     this.hud.registerLandmarkHUD(this.landmarkHUD);

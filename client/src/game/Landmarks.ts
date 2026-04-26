@@ -14,7 +14,8 @@ export type LandmarkType =
   | "hotspring"
   | "mushroom"
   | "butterfly"
-  | "pyramid";
+  | "pyramid"
+  | "race_banner";
 
 export interface Landmark {
   type: LandmarkType;
@@ -133,6 +134,16 @@ const PYRAMID_SUFFIXES = [
   " Pyramid", " Monument", " Tomb", " Ziggurat", " Mausoleum", " Needle", " Spire", " Mound",
 ];
 
+const RACE_BANNER_PREFIXES = [
+  "Sky", "Cloud", "Aero", "Wind", "Storm", "Gale", "Breeze", "Sun", "Star", "Moon",
+  "High", "Grand", "Apex", "Zenith", "Summit", "Crest", "Peak", "Crown",
+];
+
+const RACE_BANNER_SUFFIXES = [
+  " Dash", " Run", " Sprint", " Derby", " Rally", " Circuit", " Track", " Course",
+  " Trial", " Chase", " Flight", " Glide", " Soar", " Dive", " Drop", " Plunge",
+];
+
 const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] }> = {
   village:      { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
   peak:         { prefixes: VILLAGE_PREFIXES, suffixes: VILLAGE_SUFFIXES },
@@ -148,6 +159,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   mushroom:     { prefixes: MUSHROOM_PREFIXES,    suffixes: MUSHROOM_SUFFIXES },
   butterfly:    { prefixes: BUTTERFLY_PREFIXES,   suffixes: BUTTERFLY_SUFFIXES },
   pyramid:      { prefixes: PYRAMID_PREFIXES,     suffixes: PYRAMID_SUFFIXES },
+  race_banner:  { prefixes: RACE_BANNER_PREFIXES, suffixes: RACE_BANNER_SUFFIXES },
 };
 
 export function generateLandmarkNames(
@@ -340,6 +352,22 @@ export class LandmarkRegistry {
         type: "pyramid",
         name: names[i]!,
         normal: pyramids[i]!.normal.clone().normalize(),
+        enterDot: 0.995,
+        exitDot: 0.991,
+      });
+    }
+  }
+
+  registerRaceBanners(
+    banners: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, banners.length, "race_banner");
+    for (let i = 0; i < banners.length; i++) {
+      this.landmarks.push({
+        type: "race_banner",
+        name: names[i]!,
+        normal: banners[i]!.normal.clone().normalize(),
         enterDot: 0.995,
         exitDot: 0.991,
       });

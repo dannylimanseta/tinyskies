@@ -207,6 +207,11 @@ export class Globe {
   readonly butterflyCenters: { normal: Vector3 }[] = [];
   /** Single GLB pyramid — one per world, inland lowlands (low elevation + flat), not hills. */
   readonly pyramidCenters: { normal: Vector3 }[] = [];
+  /** Floating race start banners carried by balloons. */
+  readonly raceBannerCenters: { normal: Vector3 }[] = [];
+  private raceBanners: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; }[] = [];
+  private raceBannerMat: MeshPhongMaterial | null = null;
+  private raceBannerTex: CanvasTexture | null = null;
   /** Buried moonstone ring halves — giant ruin props; two sites, far apart. */
   readonly moonstoneRuinCenters: { normal: Vector3 }[] = [];
   private moonstoneRuins: MoonstoneRuinState[] = [];
@@ -360,6 +365,7 @@ export class Globe {
     this.createMoonstoneRuins();
     this.createFloatingTreeClusters();
     this.createBalloons();
+    this.createRaceBanners();
     this.createClouds();
     this.createAtmosphere();
   }
@@ -4515,20 +4521,7 @@ transformed.z += sway2;`,
     return g;
   }
 
-  private createBalloons() {
-    const rand = seededRandom(999 + this.seed);
-    const REF_UP = new Vector3(0, 1, 0);
-
-    const SCHEMES: [number, number][] = [
-      [0xcc2222, 0xf0d020],
-      [0x1e5cb0, 0x5eb8e8],
-      [0x228844, 0xd0e830],
-      [0xe85520, 0xf5c040],
-      [0x8822aa, 0xe868b0],
-      [0xcc2255, 0xff8844],
-      [0x1199aa, 0x88cc33],
-    ];
-
+  private createBalloonMesh(primary: number, secondary: number): Group {
     const S = 0.084;
     const profile = [
       new Vector2(S * 0.28, S * -1.15),
@@ -4559,144 +4552,164 @@ transformed.z += sway2;`,
     const rimColor = new Color(0x6b4e10);
     const ropeColor = new Color(0x554422);
 
+    const balloon = new Group();
+    const colA = new Color(primary);
+    const colB = new Color(secondary);
+    const skirtColor = new Color(primary);
+
+    const parts: { geo: BufferGeometry; color: Color }[] = [];
+
+    const envGeo = new LatheGeometry(profile, LATHE_SEGS);
+    const envPos = envGeo.attributes.position;
+    const envColArr = new Float32Array(envPos.count * 3);
+    for (let v = 0; v < envPos.count; v++) {
+      let a = Math.atan2(envPos.getZ(v), envPos.getX(v));
+      if (a < 0) a += Math.PI * 2;
+      const gore = Math.floor((a / (Math.PI * 2)) * GORE_COUNT);
+      const c = gore % 2 === 0 ? colA : colB;
+      envColArr[v * 3] = c.r;
+      envColArr[v * 3 + 1] = c.g;
+      envColArr[v * 3 + 2] = c.b;
+    }
+    envGeo.setAttribute("color", new Float32BufferAttribute(envColArr, 3));
+    envGeo.computeVertexNormals();
+
+    const skirtGeo = new CylinderGeometry(throatR * 0.85, throatR * 1.05, S * 0.12, 12, 1, true);
+    skirtGeo.translate(0, throatY - S * 0.06, 0);
+    parts.push({ geo: skirtGeo, color: skirtColor });
+
+    const bodyGeo = new CylinderGeometry(basketR, basketR * 0.9, basketBotY - basketTopY, 8);
+    bodyGeo.translate(0, (basketTopY + basketBotY) / 2, 0);
+    parts.push({ geo: bodyGeo, color: basketColor });
+
+    const rimGeo = new CylinderGeometry(basketR + S * 0.01, basketR + S * 0.01, S * 0.02, 12);
+    rimGeo.translate(0, basketTopY, 0);
+    parts.push({ geo: rimGeo, color: rimColor });
+
+    const baseGeo = new CylinderGeometry(basketR * 0.9, basketR * 0.9, S * 0.015, 12);
+    baseGeo.translate(0, basketBotY, 0);
+    parts.push({ geo: baseGeo, color: rimColor });
+
+    const dummy = new Object3D();
+    const REF_UP = new Vector3(0, 1, 0);
+    for (let r = 0; r < 8; r++) {
+      const a = (r / 8) * Math.PI * 2;
+      const topX = Math.cos(a) * throatR * 0.9;
+      const topZ = Math.sin(a) * throatR * 0.9;
+      const botX = Math.cos(a) * basketR * 0.85;
+      const botZ = Math.sin(a) * basketR * 0.85;
+      const dx = botX - topX;
+      const dy = basketTopY - throatY;
+      const dz = botZ - topZ;
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const ropeGeo = new CylinderGeometry(0.001, 0.001, len, 3);
+      dummy.position.set(
+        (topX + botX) / 2,
+        (throatY + basketTopY) / 2,
+        (topZ + botZ) / 2,
+      );
+      dummy.quaternion.setFromUnitVectors(REF_UP, new Vector3(dx, dy, dz).normalize());
+      dummy.updateMatrix();
+      ropeGeo.applyMatrix4(dummy.matrix);
+      parts.push({ geo: ropeGeo, color: ropeColor });
+    }
+
+    const mergedGeo = this.mergeColoredParts(parts);
+
+    const totalVerts = envPos.count + mergedGeo.attributes.position.count;
+    const finalPos = new Float32Array(totalVerts * 3);
+    const finalNorm = new Float32Array(totalVerts * 3);
+    const finalCol = new Float32Array(totalVerts * 3);
+    const finalIdx: number[] = [];
+
+    const ep = envGeo.attributes.position;
+    const en = envGeo.attributes.normal;
+    const ec = envGeo.attributes.color;
+    for (let v = 0; v < ep.count; v++) {
+      const i3 = v * 3;
+      finalPos[i3] = ep.getX(v);
+      finalPos[i3 + 1] = ep.getY(v);
+      finalPos[i3 + 2] = ep.getZ(v);
+      finalNorm[i3] = en.getX(v);
+      finalNorm[i3 + 1] = en.getY(v);
+      finalNorm[i3 + 2] = en.getZ(v);
+      finalCol[i3] = ec.getX(v);
+      finalCol[i3 + 1] = ec.getY(v);
+      finalCol[i3 + 2] = ec.getZ(v);
+    }
+    if (envGeo.index) {
+      for (let j = 0; j < envGeo.index.count; j++) {
+        finalIdx.push(envGeo.index.getX(j));
+      }
+    }
+
+    const mp = mergedGeo.attributes.position;
+    const mn = mergedGeo.attributes.normal;
+    const mc = mergedGeo.attributes.color;
+    const off = ep.count;
+    for (let v = 0; v < mp.count; v++) {
+      const i3 = (off + v) * 3;
+      finalPos[i3] = mp.getX(v);
+      finalPos[i3 + 1] = mp.getY(v);
+      finalPos[i3 + 2] = mp.getZ(v);
+      finalNorm[i3] = mn.getX(v);
+      finalNorm[i3 + 1] = mn.getY(v);
+      finalNorm[i3 + 2] = mn.getZ(v);
+      finalCol[i3] = mc.getX(v);
+      finalCol[i3 + 1] = mc.getY(v);
+      finalCol[i3 + 2] = mc.getZ(v);
+    }
+    if (mergedGeo.index) {
+      for (let j = 0; j < mergedGeo.index.count; j++) {
+        finalIdx.push(mergedGeo.index.getX(j) + off);
+      }
+    }
+
+    const fullGeo = new BufferGeometry();
+    fullGeo.setAttribute("position", new Float32BufferAttribute(finalPos, 3));
+    fullGeo.setAttribute("normal", new Float32BufferAttribute(finalNorm, 3));
+    fullGeo.setAttribute("color", new Float32BufferAttribute(finalCol, 3));
+    fullGeo.setIndex(finalIdx);
+    envGeo.dispose();
+    mergedGeo.dispose();
+
+    const mat = new MeshPhongMaterial({ vertexColors: true, shininess: 15 });
+    addRimLight(mat, 0xffeedd, 0.3, 3.0);
+    const mesh = new Mesh(fullGeo, mat);
+    mesh.castShadow = true;
+    mesh.userData.paintSplatterSurface = true;
+    balloon.add(mesh);
+
+    const burnerGeo = new SphereGeometry(S * 0.05, 6, 4);
+    burnerGeo.translate(0, throatY + S * 0.02, 0);
+    balloon.add(new Mesh(burnerGeo, new MeshPhongMaterial({
+      color: 0xff8800,
+      emissive: 0xff5500,
+      emissiveIntensity: 0.5,
+      transparent: true,
+      opacity: 0.5,
+    })));
+
+    return balloon;
+  }
+
+  private createBalloons() {
+    const rand = seededRandom(999 + this.seed);
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const SCHEMES: [number, number][] = [
+      [0xcc2222, 0xf0d020],
+      [0x1e5cb0, 0x5eb8e8],
+      [0x228844, 0xd0e830],
+      [0xe85520, 0xf5c040],
+      [0x8822aa, 0xe868b0],
+      [0xcc2255, 0xff8844],
+      [0x1199aa, 0x88cc33],
+    ];
+
     for (let i = 0; i < BALLOON_COUNT; i++) {
-      const balloon = new Group();
-      const [primary, secondary] = SCHEMES[i % SCHEMES.length];
-      const colA = new Color(primary);
-      const colB = new Color(secondary);
-      const skirtColor = new Color(primary);
-
-      const parts: { geo: BufferGeometry; color: Color }[] = [];
-
-      const envGeo = new LatheGeometry(profile, LATHE_SEGS);
-      const envPos = envGeo.attributes.position;
-      const envColArr = new Float32Array(envPos.count * 3);
-      for (let v = 0; v < envPos.count; v++) {
-        let a = Math.atan2(envPos.getZ(v), envPos.getX(v));
-        if (a < 0) a += Math.PI * 2;
-        const gore = Math.floor((a / (Math.PI * 2)) * GORE_COUNT);
-        const c = gore % 2 === 0 ? colA : colB;
-        envColArr[v * 3] = c.r;
-        envColArr[v * 3 + 1] = c.g;
-        envColArr[v * 3 + 2] = c.b;
-      }
-      envGeo.setAttribute("color", new Float32BufferAttribute(envColArr, 3));
-      envGeo.computeVertexNormals();
-
-      const skirtGeo = new CylinderGeometry(throatR * 0.85, throatR * 1.05, S * 0.12, 12, 1, true);
-      skirtGeo.translate(0, throatY - S * 0.06, 0);
-      parts.push({ geo: skirtGeo, color: skirtColor });
-
-      const bodyGeo = new CylinderGeometry(basketR, basketR * 0.9, basketBotY - basketTopY, 8);
-      bodyGeo.translate(0, (basketTopY + basketBotY) / 2, 0);
-      parts.push({ geo: bodyGeo, color: basketColor });
-
-      const rimGeo = new CylinderGeometry(basketR + S * 0.01, basketR + S * 0.01, S * 0.02, 12);
-      rimGeo.translate(0, basketTopY, 0);
-      parts.push({ geo: rimGeo, color: rimColor });
-
-      const baseGeo = new CylinderGeometry(basketR * 0.9, basketR * 0.9, S * 0.015, 12);
-      baseGeo.translate(0, basketBotY, 0);
-      parts.push({ geo: baseGeo, color: rimColor });
-
-      const dummy = new Object3D();
-      for (let r = 0; r < 8; r++) {
-        const a = (r / 8) * Math.PI * 2;
-        const topX = Math.cos(a) * throatR * 0.9;
-        const topZ = Math.sin(a) * throatR * 0.9;
-        const botX = Math.cos(a) * basketR * 0.85;
-        const botZ = Math.sin(a) * basketR * 0.85;
-        const dx = botX - topX;
-        const dy = basketTopY - throatY;
-        const dz = botZ - topZ;
-        const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const ropeGeo = new CylinderGeometry(0.001, 0.001, len, 3);
-        dummy.position.set(
-          (topX + botX) / 2,
-          (throatY + basketTopY) / 2,
-          (topZ + botZ) / 2,
-        );
-        dummy.quaternion.setFromUnitVectors(REF_UP, new Vector3(dx, dy, dz).normalize());
-        dummy.updateMatrix();
-        ropeGeo.applyMatrix4(dummy.matrix);
-        parts.push({ geo: ropeGeo, color: ropeColor });
-      }
-
-      const mergedGeo = this.mergeColoredParts(parts);
-
-      const totalVerts = envPos.count + mergedGeo.attributes.position.count;
-      const finalPos = new Float32Array(totalVerts * 3);
-      const finalNorm = new Float32Array(totalVerts * 3);
-      const finalCol = new Float32Array(totalVerts * 3);
-      const finalIdx: number[] = [];
-
-      const ep = envGeo.attributes.position;
-      const en = envGeo.attributes.normal;
-      const ec = envGeo.attributes.color;
-      for (let v = 0; v < ep.count; v++) {
-        const i3 = v * 3;
-        finalPos[i3] = ep.getX(v);
-        finalPos[i3 + 1] = ep.getY(v);
-        finalPos[i3 + 2] = ep.getZ(v);
-        finalNorm[i3] = en.getX(v);
-        finalNorm[i3 + 1] = en.getY(v);
-        finalNorm[i3 + 2] = en.getZ(v);
-        finalCol[i3] = ec.getX(v);
-        finalCol[i3 + 1] = ec.getY(v);
-        finalCol[i3 + 2] = ec.getZ(v);
-      }
-      if (envGeo.index) {
-        for (let j = 0; j < envGeo.index.count; j++) {
-          finalIdx.push(envGeo.index.getX(j));
-        }
-      }
-
-      const mp = mergedGeo.attributes.position;
-      const mn = mergedGeo.attributes.normal;
-      const mc = mergedGeo.attributes.color;
-      const off = ep.count;
-      for (let v = 0; v < mp.count; v++) {
-        const i3 = (off + v) * 3;
-        finalPos[i3] = mp.getX(v);
-        finalPos[i3 + 1] = mp.getY(v);
-        finalPos[i3 + 2] = mp.getZ(v);
-        finalNorm[i3] = mn.getX(v);
-        finalNorm[i3 + 1] = mn.getY(v);
-        finalNorm[i3 + 2] = mn.getZ(v);
-        finalCol[i3] = mc.getX(v);
-        finalCol[i3 + 1] = mc.getY(v);
-        finalCol[i3 + 2] = mc.getZ(v);
-      }
-      if (mergedGeo.index) {
-        for (let j = 0; j < mergedGeo.index.count; j++) {
-          finalIdx.push(mergedGeo.index.getX(j) + off);
-        }
-      }
-
-      const fullGeo = new BufferGeometry();
-      fullGeo.setAttribute("position", new Float32BufferAttribute(finalPos, 3));
-      fullGeo.setAttribute("normal", new Float32BufferAttribute(finalNorm, 3));
-      fullGeo.setAttribute("color", new Float32BufferAttribute(finalCol, 3));
-      fullGeo.setIndex(finalIdx);
-      envGeo.dispose();
-      mergedGeo.dispose();
-
-      const mat = new MeshPhongMaterial({ vertexColors: true, shininess: 15 });
-      addRimLight(mat, 0xffeedd, 0.3, 3.0);
-      const mesh = new Mesh(fullGeo, mat);
-      mesh.castShadow = true;
-      mesh.userData.paintSplatterSurface = true;
-      balloon.add(mesh);
-
-      const burnerGeo = new SphereGeometry(S * 0.05, 6, 4);
-      burnerGeo.translate(0, throatY + S * 0.02, 0);
-      balloon.add(new Mesh(burnerGeo, new MeshPhongMaterial({
-        color: 0xff8800,
-        emissive: 0xff5500,
-        emissiveIntensity: 0.5,
-        transparent: true,
-        opacity: 0.5,
-      })));
+      const [primary, secondary] = SCHEMES[i % SCHEMES.length]!;
+      const balloon = this.createBalloonMesh(primary, secondary);
 
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
@@ -4725,6 +4738,116 @@ transformed.z += sway2;`,
         wobbleAmp: 0,
         wobblePhase: 0,
         wobbleBank: 0,
+      });
+    }
+  }
+
+  private createRaceBanners() {
+    const RACE_BANNER_COUNT = 3;
+    const MIN_ELEVATION = 0.05;
+    const MAX_ELEVATION = 0.5;
+    const MIN_SEPARATION_DOT = 0.85;
+
+    const rand = seededRandom(112233 + this.seed);
+    const REF_UP = new Vector3(0, 1, 0);
+
+    type Candidate = { normal: Vector3; elevation: number };
+    const candidates: Candidate[] = [];
+    let attempts = 0;
+
+    while (attempts < 5000 && candidates.length < 100) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.pyramidCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+
+      candidates.push({ normal, elevation });
+    }
+
+    const chosen: Vector3[] = [];
+    for (const c of candidates) {
+      if (chosen.length >= RACE_BANNER_COUNT) break;
+      if (chosen.some((v) => c.normal.dot(v) > MIN_SEPARATION_DOT)) continue;
+      chosen.push(c.normal);
+    }
+
+    if (chosen.length === 0) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = "#000000";
+    for (let x = 0; x < 8; x++) {
+      for (let y = 0; y < 2; y++) {
+        if ((x + y) % 2 === 0) {
+          ctx.fillRect(x * 64, y * 64, 64, 64);
+        }
+      }
+    }
+    const sharedTex = new CanvasTexture(canvas);
+    const sharedMat = new MeshPhongMaterial({ map: sharedTex, side: DoubleSide });
+    addRimLight(sharedMat, 0xffeedd, 0.3, 3.0);
+    this.raceBannerTex = sharedTex;
+    this.raceBannerMat = sharedMat;
+
+    for (const normal of chosen) {
+      this.raceBannerCenters.push({ normal: normal.clone() });
+
+      const bannerGroup = new Group();
+      
+      const leftBalloon = this.createBalloonMesh(0xffffff, 0x222222);
+      leftBalloon.position.set(-0.25, 0, 0);
+      bannerGroup.add(leftBalloon);
+
+      const rightBalloon = this.createBalloonMesh(0xffffff, 0x222222);
+      rightBalloon.position.set(0.25, 0, 0);
+      bannerGroup.add(rightBalloon);
+
+      const bannerGeo = new PlaneGeometry(0.5, 0.12);
+      const bannerMesh = new Mesh(bannerGeo, sharedMat);
+      bannerMesh.position.set(0, -0.11, 0);
+      bannerMesh.castShadow = true;
+      bannerGroup.add(bannerMesh);
+
+      const baseAlt = this.radius + BALLOON_ALTITUDE + (rand() - 0.5) * 0.2;
+      const spin = rand() * Math.PI * 2;
+
+      const pivot = new Group();
+      pivot.position.copy(normal.clone().multiplyScalar(baseAlt));
+      pivot.quaternion.setFromUnitVectors(REF_UP, normal);
+      pivot.rotateY(spin);
+      pivot.add(bannerGroup);
+
+      this.group.add(pivot);
+      this.raceBanners.push({
+        pivot,
+        inner: bannerGroup,
+        normal: normal.clone(),
+        baseAlt,
+        phase: rand() * Math.PI * 2,
       });
     }
   }
@@ -5274,6 +5397,12 @@ transformed.z += sway2;`,
       }
       b.inner.rotation.z = b.wobbleBank;
     }
+
+    for (const b of this.raceBanners) {
+      const bob = Math.sin(this.balloonTime * 0.5 + b.phase) * 0.04;
+      const alt = b.baseAlt + bob;
+      b.pivot.position.copy(b.normal).multiplyScalar(alt);
+    }
   }
 
   hitBalloon(index: number) {
@@ -5311,5 +5440,7 @@ transformed.z += sway2;`,
     }
     moonstoneDustSpriteTexture?.dispose();
     moonstoneDustSpriteTexture = null;
+    this.raceBannerTex?.dispose();
+    this.raceBannerMat?.dispose();
   }
 }

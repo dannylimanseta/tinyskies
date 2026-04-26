@@ -15,6 +15,7 @@ const TYPE_LABELS: Record<LandmarkType, string> = {
   mushroom: "Mushroom Grove",
   butterfly: "Butterfly Garden",
   pyramid: "Pyramid",
+  race_banner: "Race Start",
 };
 
 export class LandmarkHUD {
