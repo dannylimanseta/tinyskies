@@ -54,6 +54,7 @@ import { CarpetTrail } from "./CarpetTrail";
 import { VoidCarpetTrail } from "./VoidCarpetTrail";
 import { CarpetWake } from "./CarpetWake";
 import { CarpetLeaves } from "./CarpetLeaves";
+import { CarpetDriftSmoke } from "./CarpetDriftSmoke";
 import { LensFlare } from "./LensFlare";
 import { Starfield } from "./Starfield";
 import { globalRimColor } from "./RimLight";
@@ -389,6 +390,7 @@ export class Game {
   private voidCarpetTrail: VoidCarpetTrail | null = null;
   private carpetWake!: CarpetWake;
   private carpetLeaves!: CarpetLeaves;
+  private carpetDriftSmoke!: CarpetDriftSmoke;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
   private capybaraFlameShots: CapybaraFlameShots | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
@@ -1290,6 +1292,10 @@ export class Game {
     this.carpetLeaves.group.visible = this.vehicleFeatures.carpetTrail;
     this.scene.add(this.carpetLeaves.group);
 
+    this.carpetDriftSmoke = new CarpetDriftSmoke();
+    this.carpetDriftSmoke.group.visible = this.vehicleFeatures.carpetTrail;
+    this.scene.add(this.carpetDriftSmoke.group);
+
     if (vehicle === "carpet") {
       this.carpetPortalSystem = new CarpetPortalSystem(globeRadius, seed, terrainType, {
         onPortalSpawnStart: () => {
@@ -1878,6 +1884,7 @@ export class Game {
     this.voidCarpetTrail = null;
     this.carpetWake?.dispose();
     this.carpetLeaves?.dispose();
+    this.carpetDriftSmoke?.dispose();
     if (this.carpetPortalSystem) {
       this.scene.remove(this.carpetPortalSystem.group);
       this.carpetPortalSystem.dispose();
@@ -3279,6 +3286,18 @@ export class Game {
         this.gameSeed,
         this.gameTerrainType,
       );
+
+      if (this.localPlayer instanceof Carpet) {
+        this.carpetDriftSmoke.update(
+          dt,
+          this.localPlayer.qPosition,
+          this.localPlayer.heading,
+          this.localPlayer.altitude,
+          globeRadius,
+          this.localPlayer.isDrifting,
+          this.localPlayer.driftIntensity,
+        );
+      }
     }
 
     if (portalInteractionSuppressed || this.inCosmicVoid) {
@@ -6200,6 +6219,7 @@ export class Game {
     this.voidCarpetTrail = null;
     this.carpetWake?.dispose();
     this.carpetLeaves?.dispose();
+    this.carpetDriftSmoke?.dispose();
     if (this.carpetPortalSystem) {
       this.scene?.remove(this.carpetPortalSystem.group);
       this.carpetPortalSystem.dispose();

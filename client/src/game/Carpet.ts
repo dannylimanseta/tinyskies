@@ -399,6 +399,18 @@ export class Carpet {
     return this.drifting;
   }
 
+  /**
+   * 0–1 magnitude of the current skid angle (angle between velocity heading and facing heading).
+   * Reaches 1.0 at ±45°; useful for scaling VFX intensity.
+   */
+  get driftIntensity(): number {
+    const gap = Math.atan2(
+      Math.sin(this.heading - this.velocityHeading),
+      Math.cos(this.heading - this.velocityHeading),
+    );
+    return Math.min(1, Math.abs(gap) / (Math.PI / 4));
+  }
+
   applyMatrix() {
     if (this.voidPlaneActive) {
       this.getVoidPlaneWorldPos(this._voidPosScratch);
