@@ -1,5 +1,9 @@
+import { inject } from "@vercel/analytics";
 import { Game } from "./game/Game";
 import { ProgressionManager } from "./game/ProgressionManager";
+
+// Initialize Vercel Web Analytics
+inject();
 
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(window.location.search);
