@@ -691,8 +691,10 @@ export class Game {
       for (const id of ["impact_1", "impact_2", "impact_3"] as const) {
         this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
       }
-      this.audioManager.loadSFX("click_1", "/audio/sfx/click_1.mp3");
       this.audioManager.loadSFX("chime_1", "/audio/sfx/chime_1.mp3");
+      for (const id of ["thunder_1", "thunder_2", "thunder_3"] as const) {
+        this.audioManager.loadSFX(id, `/audio/sfx/${id}.mp3`);
+      }
       this.audioManager.loadSFX("celebrate_1", "/audio/sfx/celebrate_1.mp3");
       this.audioManager.loadSFX("race_start_1", "/audio/sfx/race_start_1.mp3");
       this.audioManager.loadSFX("camera", "/audio/sfx/camera.mp3");
@@ -1319,6 +1321,16 @@ export class Game {
     this.lensFlare.setColorScale(preset.flareColorScale);
 
     this.rainOverlay = new RainOverlay();
+    this.rainOverlay.onLightningFlash = () => {
+      const THUNDER_SFXS = ["thunder_1", "thunder_2", "thunder_3"] as const;
+      const pick = THUNDER_SFXS[Math.floor(Math.random() * THUNDER_SFXS.length)]!;
+      if (this.audioManager.hasSFX(pick)) {
+        this.audioManager.resumeContextIfNeeded();
+        // Delay thunder slightly after the flash (lightning travels faster than sound).
+        const delayMs = 300 + Math.random() * 600;
+        setTimeout(() => this.audioManager.playSFX(pick, 0.55), delayMs);
+      }
+    };
 
     /* Softer warm fill than 0xffaa55; wider range so falloff on the mesh is gentler. */
     this.playerLight = new PointLight(0xeec4a8, 0, 6.5, 1.25);
@@ -1636,6 +1648,9 @@ export class Game {
         this.hud.updateBrazierStatus(this.lastBrazierProgress);
         this.prevAllFiveBraziers = true;
         this.applyEternalFlamesMoonSave();
+      },
+      () => {
+        this.moonThreat?.jumpTo(0.70);
       },
     );
 

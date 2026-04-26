@@ -8,6 +8,7 @@ export class DebugMenu {
   private onVoidVictory: () => void;
   private onShieldToZero: () => void;
   private onLightAllBraziersEternal: () => void;
+  private onJumpMoonTo70: () => void;
 
   constructor(
     container: HTMLElement,
@@ -17,6 +18,7 @@ export class DebugMenu {
     onVoidVictory: () => void,
     onShieldToZero: () => void,
     onLightAllBraziersEternal: () => void,
+    onJumpMoonTo70: () => void,
   ) {
     this.container = container;
     this.onSpawnEternalFlame = onSpawnEternalFlame;
@@ -25,6 +27,7 @@ export class DebugMenu {
     this.onVoidVictory = onVoidVictory;
     this.onShieldToZero = onShieldToZero;
     this.onLightAllBraziersEternal = onLightAllBraziersEternal;
+    this.onJumpMoonTo70 = onJumpMoonTo70;
 
     this.menu = document.createElement("div");
     this.menu.className = "debug-menu";
@@ -37,6 +40,7 @@ export class DebugMenu {
       <button id="debug-void-victory">Void Victory</button>
       <button id="debug-shield-to-zero">Energy Shield → 0</button>
       <button id="debug-light-all-braziers-eternal">Light all 5 braziers (Eternal)</button>
+      <button id="debug-moon-70">Moon progress → 70%</button>
     `;
 
     this.container.appendChild(this.menu);
@@ -68,6 +72,11 @@ export class DebugMenu {
 
     this.menu.querySelector("#debug-light-all-braziers-eternal")?.addEventListener("click", () => {
       this.onLightAllBraziersEternal();
+      this.hide();
+    });
+
+    this.menu.querySelector("#debug-moon-70")?.addEventListener("click", () => {
+      this.onJumpMoonTo70();
       this.hide();
     });
 

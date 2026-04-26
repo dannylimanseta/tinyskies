@@ -153,6 +153,9 @@ export class RainOverlay {
   private lightningCooldown = 0;
   private moonProgress = 0;
 
+  /** Called each time a new lightning flash starts (not for the secondary double-flash). */
+  onLightningFlash: (() => void) | null = null;
+
   constructor() {
     this.streakScene = new Scene();
     this.glassScene = new Scene();
@@ -264,6 +267,7 @@ export class RainOverlay {
       const minInterval = 2.0 - urgency * 1.2;
       const maxInterval = 6.0 - urgency * 3.0;
       this.lightningCooldown = minInterval + Math.random() * (maxInterval - minInterval);
+      this.onLightningFlash?.();
 
       if (Math.random() < 0.4) {
         setTimeout(() => {

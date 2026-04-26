@@ -59,6 +59,9 @@ export class AudioManager {
     this.endTimesLayers = END_TIMES_TRACKS.map(() => this.createLayer());
     this.endTimesIndex = Math.round(Math.random());
 
+    // Load click_1 immediately (before music loading) so it is ready for the very first user click.
+    void this.loadSFX("click_1", "/audio/sfx/click_1.mp3");
+
     await this.loadAllMusic();
   }
 
@@ -232,11 +235,17 @@ export class AudioManager {
    * One-shot SFX. `playbackRate` shifts pitch (and length); use >1 for slightly higher combo tones.
    * `endFadeFraction` (0–1): linear fade to silence over the last fraction of playback (e.g. 0.05 = last 5%).
    */
-  /** Short UI feedback; uses `click_1` SFX (load in Game bootstrap). */
+  /**
+   * Short UI feedback click. Awaits AudioContext resume so the sound isn't
+   * dropped on the very first user gesture (before the context is running).
+   */
   playUIClick(volume = 0.42) {
-    if (!this.hasSFX("click_1")) return;
-    this.resumeContextIfNeeded();
-    this.playSFX("click_1", volume);
+    if (!this.hasSFX("click_1") || this._muted) return;
+    if (this.ctx?.state === "suspended") {
+      void this.ctx.resume().then(() => this.playSFX("click_1", volume));
+    } else {
+      this.playSFX("click_1", volume);
+    }
   }
 
   playSFX(name: string, volume = 1.0, playbackRate = 1.0, endFadeFraction = 0) {
