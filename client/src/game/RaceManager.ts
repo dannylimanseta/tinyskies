@@ -185,9 +185,20 @@ export class RaceManager {
       this.raceTimer -= dt;
       this.timerUI.setTime(this.raceTimer);
 
-      for (const r of this.rings) {
+      for (let ri = 0; ri < this.rings.length; ri++) {
+        const r = this.rings[ri]!;
         if (r.collected) continue;
+
         if (r.holoMat) r.holoMat.uniforms.time.value = this.time;
+
+        // Pulse the next target ring so the player can clearly identify it.
+        if (ri === this.currentRingIndex && r.holoMat) {
+          const pulse = 1 + 0.10 * Math.sin(this.time * 4.5);
+          r.ringGroup.scale.setScalar(pulse);
+        } else if (r.holoMat) {
+          r.ringGroup.scale.setScalar(1);
+        }
+
         if (r.bonusDiamond) {
           const bd = r.bonusDiamond;
           const bob =
