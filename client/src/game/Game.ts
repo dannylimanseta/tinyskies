@@ -62,6 +62,7 @@ import { Aurora } from "./Aurora";
 import { RainOverlay } from "./RainOverlay";
 import { RingManager } from "./Rings";
 import { RaceManager } from "./RaceManager";
+import { EternalFlameBeams } from "./EternalFlameBeams";
 import { RingCollectVFX } from "./RingCollectVFX";
 import { pickRandomVehicleColor } from "./vehicleColors";
 import { CarpetPortalSystem } from "./CarpetPortalSystem";
@@ -2349,7 +2350,7 @@ export class Game {
     void this.returnToMainMenuAfterEternalVictory();
   }
 
-  /** Slow fade to black, victory text, tear down, main menu, then lobby victory modal. */
+  /** Play the 5-beams-hit-moon cutscene then fade to victory text. */
   private async returnToMainMenuAfterEternalVictory() {
     if (this.eternalVictoryReturnInProgress) return;
     this.eternalVictoryReturnInProgress = true;
@@ -2358,13 +2359,173 @@ export class Game {
       if (!this.transitionOverlay) {
         this.transitionOverlay = new TransitionOverlay(this.container);
       }
-      await new Promise<void>((r) =>
-        setTimeout(r, Game.ETERNAL_VICTORY_DELAY_BEFORE_FADE_SEC * 1000),
-      );
+
+      // ── Beam cutscene ──────────────────────────────────────────────────
+      // Collect brazier positions.
+      const brazierPositions: Vector3[] = [];
+      if (this.braziers) {
+        const BRAZIER_COUNT_LOCAL = 5;
+        for (let i = 0; i < BRAZIER_COUNT_LOCAL; i++) {
+          const v = new Vector3();
+          if (this.braziers.readWorldPosition(i, v)) brazierPositions.push(v);
+        }
+      }
+
+      const moonPos = this.moonThreat?.worldPosition.clone() ?? new Vector3(0, 20, 0);
+
+      if (brazierPositions.length > 0) {
+        const beams = new EternalFlameBeams(brazierPositions, moonPos);
+        this.scene.add(beams.group);
+
+        const globeRadius = this.worldConfig?.globeRadius ?? 5;
+        const cutsceneCamera = this.cameraRig.camera;
+        const camStart = cutsceneCamera.position.clone();
+
+        // Phase 1 target: pull back to see full globe + moon.
+        const globeViewPos = new Vector3(0, globeRadius * 0.5, globeRadius * 2.8);
+
+        // Phase 2 target: close-up on moon, camera to the side.
+        const moonDir = moonPos.clone().normalize();
+        const moonRadius = this.moonThreat?.worldRadius ?? globeRadius * 0.5;
+        const perpUp  = Math.abs(moonDir.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+        const moonSide = new Vector3().crossVectors(moonDir, perpUp).normalize();
+        const phase2CamPos = moonPos.clone()
+          .addScaledVector(moonSide, moonRadius * 3.0)
+          .addScaledVector(moonDir.clone().negate(), moonRadius * 0.5);
+        const phase2LookAt = moonPos.clone();
+
+        const ZOOM_SEC = 1.2;
+        let runTime     = 0;
+        let inPhase2    = false;
+        let lastMs      = performance.now();
+        let shakeTrauma = 0;
+        let p2Impacts   = 0;          // count of hits so far
+        const moonOrigPos = moonPos.clone(); // reference for shake offset
+        let whiteoutStarted = false;
+
+        // Whiteout overlay — full-screen white div that fades in on all-impacts.
+        const whiteoutEl = document.createElement("div");
+        Object.assign(whiteoutEl.style, {
+          position: "fixed", inset: "0",
+          background: "#fff",
+          opacity: "0",
+          pointerEvents: "none",
+          zIndex: "9998",
+          transition: "opacity 0.7s ease-in",
+        } as CSSStyleDeclaration);
+        this.container.appendChild(whiteoutEl);
+
+        // Render one frame synchronously to avoid a black gap.
+        cutsceneCamera.position.copy(camStart);
+        cutsceneCamera.lookAt(0, 0, 0);
+        this.renderer.render(this.scene, cutsceneCamera);
+
+        await new Promise<void>((resolve) => {
+          const tick = () => {
+            const now = performance.now();
+            const dt  = Math.min((now - lastMs) / 1000, 0.05);
+            lastMs = now;
+            runTime += dt;
+
+            if (!inPhase2) {
+              // Ease camera to globe view.
+              const t = Math.min(1, runTime / ZOOM_SEC);
+              const e = 1 - Math.pow(1 - t, 3);
+              cutsceneCamera.position.lerpVectors(camStart, globeViewPos, e);
+              cutsceneCamera.lookAt(0, 0, 0);
+
+              beams.update(dt);
+
+              if (beams.phase1Done) {
+                inPhase2 = true;
+                runTime  = 0;
+                cutsceneCamera.position.copy(phase2CamPos);
+                cutsceneCamera.lookAt(phase2LookAt);
+
+                beams.onPhase2Impact = () => {
+                  p2Impacts++;
+                  // Shake scales with number of hits (first hit = mild, last = violent).
+                  const intensity = 0.35 + (p2Impacts / 5) * 0.65;
+                  shakeTrauma = intensity;
+                };
+                beams.onAllP2Impacted = () => {
+                  if (!whiteoutStarted) {
+                    whiteoutStarted = true;
+                    // Snap whiteout div to full white instantly (no transition).
+                    whiteoutEl.style.transition = "none";
+                    whiteoutEl.style.opacity = "1";
+                    // Resolve immediately — victory text cuts in on the white flash.
+                    resolve();
+                  }
+                };
+                beams.startPhase2(moonDir, moonRadius, phase2CamPos);
+              }
+            } else {
+              // Decay trauma spike each frame.
+              shakeTrauma = Math.max(0, shakeTrauma - dt * 2.5);
+
+              // Camera slow drift.
+              const drift  = runTime * 0.03;
+              cutsceneCamera.position.copy(phase2CamPos)
+                .addScaledVector(moonSide, Math.sin(drift) * moonRadius * 0.1);
+              cutsceneCamera.lookAt(phase2LookAt);
+
+              beams.update(dt);
+
+              if (beams.state === "done" && !whiteoutStarted) {
+                // Fallback: if whiteout never triggered, resolve now.
+                this.moonThreat?.group.position.copy(moonOrigPos);
+                resolve();
+                return;
+              }
+            }
+
+            // Keep world fully alive.
+            this.globe.update(dt);
+            this.moonThreat?.update(dt);
+
+            // Apply moon shake AFTER moonThreat.update so it isn't overwritten.
+            // Only shake once the first beam has hit (p2Impacts > 0).
+            if (inPhase2 && p2Impacts > 0 && this.moonThreat) {
+              const baseAmp   = moonRadius * 0.012;
+              const impactAmp = moonRadius * (p2Impacts / 5) * 0.06;
+              const spikeAmp  = shakeTrauma * shakeTrauma * moonRadius * 0.08;
+              const amp = baseAmp + impactAmp + spikeAmp;
+              this.moonThreat.group.position.set(
+                moonOrigPos.x + (Math.random() - 0.5) * amp,
+                moonOrigPos.y + (Math.random() - 0.5) * amp,
+                moonOrigPos.z + (Math.random() - 0.5) * amp,
+              );
+            }
+            this.aurora?.update(dt, cutsceneCamera);
+            this.applyDayNightPreset();
+            this.audioManager.update(dt);
+            for (const v of this.volcanoes) v.update(dt, _farQ, 999);
+            this.renderer.render(this.scene, cutsceneCamera);
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+
+        whiteoutEl.remove();
+        this.moonThreat?.group.position.copy(moonOrigPos);
+
+        beams.dispose();
+        this.scene.remove(beams.group);
+      } else {
+        // Fallback: no braziers found — use original delay.
+        await new Promise<void>((r) =>
+          setTimeout(r, Game.ETERNAL_VICTORY_DELAY_BEFORE_FADE_SEC * 1000),
+        );
+      }
+
+      // ── Snap white overlay up, then show victory text ─────────────────
       await this.transitionOverlay.fadeOut({
-        durationSec: Game.ETERNAL_VICTORY_FADE_TO_BLACK_SEC,
-        message: Game.ETERNAL_VICTORY_END_TEXT,
+        durationSec:   Game.ETERNAL_VICTORY_FADE_TO_BLACK_SEC / 2,
+        message:       Game.ETERNAL_VICTORY_END_TEXT,
         holdAtFullSec: Game.ETERNAL_VICTORY_HOLD_ON_BLACK_SEC,
+        bgColor:       "#ffffff",
+        textColor:     "#1a1a2e",
       });
       this.teardownGameplaySession();
       this.dayNightCycle.moonProgress = 0;

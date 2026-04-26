@@ -1,10 +1,14 @@
 export type TransitionFadeOutOptions = {
   /** Time to go from current opacity to fully black. Default 0.5s. */
   durationSec?: number;
-  /** Centered on top of the black overlay, cleared in {@link fadeIn} / {@link setMessage}. */
+  /** Centered on top of the overlay, cleared in {@link fadeIn} / {@link setMessage}. */
   message?: string;
-  /** Extra time to keep full black (and message) before resolving. */
+  /** Extra time to hold at full opacity (with message) before resolving. */
   holdAtFullSec?: number;
+  /** Overlay background colour. Defaults to '#000' (black). */
+  bgColor?: string;
+  /** Message text colour. Defaults to '#ede8e3' (near-white). */
+  textColor?: string;
 };
 
 export class TransitionOverlay {
@@ -63,9 +67,13 @@ export class TransitionOverlay {
   }
 
   fadeOut(options?: TransitionFadeOutOptions): Promise<void> {
-    const durationSec = options?.durationSec ?? 0.5;
-    const holdAtFullSec = options?.holdAtFullSec ?? 0;
+    const durationSec   = options?.durationSec   ?? 0.5;
+    const holdAtFullSec = options?.holdAtFullSec  ?? 0;
+    if (options?.bgColor)   this.el.style.background = options.bgColor;
+    if (options?.textColor && this.labelEl) this.labelEl.style.color = options.textColor;
     this.setMessage(options?.message ?? null);
+    // Apply text colour after setMessage creates the label.
+    if (options?.textColor && this.labelEl) this.labelEl.style.color = options.textColor;
     this.el.style.transition = `opacity ${durationSec}s ease`;
     void this.el.offsetHeight;
     this.el.style.opacity = "1";
@@ -87,6 +95,7 @@ export class TransitionOverlay {
   fadeIn(): Promise<void> {
     return new Promise((resolve) => {
       this.setMessage(null);
+      this.el.style.background = "#000"; // reset to black for next use
       // Re-enable CSS transition in case setOpacity() disabled it.
       this.el.style.transition = "opacity 0.8s ease";
       // Force a reflow so the browser registers the restored transition
