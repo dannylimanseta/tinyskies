@@ -167,6 +167,16 @@ interface MoonstoneRuinState {
 /** Baseline rim intensity for the moonstone halves in normal gameplay. */
 const MOONSTONE_RIM_INTENSITY_BASE = 0.7;
 
+const BALLOON_SCHEMES: [number, number][] = [
+  [0xcc2222, 0xf0d020],
+  [0x1e5cb0, 0x5eb8e8],
+  [0x228844, 0xd0e830],
+  [0xe85520, 0xf5c040],
+  [0x8822aa, 0xe868b0],
+  [0xcc2255, 0xff8844],
+  [0x1199aa, 0x88cc33],
+];
+
 export class Globe {
   readonly group = new Group();
   readonly radius: number;
@@ -4697,18 +4707,8 @@ transformed.z += sway2;`,
     const rand = seededRandom(999 + this.seed);
     const REF_UP = new Vector3(0, 1, 0);
 
-    const SCHEMES: [number, number][] = [
-      [0xcc2222, 0xf0d020],
-      [0x1e5cb0, 0x5eb8e8],
-      [0x228844, 0xd0e830],
-      [0xe85520, 0xf5c040],
-      [0x8822aa, 0xe868b0],
-      [0xcc2255, 0xff8844],
-      [0x1199aa, 0x88cc33],
-    ];
-
     for (let i = 0; i < BALLOON_COUNT; i++) {
-      const [primary, secondary] = SCHEMES[i % SCHEMES.length]!;
+      const [primary, secondary] = BALLOON_SCHEMES[i % BALLOON_SCHEMES.length]!;
       const balloon = this.createBalloonMesh(primary, secondary);
 
       const theta = rand() * Math.PI * 2;
@@ -4810,6 +4810,26 @@ transformed.z += sway2;`,
     const sharedTex = new CanvasTexture(canvas);
     const sharedMat = new MeshPhongMaterial({ map: sharedTex, side: DoubleSide });
     addRimLight(sharedMat, 0xffeedd, 0.3, 3.0);
+    
+    // Inject vertex sway
+    const baseCompile = sharedMat.onBeforeCompile;
+    sharedMat.onBeforeCompile = (shader, renderer) => {
+      baseCompile(shader, renderer);
+      shader.uniforms.oceanTime = this.oceanTime;
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        '#include <common>\nuniform float oceanTime;'
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        float swayMask = cos(position.x * 6.28318);
+        transformed.z += sin(oceanTime * 4.0 + position.x * 12.0) * 0.04 * swayMask;
+        transformed.y += sin(oceanTime * 5.0 + position.x * 15.0) * 0.01 * swayMask;
+        `
+      );
+    };
+
     this.raceBannerTex = sharedTex;
     this.raceBannerMat = sharedMat;
 
@@ -4818,15 +4838,17 @@ transformed.z += sway2;`,
 
       const bannerGroup = new Group();
       
-      const leftBalloon = this.createBalloonMesh(0xffffff, 0x222222);
+      const [p1, s1] = BALLOON_SCHEMES[Math.floor(rand() * BALLOON_SCHEMES.length)]!;
+      const leftBalloon = this.createBalloonMesh(p1, s1);
       leftBalloon.position.set(-0.25, 0, 0);
       bannerGroup.add(leftBalloon);
 
-      const rightBalloon = this.createBalloonMesh(0xffffff, 0x222222);
+      const [p2, s2] = BALLOON_SCHEMES[Math.floor(rand() * BALLOON_SCHEMES.length)]!;
+      const rightBalloon = this.createBalloonMesh(p2, s2);
       rightBalloon.position.set(0.25, 0, 0);
       bannerGroup.add(rightBalloon);
 
-      const bannerGeo = new PlaneGeometry(0.5, 0.12);
+      const bannerGeo = new PlaneGeometry(0.5, 0.12, 16, 2);
       const bannerMesh = new Mesh(bannerGeo, sharedMat);
       bannerMesh.position.set(0, -0.11, 0);
       bannerMesh.castShadow = true;
@@ -5399,9 +5421,13 @@ transformed.z += sway2;`,
     }
 
     for (const b of this.raceBanners) {
-      const bob = Math.sin(this.balloonTime * 0.5 + b.phase) * 0.04;
+      const bob = Math.sin(this.balloonTime * 1.2 + b.phase) * 0.06;
       const alt = b.baseAlt + bob;
       b.pivot.position.copy(b.normal).multiplyScalar(alt);
+
+      const tiltZ = Math.sin(this.balloonTime * 0.8 + b.phase * 1.5) * 0.08;
+      const tiltX = Math.cos(this.balloonTime * 0.6 + b.phase * 0.8) * 0.04;
+      b.inner.rotation.set(tiltX, 0, tiltZ);
     }
   }
 
