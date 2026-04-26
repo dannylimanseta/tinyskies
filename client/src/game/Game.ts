@@ -727,7 +727,7 @@ export class Game {
     this.container.addEventListener("click", this.onUiClickSound);
   }
 
-  /** VFX, combo SFX, camera shake, vehicle flash, and speed boost for plane diamonds (world + race bonus). */
+  /** VFX, combo SFX, camera shake, vehicle flash, and speed boost for diamonds (world + race bonus). */
   private triggerPlaneDiamondCollectEffects(worldPos: Vector3, tier: number) {
     this.collectVFX.play(worldPos, tier);
     if (this.vehicleFeatures.collectibleDiamonds) {
@@ -1679,7 +1679,10 @@ export class Game {
       hud: this.hud,
       hudParent: this.hud.root,
       uiContainer: this.container,
-      isPlane: () => this.playerVehicle === "plane" && this.localPlayer instanceof Plane,
+      canRace: () =>
+        (this.playerVehicle === "plane" && this.localPlayer instanceof Plane) ||
+        (this.playerVehicle === "carpet" && this.localPlayer instanceof Carpet),
+      isCarpet: () => this.playerVehicle === "carpet" && this.localPlayer instanceof Carpet,
       getWorldPos: () =>
         this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld),
       getQPosition: () => this.localPlayer.qPosition,
@@ -4606,17 +4609,21 @@ export class Game {
               max: PACKAGE_DELIVERIES_PER_WORLD,
             }
           : null;
+      const raceCompleted = !!ProgressionManager.loadPlayerWorldState().raceEternalFlameClaimed;
       this.hud.setQuestTrackers({
         vehicle: "plane",
         gremlin: { current: kills, max: GREMLIN_TAKEDOWNS_FOR_KING },
         pkg,
+        raceCompleted,
       });
     } else if (v === "carpet") {
       const jelly = this.skyJellyfish?.getCollectedCount() ?? 0;
+      const raceCompleted = !!ProgressionManager.loadPlayerWorldState().raceEternalFlameClaimed;
       this.hud.setQuestTrackers({
         vehicle: "carpet",
         jelly: { current: jelly, max: JELLY_COUNT },
         brazierHint: true,
+        raceCompleted,
       });
     } else if (v === "boat") {
       this.hud.setQuestTrackers({

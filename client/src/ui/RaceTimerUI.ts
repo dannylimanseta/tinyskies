@@ -1,5 +1,5 @@
 /**
- * Top-center countdown for the plane time-trial race.
+ * Top-center countdown for the time-trial race.
  * Styling aligned with HUD / package progress (dark glass, tabular time).
  */
 const STYLE_ID = "race-timer-ui-styles";

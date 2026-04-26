@@ -19,7 +19,7 @@ import {
 import { createBiplane } from "./BiplaneMesh";
 import { surfaceAltitudeAt } from "./TerrainSurface";
 
-const CRUISE_SPEED = 1.5;
+const CRUISE_SPEED = 1.725; // +15% from original 1.5
 const BRAKE_DECEL = 3.0;
 const ACCEL = 2.5;
 const MIN_SPEED = 0.3;

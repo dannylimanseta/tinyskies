@@ -29,9 +29,11 @@ const RACE_RING_RADIUS = 0.54;
 const RACE_RING_TUBE = 0.054;
 const RACE_COLLECT_RADIUS = 0.68;
 const RACE_TIME_LIMIT = 45;
+const RACE_TIME_LIMIT_CARPET = 35;
 const RACE_BANNER_TRIGGER_RADIUS = 0.6;
 const RACE_APPROACH_FILL_SEC = 2;
 const RACE_LOW_HOVER = 0.4;
+const RACE_LOW_HOVER_CARPET = 0.22;
 /** Above this normalized step index (0–1), weave eases to 0 for a straighter run-in to FINISH. */
 const RACE_PATH_LAST_STRAIGHT_START = 0.52;
 /** Radians; chained per-segment heading offset for S-curves (not one great circle). */
@@ -65,8 +67,9 @@ export interface RaceManagerDeps {
   hud: HUD;
   hudParent: HTMLElement;
   uiContainer: HTMLElement;
-  /** Only plane can start / run the trial. */
-  isPlane: () => boolean;
+  /** Only plane and carpet can start / run the trial. */
+  canRace: () => boolean;
+  isCarpet: () => boolean;
   getWorldPos: () => Vector3;
   getQPosition: () => Quaternion;
   getHeading: () => number;
@@ -78,7 +81,7 @@ export interface RaceManagerDeps {
 }
 
 /**
- * Plane-only time trial: hold with 3–2–1 in the progress ring, then winding course to a FINISH banner.
+ * Plane and Carpet time trial: hold with 3–2–1 in the progress ring, then winding course to a FINISH banner.
  */
 export class RaceManager {
   private readonly deps: RaceManagerDeps;
@@ -124,7 +127,7 @@ export class RaceManager {
   }
 
   update(dt: number) {
-    if (!this.deps.isPlane()) {
+    if (!this.deps.canRace()) {
       if (this.state !== "idle") this.abort();
       return;
     }
@@ -251,7 +254,7 @@ export class RaceManager {
     this.buildTrack(banner);
     this.state = "racing";
     this.progressRing.setVisible(false);
-    this.raceTimer = RACE_TIME_LIMIT;
+    this.raceTimer = this.deps.isCarpet() ? RACE_TIME_LIMIT_CARPET : RACE_TIME_LIMIT;
     this.timerUI.setTime(this.raceTimer);
     this.timerUI.show();
     this.deps.hud.setBrazierTrackerRaceHidden(true);
@@ -284,6 +287,7 @@ export class RaceManager {
     const pathHeading = Math.atan2(tangent.dot(sFrame.east), tangent.dot(sFrame.north));
 
     const bannerHangAlt = banner.baseAlt - this.deps.globe.radius;
+    const lowHover = this.deps.isCarpet() ? RACE_LOW_HOVER_CARPET : RACE_LOW_HOVER;
 
     const stepAngle = (Math.PI * 2) / RACE_CHECKPOINT_COUNT;
     const pathQuats: Quaternion[] = [];
@@ -311,7 +315,7 @@ export class RaceManager {
       const surf = this.deps.globe.getSurfaceAltitudeAt(up.x, up.y, up.z);
       const t = (i + 1) / RACE_CHECKPOINT_COUNT;
       const parabola = 4 * (t - 0.5) ** 2;
-      const hover = RACE_LOW_HOVER + (bannerHangAlt - RACE_LOW_HOVER) * parabola;
+      const hover = lowHover + (bannerHangAlt - lowHover) * parabola;
       const pos = cartesianFromSpherical(q, surf + hover, this.deps.globe.radius);
 
       const iNext = (i + 1) % RACE_CHECKPOINT_COUNT;
@@ -320,7 +324,7 @@ export class RaceManager {
       const nextSurf = this.deps.globe.getSurfaceAltitudeAt(nextUp.x, nextUp.y, nextUp.z);
       const tNext = (iNext + 1) / RACE_CHECKPOINT_COUNT;
       const parNext = 4 * (tNext - 0.5) ** 2;
-      const hoverNext = RACE_LOW_HOVER + (bannerHangAlt - RACE_LOW_HOVER) * parNext;
+      const hoverNext = lowHover + (bannerHangAlt - lowHover) * parNext;
       const nextPos = cartesianFromSpherical(nextQ, nextSurf + hoverNext, this.deps.globe.radius);
 
       const ringGroup = new Group();
@@ -330,13 +334,12 @@ export class RaceManager {
       const isFinish = i === RACE_CHECKPOINT_COUNT - 1;
 
       if (isFinish) {
-        const finishMats = this.deps.globe.getRaceFinishBannerMaterials();
-        if (finishMats) {
+        const finishMat = this.deps.globe.getRaceFinishBannerMaterial();
+        if (finishMat) {
           const decor = new Group();
           this.deps.globe.populateRaceBannerDecorGroup(
             decor,
-            finishMats.front,
-            finishMats.back,
+            finishMat,
             0.75,
             0.18,
             banner.index + 50420,

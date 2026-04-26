@@ -223,13 +223,9 @@ export class Globe {
   private raceBanners: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; }[] = [];
   private raceBannerMat: MeshPhongMaterial | null = null;
   private raceBannerTex: CanvasTexture | null = null;
-  private raceBannerMatBack: MeshPhongMaterial | null = null;
-  private raceBannerTexBack: CanvasTexture | null = null;
-  /** FINISH procedural banner: front tex + H-mirrored back (same pattern as world START). */
+  /** FINISH procedural banner — single material, back face uses a UV-flipped geometry clone. */
   private raceFinishBannerMat: MeshPhongMaterial | null = null;
   private raceFinishBannerTex: CanvasTexture | null = null;
-  private raceFinishBannerMatBack: MeshPhongMaterial | null = null;
-  private raceFinishBannerTexBack: CanvasTexture | null = null;
   /** Buried moonstone ring halves — giant ruin props; two sites, far apart. */
   readonly moonstoneRuinCenters: { normal: Vector3 }[] = [];
   private moonstoneRuins: MoonstoneRuinState[] = [];
@@ -4717,8 +4713,7 @@ transformed.z += sway2;`,
    */
   populateRaceBannerDecorGroup(
     bannerGroup: Group,
-    matFront: MeshPhongMaterial,
-    matBack: MeshPhongMaterial,
+    mat: MeshPhongMaterial,
     width: number,
     height: number,
     salt: number,
@@ -4736,7 +4731,7 @@ transformed.z += sway2;`,
     bannerGroup.add(rightBalloon);
 
     const geo = new PlaneGeometry(width, height, 16, 2);
-    this.addDoubleSidedRaceBannerPlanes(bannerGroup, matFront, matBack, geo, -0.11);
+    this.addDoubleSidedRaceBannerPlanes(bannerGroup, mat, geo, -0.11);
   }
 
   /** Front + back planes so checker/text read correctly from either viewing direction. */
@@ -4763,7 +4758,13 @@ transformed.z += sway2;`,
     ctx.fillText(label, 256, 64);
   }
 
+  /**
+   * Three.js ≥ r160 samples the map via `vMapUv` (not `vUv`).
+   * We patch `#include <map_fragment>` to flip vMapUv.x on back faces so "START" / "FINISH"
+   * read correctly from both sides with a single DoubleSide mesh — no geometry tricks needed.
+   */
   private applyRaceBannerFabricSway(mat: MeshPhongMaterial) {
+    mat.side = DoubleSide;
     const base = mat.onBeforeCompile;
     mat.onBeforeCompile = (shader, renderer) => {
       base?.(shader, renderer);
@@ -4780,29 +4781,33 @@ transformed.z += sway2;`,
         transformed.y += sin(oceanTime * 5.0 + position.x * 15.0) * 0.01 * swayMask;
         `
       );
+      // Flip the texture horizontally on the back face so text is readable from both sides.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+          vec2 _bannerUv = vMapUv;
+          if (!gl_FrontFacing) _bannerUv.x = 1.0 - _bannerUv.x;
+          vec4 sampledDiffuseColor = texture2D( map, _bannerUv );
+          #ifdef DECODE_VIDEO_TEXTURE
+            sampledDiffuseColor = sRGBTransferOETF( sampledDiffuseColor );
+          #endif
+          diffuseColor *= sampledDiffuseColor;
+        #endif`
+      );
     };
   }
 
+  /** Single DoubleSide mesh; the sway+UV-flip shader handles both faces automatically. */
   private addDoubleSidedRaceBannerPlanes(
     parent: Group,
-    matFront: MeshPhongMaterial,
-    matBack: MeshPhongMaterial,
+    mat: MeshPhongMaterial,
     geo: PlaneGeometry,
     y: number,
   ) {
-    const zOff = 0.0025;
-    const front = new Mesh(geo, matFront);
-    front.position.set(0, y, zOff);
-    front.castShadow = true;
-    parent.add(front);
-    const back = new Mesh(geo, matBack);
-    back.position.set(0, y, -zOff);
-    back.rotation.y = Math.PI;
-    const sameMat = matFront === matBack;
-    if (sameMat) back.scale.x = -1;
-    else back.scale.set(1, 1, 1);
-    back.castShadow = true;
-    parent.add(back);
+    const mesh = new Mesh(geo, mat);
+    mesh.position.set(0, y, 0);
+    mesh.castShadow = true;
+    parent.add(mesh);
   }
 
   private createBalloons() {
@@ -4901,26 +4906,12 @@ transformed.z += sway2;`,
     const ctx = canvas.getContext("2d")!;
     this.drawRaceBannerLabelCanvas(ctx, "START");
     const sharedTex = new CanvasTexture(canvas);
-    const sharedMat = new MeshPhongMaterial({ map: sharedTex, side: FrontSide });
+    const sharedMat = new MeshPhongMaterial({ map: sharedTex, side: DoubleSide });
     addRimLight(sharedMat, 0xffeedd, 0.3, 3.0);
     this.applyRaceBannerFabricSway(sharedMat);
 
     this.raceBannerTex = sharedTex;
     this.raceBannerMat = sharedMat;
-
-    const startBackCanvas = document.createElement("canvas");
-    startBackCanvas.width = 512;
-    startBackCanvas.height = 128;
-    const sbctx = startBackCanvas.getContext("2d")!;
-    sbctx.translate(startBackCanvas.width, 0);
-    sbctx.scale(-1, 1);
-    this.drawRaceBannerLabelCanvas(sbctx, "START");
-    const sharedTexBack = new CanvasTexture(startBackCanvas);
-    const sharedMatBack = new MeshPhongMaterial({ map: sharedTexBack, side: FrontSide });
-    addRimLight(sharedMatBack, 0xffeedd, 0.3, 3.0);
-    this.applyRaceBannerFabricSway(sharedMatBack);
-    this.raceBannerTexBack = sharedTexBack;
-    this.raceBannerMatBack = sharedMatBack;
 
     const finishCanvas = document.createElement("canvas");
     finishCanvas.width = 512;
@@ -4928,31 +4919,17 @@ transformed.z += sway2;`,
     const fctx = finishCanvas.getContext("2d")!;
     this.drawRaceBannerLabelCanvas(fctx, "FINISH");
     const finishTex = new CanvasTexture(finishCanvas);
-    const finishMat = new MeshPhongMaterial({ map: finishTex, side: FrontSide });
+    const finishMat = new MeshPhongMaterial({ map: finishTex, side: DoubleSide });
     addRimLight(finishMat, 0xffeedd, 0.3, 3.0);
     this.applyRaceBannerFabricSway(finishMat);
     this.raceFinishBannerTex = finishTex;
     this.raceFinishBannerMat = finishMat;
 
-    const finishBackCanvas = document.createElement("canvas");
-    finishBackCanvas.width = 512;
-    finishBackCanvas.height = 128;
-    const fbctx = finishBackCanvas.getContext("2d")!;
-    fbctx.translate(finishBackCanvas.width, 0);
-    fbctx.scale(-1, 1);
-    this.drawRaceBannerLabelCanvas(fbctx, "FINISH");
-    const finishTexBack = new CanvasTexture(finishBackCanvas);
-    const finishMatBack = new MeshPhongMaterial({ map: finishTexBack, side: FrontSide });
-    addRimLight(finishMatBack, 0xffeedd, 0.3, 3.0);
-    this.applyRaceBannerFabricSway(finishMatBack);
-    this.raceFinishBannerTexBack = finishTexBack;
-    this.raceFinishBannerMatBack = finishMatBack;
-
     for (const normal of chosen) {
       this.raceBannerCenters.push({ normal: normal.clone() });
 
       const bannerGroup = new Group();
-      
+
       const [p1, s1] = BALLOON_SCHEMES[Math.floor(rand() * BALLOON_SCHEMES.length)]!;
       const leftBalloon = this.createBalloonMesh(p1, s1);
       leftBalloon.position.set(-0.25, 0, 0);
@@ -4964,7 +4941,7 @@ transformed.z += sway2;`,
       bannerGroup.add(rightBalloon);
 
       const bannerGeo = new PlaneGeometry(0.5, 0.12, 16, 2);
-      this.addDoubleSidedRaceBannerPlanes(bannerGroup, sharedMat, sharedMatBack, bannerGeo, -0.11);
+      this.addDoubleSidedRaceBannerPlanes(bannerGroup, sharedMat, bannerGeo, -0.11);
 
       const baseAlt = this.radius + BALLOON_ALTITUDE + (rand() - 0.5) * 0.2;
       const spin = rand() * Math.PI * 2;
@@ -5549,10 +5526,9 @@ transformed.z += sway2;`,
     return surfaceAltitudeAt(this.seed, this.terrainType, nx, ny, nz);
   }
 
-  /** Front + H-mirrored-back (no shared-mat scale hack — matches world START banners). */
-  getRaceFinishBannerMaterials(): { front: MeshPhongMaterial; back: MeshPhongMaterial } | null {
-    if (!this.raceFinishBannerMat || !this.raceFinishBannerMatBack) return null;
-    return { front: this.raceFinishBannerMat, back: this.raceFinishBannerMatBack };
+  /** Single material for the FINISH banner; {@link addDoubleSidedRaceBannerPlanes} handles both faces. */
+  getRaceFinishBannerMaterial(): MeshPhongMaterial | null {
+    return this.raceFinishBannerMat;
   }
 
   getWorldSeed(): number {
@@ -5612,11 +5588,7 @@ transformed.z += sway2;`,
     moonstoneDustSpriteTexture = null;
     this.raceBannerTex?.dispose();
     this.raceBannerMat?.dispose();
-    this.raceBannerTexBack?.dispose();
-    this.raceBannerMatBack?.dispose();
     this.raceFinishBannerTex?.dispose();
     this.raceFinishBannerMat?.dispose();
-    this.raceFinishBannerTexBack?.dispose();
-    this.raceFinishBannerMatBack?.dispose();
   }
 }

@@ -62,7 +62,7 @@ export interface SavedPlayerWorldState {
   voidPortalsClosed?: boolean;
   /** Per-vehicle first-time controls tutorial completion. */
   vehicleTutorialsCompleted?: Partial<Record<Vehicle, boolean>>;
-  /** One-time eternal flame from completing the plane time-trial race. */
+  /** One-time eternal flame from completing the time-trial race. */
   raceEternalFlameClaimed?: boolean;
 }
 
