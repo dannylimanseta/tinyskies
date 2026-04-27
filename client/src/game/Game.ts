@@ -573,6 +573,8 @@ export class Game {
   private vhsGlitchInterval: ReturnType<typeof setInterval> | null = null;
   private progression!: ProgressionManager;
   private levelUpCards!: LevelUpCards;
+  /** True while level-up cards are shown (or the short delay before); vehicle brakes harder so it does not coast. */
+  private choosingLevelUpUpgrade = false;
   /** Count of previously spawned bonus collectibles so we only spawn the delta. */
   private prevDiamondCountBonus = 0;
   private prevWorldHeartCountBonus = 0;
@@ -2122,6 +2124,7 @@ export class Game {
     this.progression?.save();
     this.progression?.upgrades.reset();
     this.levelUpCards?.dispose();
+    this.choosingLevelUpUpgrade = false;
 
     if (this.vhsGlitchInterval !== null) {
       clearInterval(this.vhsGlitchInterval);
@@ -3189,6 +3192,14 @@ export class Game {
 
     let { turnRate, forward, brake, elevate, descend, paintball, specialAction, interact } =
       this.touchControls ? this.touchControls.getState() : this.controls.getState();
+    if (this.choosingLevelUpUpgrade) {
+      forward = false;
+      brake = true;
+      turnRate = 0;
+      paintball = false;
+      specialAction = false;
+      interact = false;
+    }
     this.updateVehicleTutorial({ turnRate, forward, brake, elevate, paintball, specialAction });
 
     // Twister spin: one burst per engagement, then cooldown (collision was re-arming every frame → infinite spin).
@@ -3856,6 +3867,7 @@ export class Game {
 
     // Dismiss any open level-up card overlay so it doesn't block the cutscene.
     this.levelUpCards.dispose();
+    this.choosingLevelUpUpgrade = false;
 
     this.controls.enabled = false;
     if (this.touchControls) this.touchControls.enabled = false;
@@ -4032,6 +4044,7 @@ export class Game {
     if (this.touchControls) this.touchControls.enabled = false;
     this.hud.root.style.display = "none";
     this.levelUpCards.dispose();
+    this.choosingLevelUpUpgrade = false;
     this.packageQuestHUD.hideBubble();
 
     // Cache per-ruin cinematic frames: start pos (current floating), normal, rest quat.
@@ -6325,15 +6338,22 @@ export class Game {
     const cards = this.progression.upgrades.drawCards(3);
     if (cards.length === 0) return;
 
+    this.choosingLevelUpUpgrade = true;
     this.controls.enabled = false;
     if (this.touchControls) this.touchControls.enabled = false;
 
     setTimeout(() => {
-      if (this.gamePhase !== "flying") return;
+      if (this.gamePhase !== "flying") {
+        this.choosingLevelUpUpgrade = false;
+        this.controls.enabled = true;
+        if (this.touchControls) this.touchControls.enabled = true;
+        return;
+      }
       this.levelUpCards.show(cards, (id) => {
         this.progression.upgrades.apply(id);
         this.propagateUpgrades();
         this.progression.save();
+        this.choosingLevelUpUpgrade = false;
         this.controls.enabled = true;
         if (this.touchControls) this.touchControls.enabled = true;
       });
