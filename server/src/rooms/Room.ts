@@ -244,7 +244,13 @@ export class Room {
     this.hotFlagHolderId = null;
     this.hotFlagImmuneUntilMs = 0;
     this.clearAllChallengersWithBroadcast();
-    this.broadcastFlagDropped({ x: pos.x, y: pos.y, z: pos.z });
+    this.broadcastFlagDropped({
+      x: pos.x,
+      y: pos.y,
+      z: pos.z,
+      droppedById: state.id,
+      droppedByName: state.name,
+    });
     this.startFreeFlagRespawnTimer();
   }
 
@@ -307,6 +313,8 @@ export class Room {
         if (now - entry.startMs >= FLAG_CAPTURE_DURATION_MS) {
           const newHolderId = cid;
           const newHolder = ch;
+          const previousHolderId = this.hotFlagHolderId!;
+          const previousHolderName = carrier.state.name;
           const losers = [...this.hotFlagChallengers.keys()].filter((x) => x !== newHolderId);
           this.hotFlagHolderId = newHolderId;
           this.hotFlagImmuneUntilMs = now + FLAG_IMMUNITY_MS;
@@ -317,6 +325,8 @@ export class Room {
           this.broadcastFlagStolen({
             newHolderId,
             newHolderName: newHolder.state.name,
+            previousHolderId,
+            previousHolderName,
             immuneUntilMs: this.hotFlagImmuneUntilMs,
           });
           return;

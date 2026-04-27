@@ -148,6 +148,8 @@ export interface FlagCaptureEndEvent {
 export interface FlagStolenEvent {
   newHolderId: string;
   newHolderName: string;
+  previousHolderId: string;
+  previousHolderName: string;
   immuneUntilMs: number;
 }
 
@@ -155,6 +157,8 @@ export interface FlagDroppedEvent {
   x: number;
   y: number;
   z: number;
+  droppedById: string;
+  droppedByName: string;
 }
 
 /** Sent only to a player on join so their client matches room flag state. */

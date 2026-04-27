@@ -169,7 +169,7 @@ export class FlagSystem {
     this.clearCaptureUi();
     this.scratchWorld.set(ev.x, ev.y, ev.z);
     this.applyFreeAt(this.scratchWorld);
-    this.hud.showFlagAnnounce("A flag appeared in the world!", 3500);
+    this.hud.showFlagAnnounce("A flag has spawned in the world!", 4000);
   }
 
   onFlagCollected(ev: FlagCollectedEvent) {
@@ -177,7 +177,8 @@ export class FlagSystem {
     this.clearCaptureUi();
     const you = ev.holderId === this.localId();
     this.hud.showFlagAnnounce(
-      you ? "You grabbed the flag!" : `${ev.holderName} grabbed the flag!`,
+      you ? "You picked up the flag!" : `${ev.holderName} picked up the flag!`,
+      4000,
     );
     this.applyHeld();
   }
@@ -208,10 +209,18 @@ export class FlagSystem {
   onFlagStolen(ev: FlagStolenEvent) {
     this.holderId = ev.newHolderId;
     this.clearCaptureUi();
-    const youNow = ev.newHolderId === this.localId();
-    this.hud.showFlagAnnounce(
-      youNow ? "You stole the flag!" : `${ev.newHolderName} stole the flag!`,
-    );
+    const lid = this.localId();
+    const youThief = ev.newHolderId === lid;
+    const youVictim = ev.previousHolderId === lid;
+    let msg: string;
+    if (youThief) {
+      msg = `You stole the flag from ${ev.previousHolderName}!`;
+    } else if (youVictim) {
+      msg = `${ev.newHolderName} stole the flag from you!`;
+    } else {
+      msg = `${ev.newHolderName} stole the flag from ${ev.previousHolderName}!`;
+    }
+    this.hud.showFlagAnnounce(msg, 4500);
     this.applyHeld();
   }
 
@@ -220,7 +229,11 @@ export class FlagSystem {
     this.clearCaptureUi();
     this.scratchWorld.set(ev.x, ev.y, ev.z);
     this.applyFreeAt(this.scratchWorld);
-    this.hud.showFlagAnnounce("The flag was dropped!", 3200);
+    const you = ev.droppedById === this.localId();
+    this.hud.showFlagAnnounce(
+      you ? "You dropped the flag!" : `${ev.droppedByName} dropped the flag!`,
+      4000,
+    );
   }
 
   onFlagCleared() {
