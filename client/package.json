@@ -10,8 +10,9 @@
   },
   "dependencies": {
     "@globefly/shared": "*",
-    "three": "^0.172.0",
-    "socket.io-client": "^4.8.1"
+    "@vercel/analytics": "^2.0.1",
+    "socket.io-client": "^4.8.1",
+    "three": "^0.172.0"
   },
   "devDependencies": {
     "@types/three": "^0.172.0",
