@@ -10,14 +10,12 @@ import type {
 import { FLAG_CAPTURE_DURATION_MS } from "@globefly/shared";
 import {
   BoxGeometry,
-  Camera,
   CylinderGeometry,
   Group,
   Mesh,
   MeshPhongMaterial,
   PointLight,
   Scene,
-  SphereGeometry,
   Vector3,
 } from "three";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
@@ -27,7 +25,6 @@ import type { RemotePlaneManager } from "./RemotePlane";
 
 const FLAG_BOB_SPEED = 2.2;
 const FLAG_OFFSET_LOCAL_Y = 0.38;
-const RING_ANCHOR_Y = 0.32;
 /** Tall pickup beam (same shader as package quest); must read from orbit. */
 const FLAG_FREE_BEAM_HEIGHT = 4.5;
 const FLAG_FREE_BEAM_WIDTH = 0.11;
@@ -90,21 +87,24 @@ export class FlagSystem {
       new MeshPhongMaterial({ color: 0xcf9a2e }),
     );
     pole.position.y = 0.02;
-    const ball = new Mesh(
-      new SphereGeometry(0.09, 12, 10),
-      new MeshPhongMaterial({
-        color: 0xf7c948,
-        emissive: 0x442200,
-        emissiveIntensity: 0.35,
-      }),
-    );
-    ball.position.y = 0.16;
-    const cloth = new Mesh(
-      new BoxGeometry(0.15, 0.1, 0.02),
-      new MeshPhongMaterial({ color: 0xe8a428 }),
-    );
-    cloth.position.set(0.07, 0.22, 0);
-    this.flagRoot.add(pole, ball, cloth);
+    const clothGeo = new BoxGeometry(0.15, 0.1, 0.02, 10, 4, 1);
+    const clothMat = new MeshPhongMaterial({ color: 0xe8a428, flatShading: true });
+    clothMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.beamTime;
+      shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader;
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+         float edge = smoothstep(-0.075, 0.075, position.x);
+         float wave = sin(position.x * 20.0 - uTime * 8.0) * 0.6
+                    + sin(position.y * 15.0 - uTime * 5.0) * 0.4;
+         transformed.z += wave * 0.05 * edge;
+        `
+      );
+    };
+    const cloth = new Mesh(clothGeo, clothMat);
+    cloth.position.set(0.075, 0.22, 0);
+    this.flagRoot.add(pole, cloth);
 
     this.carrierLight = new PointLight(0xffcc66, 0.55, 4.5, 1.2);
     this.carrierLight.position.y = 0.22;
@@ -292,7 +292,7 @@ export class FlagSystem {
     this.onFlagCleared();
   }
 
-  update(dt: number, camera: Camera, rendererDomElement: HTMLElement) {
+  update(dt: number) {
     const lid = this.localId();
 
     if (this.mode === "free" && this.flagRoot.visible) {
@@ -302,31 +302,19 @@ export class FlagSystem {
       this.flagRoot.position.set(this.freeBasePos.x, this.freeBasePos.y + bob, this.freeBasePos.z);
       this.alignFreeBeamToRadial();
     } else if (this.mode === "held" && this.holderId === lid && this.flagRoot.visible) {
+      this.beamTime.value += dt;
       this.bobTime += dt * FLAG_BOB_SPEED;
       const bob = Math.sin(this.bobTime) * 0.022;
       this.flagRoot.position.set(0, FLAG_OFFSET_LOCAL_Y + bob, 0);
     }
 
     if (this.captureStartMs != null && this.captureRing && this.holderId) {
-      const g =
-        this.holderId === lid
-          ? this.getLocalPlayerGroup()
-          : this.remotePlanes.getPlaneGroup(this.holderId);
-      if (g) {
-        this.scratchWorld.set(0, RING_ANCHOR_Y, 0);
-        g.localToWorld(this.scratchWorld);
-        this.scratchWorld.project(camera);
-        const w = rendererDomElement.clientWidth;
-        const h = rendererDomElement.clientHeight;
-        const x = (this.scratchWorld.x * 0.5 + 0.5) * w;
-        const y = (-this.scratchWorld.y * 0.5 + 0.5) * h;
-        const el = this.captureRing.element;
-        el.style.position = "fixed";
-        el.style.left = `${x}px`;
-        el.style.top = `${y}px`;
-        el.style.transform = "translate(-50%, -50%)";
-        el.style.zIndex = "20";
-      }
+      const el = this.captureRing.element;
+      el.style.position = "fixed";
+      el.style.left = "50vw";
+      el.style.top = "50vh";
+      el.style.transform = "translate(-50%, -50%)";
+      el.style.zIndex = "20";
       const elapsed = Date.now() - this.captureStartMs;
       const p = Math.min(1, elapsed / FLAG_CAPTURE_DURATION_MS);
       this.captureRing.setProgress(p);

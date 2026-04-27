@@ -73,7 +73,7 @@ function createRemoteCarryPackage(): Group {
 }
 
 /** Multiplayer hot-flag marker above remote vehicles (separate from package `carrying`). */
-function createRemoteHotFlag(): Group {
+function createRemoteHotFlag(timeUniform: { value: number }): Group {
   const g = new Group();
   const pole = new Mesh(
     new CylinderGeometry(0.012, 0.012, 0.22, 6),
@@ -81,11 +81,24 @@ function createRemoteHotFlag(): Group {
   );
   pole.position.y = 0.11;
   g.add(pole);
-  const cloth = new Mesh(
-    new BoxGeometry(0.14, 0.09, 0.02),
-    new MeshBasicMaterial({ color: 0xe8b030 }),
-  );
-  cloth.position.set(0.06, 0.2, 0);
+
+  const clothGeo = new BoxGeometry(0.14, 0.09, 0.02, 10, 4, 1);
+  const clothMat = new MeshBasicMaterial({ color: 0xe8b030 });
+  clothMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = timeUniform;
+    shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+       float edge = smoothstep(-0.07, 0.07, position.x);
+       float wave = sin(position.x * 20.0 - uTime * 8.0) * 0.6
+                  + sin(position.y * 15.0 - uTime * 5.0) * 0.4;
+       transformed.z += wave * 0.05 * edge;
+      `
+    );
+  };
+  const cloth = new Mesh(clothGeo, clothMat);
+  cloth.position.set(0.07, 0.2, 0);
   g.add(cloth);
   g.position.y = 0.42;
   g.visible = false;
@@ -145,6 +158,7 @@ class RemotePlane {
   private lastRendered: PartialState | null = null;
   private wasDeadReckoning = false;
   private bobTime = Math.random() * Math.PI * 2;
+  private timeUniform = { value: 0 };
   private hullColor: number;
   private visibilityTarget = 1;
   private visibilitySmooth = 1;
@@ -181,7 +195,7 @@ class RemotePlane {
     this.beacon = new PlayerBeacon(color);
     this.carryPackage = createRemoteCarryPackage();
     this.group.add(this.carryPackage);
-    this.hotFlag = createRemoteHotFlag();
+    this.hotFlag = createRemoteHotFlag(this.timeUniform);
     this.group.add(this.hotFlag);
   }
 
@@ -227,6 +241,7 @@ class RemotePlane {
   }
 
   update(dt: number) {
+    this.timeUniform.value += dt;
     if (this.vehicle === "plane") {
       if (this.paintballWobbleAmp > 0.002) {
         this.paintballWobblePhase += dt * 19;

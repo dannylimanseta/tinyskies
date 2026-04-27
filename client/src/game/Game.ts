@@ -3054,7 +3054,7 @@ export class Game {
         portal.update(dt, this.cameraRig.camera, 0); // Hide during intro
       }
       this.remotePlanes.update(dt, this.cameraRig.camera);
-      this.flagSystem?.update(dt, this.cameraRig.camera, this.renderer.domElement);
+      this.flagSystem?.update(dt);
       this.applyDayNightPreset();
       this.audioManager.update(dt);
       this.aurora?.update(dt, this.cameraRig.camera);
@@ -3408,7 +3408,7 @@ export class Game {
     this.globe.update(dt);
 
     this.remotePlanes.update(dt, this.cameraRig.camera);
-    this.flagSystem?.update(dt, this.cameraRig.camera, this.renderer.domElement);
+    this.flagSystem?.update(dt);
 
     if (this.npcPlanes && !this.inCosmicVoid) {
       const _npcPlayerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
