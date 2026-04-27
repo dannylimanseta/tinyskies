@@ -72,6 +72,26 @@ function createRemoteCarryPackage(): Group {
   return g;
 }
 
+/** Multiplayer hot-flag marker above remote vehicles (separate from package `carrying`). */
+function createRemoteHotFlag(): Group {
+  const g = new Group();
+  const pole = new Mesh(
+    new CylinderGeometry(0.012, 0.012, 0.22, 6),
+    new MeshBasicMaterial({ color: 0xf7c948 }),
+  );
+  pole.position.y = 0.11;
+  g.add(pole);
+  const cloth = new Mesh(
+    new BoxGeometry(0.14, 0.09, 0.02),
+    new MeshBasicMaterial({ color: 0xe8b030 }),
+  );
+  cloth.position.set(0.06, 0.2, 0);
+  g.add(cloth);
+  g.position.y = 0.42;
+  g.visible = false;
+  return g;
+}
+
 const REMOTE_COLORS = [0x44aaff, 0x44dd66, 0xffaa22, 0xdd44dd, 0x22dddd, 0xff6688];
 let colorIndex = 0;
 
@@ -113,6 +133,7 @@ class RemotePlane {
   readonly vehicleType: Vehicle;
   private readonly vehicle: Vehicle;
   private readonly carryPackage: Group;
+  private readonly hotFlag: Group;
   private carrying = false;
 
   private buffer: BufferedSnapshot[] = [];
@@ -160,6 +181,13 @@ class RemotePlane {
     this.beacon = new PlayerBeacon(color);
     this.carryPackage = createRemoteCarryPackage();
     this.group.add(this.carryPackage);
+    this.hotFlag = createRemoteHotFlag();
+    this.group.add(this.hotFlag);
+  }
+
+  /** Multiplayer hot-flag bearer (not related to {@link PlayerState.carrying} / package). */
+  setCarryingFlag(on: boolean) {
+    this.hotFlag.visible = on;
   }
 
   private applyHullColor(hex: number) {
@@ -403,6 +431,10 @@ export class RemotePlaneManager {
   /** Biplane root for paint splatters (see `BiplaneMesh` `splatterAnchor`). */
   getPlaneGroup(playerId: string): Group | null {
     return this.planes.get(playerId)?.group ?? null;
+  }
+
+  setPlayerCarryingFlag(playerId: string, on: boolean) {
+    this.planes.get(playerId)?.setCarryingFlag(on);
   }
 
   triggerPaintballHitWobble(playerId: string) {

@@ -64,6 +64,9 @@ export class HUD {
   private centeredToastEls: HTMLDivElement[] = [];
   private raceConfettiEl: HTMLElement | null = null;
 
+  /** Multiplayer hot-flag: shown when another player is attempting to steal. */
+  private flagCarrierWarningEl: HTMLDivElement | null = null;
+
   private questTrackersEl: HTMLElement | null = null;
   private lastQuestTrackerSig = "";
 
@@ -298,6 +301,33 @@ export class HUD {
   /** Generic one-liner toast — used for NPC wave greetings and similar ambient messages. */
   showAmbientToast(message: string, durationMs = 2800) {
     this.showCenteredToast("hud-ambient-toast", message, durationMs);
+  }
+
+  /** Multiplayer hot-flag world announcements (gold). */
+  showFlagAnnounce(text: string, durationMs = 4000) {
+    this.showCenteredToast("hud-flag-announce", text, durationMs);
+  }
+
+  /**
+   * True while at least one other player is in capture range (server-driven).
+   * Only shown when the local player is the flag bearer.
+   */
+  showFlagCarrierWarning(on: boolean) {
+    if (!this.flagCarrierWarningEl) {
+      const el = document.createElement("div");
+      el.className = "hud-flag-carrier-warning";
+      el.textContent = "Someone is circling you!";
+      el.setAttribute("aria-live", "polite");
+      el.style.display = "none";
+      this.el.appendChild(el);
+      this.flagCarrierWarningEl = el;
+    }
+    this.flagCarrierWarningEl.style.display = on ? "block" : "none";
+  }
+
+  /** Root `#hud` element — for DOM overlays that must stack with HUD (e.g. flag capture ring). */
+  getHudRoot(): HTMLElement {
+    return this.el;
   }
 
   /** Shown when bird flock formation completes; matches XP popup line + float styling, below the flock ring. */
@@ -931,6 +961,40 @@ export class HUD {
         pointer-events: none;
         white-space: nowrap;
         z-index: 14;
+      }
+
+      .hud-flag-announce {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        font-size: 1.25rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        color: #f7c948;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        transition: opacity 0.35s ease-out, transform 0.75s ease-out;
+        pointer-events: none;
+        white-space: nowrap;
+        z-index: 14;
+        max-width: min(92vw, 28rem);
+        text-align: center;
+        line-height: 1.35;
+      }
+
+      .hud-flag-carrier-warning {
+        position: absolute;
+        left: 50%;
+        bottom: max(28%, calc(120px + env(safe-area-inset-bottom)));
+        transform: translateX(-50%);
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: rgba(255, 230, 180, 0.98);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        pointer-events: none;
+        z-index: 15;
+        white-space: nowrap;
       }
 
       .hud-flock-celebration {

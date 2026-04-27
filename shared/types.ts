@@ -112,6 +112,63 @@ export interface PaintballHitEvent {
   splatSeed: number;
 }
 
+/** Hot-potato flag: collect radius (world units). Server copy: `server/src/flagConstants.ts`. */
+export const FLAG_COLLECT_RADIUS = 0.6;
+/** Hot-potato flag: challenger must stay within this of carrier. */
+export const FLAG_CAPTURE_RADIUS = 1.0;
+/** Altitude offset above globe surface for free-floating flag spawn. */
+export const FLAG_HOVER_ALTITUDE = 1.5;
+export const FLAG_CAPTURE_DURATION_MS = 3000;
+export const FLAG_IMMUNITY_MS = 10_000;
+export const FLAG_AUTO_RESPAWN_MS = 45_000;
+export const FLAG_SPAWN_DELAY_MS = 5000;
+export const FLAG_CAPTURE_GRACE_MS = 300;
+
+export interface FlagSpawnedEvent {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface FlagCollectedEvent {
+  holderId: string;
+  holderName: string;
+}
+
+export interface FlagCaptureStartEvent {
+  challengerId: string;
+  challengerName: string;
+  startMs: number;
+}
+
+export interface FlagCaptureEndEvent {
+  challengerId: string;
+}
+
+export interface FlagStolenEvent {
+  newHolderId: string;
+  newHolderName: string;
+  immuneUntilMs: number;
+}
+
+export interface FlagDroppedEvent {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** Sent only to a player on join so their client matches room flag state. */
+export interface FlagSyncEvent {
+  /** True when the flag is on the ground waiting to be picked up. */
+  free: boolean;
+  x?: number;
+  y?: number;
+  z?: number;
+  holderId?: string;
+  holderName?: string;
+  immuneUntilMs?: number;
+}
+
 export interface ServerToClientEvents {
   "player:joined": (player: PlayerState) => void;
   "player:left": (playerId: string) => void;
@@ -121,6 +178,14 @@ export interface ServerToClientEvents {
   "world:full": (slug: string) => void;
   "paintball:fired": (event: PaintballFiredEvent) => void;
   "paintball:hit": (event: PaintballHitEvent) => void;
+  "flag:spawned": (ev: FlagSpawnedEvent) => void;
+  "flag:collected": (ev: FlagCollectedEvent) => void;
+  "flag:capture_start": (ev: FlagCaptureStartEvent) => void;
+  "flag:capture_end": (ev: FlagCaptureEndEvent) => void;
+  "flag:stolen": (ev: FlagStolenEvent) => void;
+  "flag:dropped": (ev: FlagDroppedEvent) => void;
+  "flag:cleared": () => void;
+  "flag:sync": (ev: FlagSyncEvent) => void;
 }
 
 export interface ClientToServerEvents {

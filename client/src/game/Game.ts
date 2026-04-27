@@ -45,6 +45,7 @@ import { isMobile } from "../utils/isMobile";
 import { StateSync } from "../network/StateSync";
 import { RemotePlaneManager } from "./RemotePlane";
 import { PaintballSystem } from "./PaintballSystem";
+import { FlagSystem } from "./FlagSystem";
 import { GodRays } from "./GodRays";
 import { SpeedLines } from "./SpeedLines";
 import { Contrails } from "./Contrails";
@@ -388,6 +389,7 @@ export class Game {
   private cameraRig!: CameraRig;
   private remotePlanes!: RemotePlaneManager;
   private paintballSystem: PaintballSystem | null = null;
+  private flagSystem: FlagSystem | null = null;
   private speedLines!: SpeedLines;
   private contrails!: Contrails;
   private wakeTrail!: WakeTrail;
@@ -2046,6 +2048,8 @@ export class Game {
     this.localPlayer?.dispose();
     this.paintballSystem?.dispose();
     this.paintballSystem = null;
+    this.flagSystem?.dispose();
+    this.flagSystem = null;
     this.skyGremlins?.dispose();
     this.skyGremlins = null;
     this.lastGremlinHitSfxAt = 0;
@@ -2732,6 +2736,9 @@ export class Game {
   }
 
   private initNetworking(slug: string) {
+    this.flagSystem?.dispose();
+    this.flagSystem = null;
+
     const serverUrl = this.getServerUrl();
     this.socketClient = new SocketClient(serverUrl);
 
@@ -2770,6 +2777,23 @@ export class Game {
         this.localPlayer instanceof Plane ? this.localPlayer.group : null,
       );
     });
+
+    this.flagSystem = new FlagSystem({
+      scene: this.scene,
+      hud: this.hud,
+      getLocalPlayerId: () => this.socketClient?.id ?? "",
+      getLocalPlayerGroup: () => this.localPlayer?.group ?? null,
+      remotePlanes: this.remotePlanes,
+    });
+
+    this.socketClient.onFlagSpawned((ev) => this.flagSystem?.onFlagSpawned(ev));
+    this.socketClient.onFlagCollected((ev) => this.flagSystem?.onFlagCollected(ev));
+    this.socketClient.onFlagCaptureStart((ev) => this.flagSystem?.onFlagCaptureStart(ev));
+    this.socketClient.onFlagCaptureEnd((ev) => this.flagSystem?.onFlagCaptureEnd(ev));
+    this.socketClient.onFlagStolen((ev) => this.flagSystem?.onFlagStolen(ev));
+    this.socketClient.onFlagDropped((ev) => this.flagSystem?.onFlagDropped(ev));
+    this.socketClient.onFlagCleared(() => this.flagSystem?.onFlagCleared());
+    this.socketClient.onFlagSync((ev) => this.flagSystem?.onFlagSync(ev));
 
     this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle, this.reservationId);
 
@@ -3030,6 +3054,7 @@ export class Game {
         portal.update(dt, this.cameraRig.camera, 0); // Hide during intro
       }
       this.remotePlanes.update(dt, this.cameraRig.camera);
+      this.flagSystem?.update(dt, this.cameraRig.camera, this.renderer.domElement);
       this.applyDayNightPreset();
       this.audioManager.update(dt);
       this.aurora?.update(dt, this.cameraRig.camera);
@@ -3383,6 +3408,7 @@ export class Game {
     this.globe.update(dt);
 
     this.remotePlanes.update(dt, this.cameraRig.camera);
+    this.flagSystem?.update(dt, this.cameraRig.camera, this.renderer.domElement);
 
     if (this.npcPlanes && !this.inCosmicVoid) {
       const _npcPlayerPos = this.localPlayerWorldScratch.setFromMatrixPosition(this.localPlayer.group.matrixWorld);
@@ -6814,6 +6840,8 @@ export class Game {
     this.transitionOverlay?.dispose();
     this.flockFormationHUD?.dispose();
     this.remotePlayerNameLabels.dispose();
+    this.flagSystem?.dispose();
+    this.flagSystem = null;
     this.stateSync?.stop();
     this.socketClient?.disconnect();
     this.audioManager.dispose();

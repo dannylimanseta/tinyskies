@@ -18,7 +18,7 @@ function tangentFrame(qPosition: Quaternion): { up: Vector3; north: Vector3; eas
   return { up, north, east };
 }
 
-function cartesianFromSpherical(
+export function cartesianFromSpherical(
   qPosition: Quaternion,
   altitude: number,
   globeRadius: number,

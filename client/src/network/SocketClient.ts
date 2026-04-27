@@ -1,5 +1,12 @@
 import { io, Socket } from "socket.io-client";
 import type {
+  FlagCaptureEndEvent,
+  FlagCaptureStartEvent,
+  FlagCollectedEvent,
+  FlagDroppedEvent,
+  FlagSpawnedEvent,
+  FlagStolenEvent,
+  FlagSyncEvent,
   PaintballFiredEvent,
   PaintballHitEvent,
   PaintballUpgradeFlags,
@@ -80,6 +87,38 @@ export class SocketClient {
 
   onWorldFull(cb: (slug: string) => void) {
     this.socket.on("world:full", cb);
+  }
+
+  onFlagSpawned(cb: (ev: FlagSpawnedEvent) => void) {
+    this.socket.on("flag:spawned", cb);
+  }
+
+  onFlagCollected(cb: (ev: FlagCollectedEvent) => void) {
+    this.socket.on("flag:collected", cb);
+  }
+
+  onFlagCaptureStart(cb: (ev: FlagCaptureStartEvent) => void) {
+    this.socket.on("flag:capture_start", cb);
+  }
+
+  onFlagCaptureEnd(cb: (ev: FlagCaptureEndEvent) => void) {
+    this.socket.on("flag:capture_end", cb);
+  }
+
+  onFlagStolen(cb: (ev: FlagStolenEvent) => void) {
+    this.socket.on("flag:stolen", cb);
+  }
+
+  onFlagDropped(cb: (ev: FlagDroppedEvent) => void) {
+    this.socket.on("flag:dropped", cb);
+  }
+
+  onFlagCleared(cb: () => void) {
+    this.socket.on("flag:cleared", cb);
+  }
+
+  onFlagSync(cb: (ev: FlagSyncEvent) => void) {
+    this.socket.on("flag:sync", cb);
   }
 
   disconnect() {
