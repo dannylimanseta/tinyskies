@@ -298,7 +298,7 @@ export class Lobby {
       if (kind === "worldSaved") {
         this.unlockPreview?.hide();
         unlockPreviewHost.style.display = "none";
-        unlockStatuePreviewHost.style.display = "";
+        unlockStatuePreviewHost.style.display = "block";
         if (!this.epilogueStatuePreview) {
           this.epilogueStatuePreview = new EpilogueStatuePreview(unlockStatuePreviewHost);
         }
@@ -985,9 +985,6 @@ export class Lobby {
         width: 100%;
         height: 100%;
         display: block;
-      }
-      #lobby-unlock-preview-statue {
-        display: none;
       }
       .lobby-unlock-title {
         font-size: clamp(1.05rem, 3.6vw, 1.25rem);

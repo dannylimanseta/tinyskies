@@ -372,12 +372,15 @@ export class LandmarkRegistry {
   registerStatues(
     statues: { normal: Vector3 }[],
     seed: number,
+    /** Shown in the fly-over HUD when the eternal-victory memorial exists. */
+    memorialPilotName?: string,
   ) {
-    const names = generateLandmarkNames(seed, statues.length, "statue");
+    const fallback = generateLandmarkNames(seed, statues.length, "statue");
+    const pilot = memorialPilotName?.trim();
     for (let i = 0; i < statues.length; i++) {
       this.landmarks.push({
         type: "statue",
-        name: names[i]!,
+        name: pilot && pilot.length > 0 ? pilot : fallback[i]!,
         normal: statues[i]!.normal.clone().normalize(),
         enterDot: 0.995,
         exitDot: 0.991,

@@ -82,7 +82,8 @@ export class EpilogueStatuePreview {
           const scale = PREVIEW_TARGET_SIZE / maxDim;
           root.scale.setScalar(scale);
           root.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
-          root.position.y -= 0.06;
+          /* Lift in frame — bbox center sat low; modal crop was cutting the base. */
+          root.position.y += 0.14;
 
           this.modelPivot.rotation.set(this.pivotPitch, this.baseYaw, 0);
           this.modelPivot.add(root);
