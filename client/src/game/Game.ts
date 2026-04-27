@@ -575,6 +575,8 @@ export class Game {
   private levelUpCards!: LevelUpCards;
   /** True while level-up cards are shown (or the short delay before); vehicle brakes harder so it does not coast. */
   private choosingLevelUpUpgrade = false;
+  /** Set from lobby when "Freeplay mode" is checked for this flight. */
+  private runFreeplayMode = false;
   /** Count of previously spawned bonus collectibles so we only spawn the delta. */
   private prevDiamondCountBonus = 0;
   private prevWorldHeartCountBonus = 0;
@@ -792,14 +794,16 @@ export class Game {
     }
   }
 
-  private mountLobby() {
+  private mountLobby(opts?: { deferUnlockModalsUntilMenuReveal?: boolean }) {
     this.lobby = new Lobby(this.container, {
       serverUrl: this.getServerUrl(),
       playerName: this.playerName,
       mobile: this.mobile,
+      deferUnlockModalsUntilMenuReveal: opts?.deferUnlockModalsUntilMenuReveal ?? false,
       onNameChange: (name) => { this.playerName = name; ProgressionManager.savePlayerName(name); },
       onPlay: (vehicle, options) => {
         if (!ProgressionManager.isVehicleUnlocked(vehicle)) return;
+        this.runFreeplayMode = !!options?.freeplay;
         this.pendingCampsiteAfterIntro =
           CAMPSITE_HOME_ENABLED && (options?.startAtCampsite ?? false);
         this.playerVehicle = vehicle;
@@ -1745,6 +1749,12 @@ export class Game {
 
     this.ensureBraziersSpawned();
     this.restorePlayerWorldState();
+    {
+      const ws = ProgressionManager.loadPlayerWorldState();
+      if (this.runFreeplayMode && !ws.moonFrozenByEternalFlames && this.moonThreat) {
+        this.moonThreat.freezeApproachForever(0);
+      }
+    }
     this.eternalFlameUI = new EternalFlameUI(this.container, this.hud.root);
     this.eternalFlameUI.syncFromSave();
 
@@ -2159,6 +2169,7 @@ export class Game {
     this.voidEntryInProgress = false;
     this.coastCarpetDuringCosmicTransition = false;
     this.voidCameraBlend = 0;
+    this.runFreeplayMode = false;
 
     window.removeEventListener("resize", this.onResize);
   }
@@ -2404,6 +2415,21 @@ export class Game {
     await this.showMoonCreditsOverlay();
     await this.showMoonRewindSequence();
 
+    {
+      const prev = ProgressionManager.loadPlayerWorldState();
+      const nextCount = (prev.completedMoonApproachRunCount ?? 0) + 1;
+      const newlyUnlockFreeplay = !prev.freeplayModeUnlocked;
+      ProgressionManager.savePlayerWorldState({
+        ...prev,
+        completedMoonApproachRunCount: nextCount,
+        freeplayModeUnlocked: true,
+        pendingFreeplayUnlockCelebration: newlyUnlockFreeplay
+          ? true
+          : !!prev.pendingFreeplayUnlockCelebration,
+        ...(newlyUnlockFreeplay ? { freeplayUnlockModalAcked: false } : {}),
+      });
+    }
+
     this.teardownGameplaySession();
 
     this.dayNightCycle.moonProgress = 0;
@@ -2417,7 +2443,7 @@ export class Game {
     this.vehicleHintsEl = null;
     this.campsiteHintsEl = null;
 
-    this.mountLobby();
+    this.mountLobby({ deferUnlockModalsUntilMenuReveal: !!this.transitionOverlay });
     this.previewActive = true;
     window.addEventListener("resize", this.onPreviewResize);
     this.onPreviewResize();
@@ -2432,6 +2458,7 @@ export class Game {
       this.transitionOverlay.dispose();
       this.transitionOverlay = null;
     }
+    this.lobby.revealDeferredUnlockModals();
 
     this.returningToMenuAfterMoon = false;
   }
@@ -2684,7 +2711,7 @@ export class Game {
       this.introActive = false;
       this.vehicleHintsEl = null;
       this.campsiteHintsEl = null;
-      this.mountLobby();
+      this.mountLobby({ deferUnlockModalsUntilMenuReveal: !!this.transitionOverlay });
       this.globe.syncMemorialStatueWithProgression();
       this.previewActive = true;
       window.addEventListener("resize", this.onPreviewResize);
@@ -2698,6 +2725,7 @@ export class Game {
         this.transitionOverlay.dispose();
         this.transitionOverlay = null;
       }
+      this.lobby.revealDeferredUnlockModals();
     } finally {
       this.eternalVictoryReturnInProgress = false;
     }
@@ -6268,6 +6296,12 @@ export class Game {
       moonFrozenElapsedSec: overrides.moonFrozenElapsedSec ?? prev.moonFrozenElapsedSec,
       completedMoonApproachRunCount:
         overrides.completedMoonApproachRunCount ?? prev.completedMoonApproachRunCount ?? 0,
+      voidPortalsClosed: overrides.voidPortalsClosed ?? prev.voidPortalsClosed,
+      freeplayModeUnlocked: overrides.freeplayModeUnlocked ?? prev.freeplayModeUnlocked,
+      pendingFreeplayUnlockCelebration:
+        overrides.pendingFreeplayUnlockCelebration ?? prev.pendingFreeplayUnlockCelebration,
+      freeplayUnlockModalAcked: overrides.freeplayUnlockModalAcked ?? prev.freeplayUnlockModalAcked,
+      freeplayLobbyToggle: overrides.freeplayLobbyToggle ?? prev.freeplayLobbyToggle,
       vehicleTutorialsCompleted:
         overrides.vehicleTutorialsCompleted ?? prev.vehicleTutorialsCompleted,
       ...overrides,

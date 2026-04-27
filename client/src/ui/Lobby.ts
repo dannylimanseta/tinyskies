@@ -68,6 +68,8 @@ export function generateWhimsicalName(): string {
 
 export interface PlayOptions {
   startAtCampsite?: boolean;
+  /** Moon approach frozen for this run (lobby toggle; requires unlock). */
+  freeplay?: boolean;
 }
 
 interface LobbyOptions {
@@ -75,6 +77,8 @@ interface LobbyOptions {
   serverUrl: string;
   playerName: string;
   mobile?: boolean;
+  /** When true, unlock celebration modals wait for {@link Lobby.revealDeferredUnlockModals} (after menu transition fades). */
+  deferUnlockModalsUntilMenuReveal?: boolean;
   onPlay: (vehicle: Vehicle, options?: PlayOptions) => void;
   onNameChange?: (name: string) => void;
 }
@@ -84,7 +88,9 @@ export class Lobby {
   private el: HTMLDivElement;
   private options: LobbyOptions;
   private selectedVehicle: Vehicle = "plane";
-  private unlockQueue: ("worldSaved" | "carpet" | "boat")[] = [];
+  private unlockQueue: ("worldSaved" | "carpet" | "boat" | "freeplay")[] = [];
+  private unlockModalsDeferred = false;
+  private flushUnlockModals: (() => void) | null = null;
   private unlockPreview: VehicleUnlockPreview | null = null;
   private epilogueStatuePreview: EpilogueStatuePreview | null = null;
 
@@ -164,6 +170,12 @@ export class Lobby {
               ${this.buildVehicleButtonsHTML()}
             </div>
             <button type="button" class="lobby-fly" id="btn-fly"><span class="lobby-fly__label">GO!</span></button>
+          </div>
+          <div class="lobby-freeplay-wrap" id="lobby-freeplay-wrap" hidden>
+            <label class="lobby-freeplay-label">
+              <input type="checkbox" id="lobby-freeplay-cb" />
+              <span class="lobby-freeplay-text">Freeplay mode — The moon will not fall on this run.</span>
+            </label>
           </div>
           <div class="lobby-save-feed" id="lobby-save-feed" hidden>
             <div class="lobby-save-feed-head" aria-hidden="true">
@@ -281,6 +293,13 @@ export class Lobby {
       this.unlockQueue.push("worldSaved");
     }
     this.unlockQueue.push(...ProgressionManager.getPendingUnlockCelebrations());
+    const wsUnlock = ProgressionManager.loadPlayerWorldState();
+    const needsFreeplayIntro =
+      wsUnlock.pendingFreeplayUnlockCelebration === true ||
+      (wsUnlock.freeplayModeUnlocked === true && wsUnlock.freeplayUnlockModalAcked !== true);
+    if (needsFreeplayIntro) {
+      this.unlockQueue.push("freeplay");
+    }
 
     const showNextUnlockModal = () => {
       if (this.unlockQueue.length === 0) {
@@ -307,6 +326,15 @@ export class Lobby {
         unlockTitle.textContent = "The world is safe";
         unlockBody.textContent =
           "All five braziers now hold Eternal Flame. The moon will not fall on this world again. Whenever you play Tiny Skies, you can wander the sky without that last threat closing in. A memorial statue has been placed on the globe as a new landmark—fly by and see it. Thank you for flying for us all.";
+      } else if (kind === "freeplay") {
+        this.epilogueStatuePreview?.hide();
+        this.unlockPreview?.hide();
+        unlockStatuePreviewHost.style.display = "none";
+        unlockPreviewHost.style.display = "none";
+        unlockModal.classList.remove("lobby-unlock-modal--epilogue");
+        unlockTitle.textContent = "Freeplay mode unlocked";
+        unlockBody.textContent =
+          "Freeplay is unlocked — use it whenever you want to relax, explore, and have fun without the moon bearing down on you. Before you fly, tick Freeplay mode under the vehicle bar: the moon stays in the sky and your run won't end from the cataclysm.";
       } else {
         this.epilogueStatuePreview?.hide();
         unlockStatuePreviewHost.style.display = "none";
@@ -341,25 +369,62 @@ export class Lobby {
           ...ws,
           pendingEternalVictoryCelebration: false,
         });
+      } else if (kind === "freeplay") {
+        const ws = ProgressionManager.loadPlayerWorldState();
+        ProgressionManager.savePlayerWorldState({
+          ...ws,
+          pendingFreeplayUnlockCelebration: false,
+          freeplayUnlockModalAcked: true,
+        });
       } else {
         ProgressionManager.acknowledgeUnlockCelebration(kind);
       }
       showNextUnlockModal();
     });
 
+    const freeplayWrap = this.el.querySelector("#lobby-freeplay-wrap") as HTMLElement;
+    const freeplayCb = this.el.querySelector("#lobby-freeplay-cb") as HTMLInputElement;
+    const wsLobby = ProgressionManager.loadPlayerWorldState();
+    if (wsLobby.freeplayModeUnlocked) {
+      freeplayWrap.hidden = false;
+      freeplayCb.checked = !!wsLobby.freeplayLobbyToggle;
+      freeplayCb.addEventListener("change", () => {
+        const ws = ProgressionManager.loadPlayerWorldState();
+        ProgressionManager.savePlayerWorldState({
+          ...ws,
+          freeplayLobbyToggle: freeplayCb.checked,
+        });
+      });
+    }
+
     flyBtn.addEventListener("click", () => {
       if (!ProgressionManager.isVehicleUnlocked(this.selectedVehicle)) return;
       flyBtn.disabled = true;
       Lobby.requestFullscreen();
-      this.options.onPlay(this.selectedVehicle);
+      const ws = ProgressionManager.loadPlayerWorldState();
+      const freeplay = !!(ws.freeplayModeUnlocked && freeplayCb.checked);
+      this.options.onPlay(this.selectedVehicle, { freeplay });
     });
+
+    this.flushUnlockModals = () => showNextUnlockModal();
 
     if (this.unlockQueue.length > 0) {
       flyBtn.disabled = true;
-      showNextUnlockModal();
+      if (this.options.deferUnlockModalsUntilMenuReveal) {
+        this.unlockModalsDeferred = true;
+      } else {
+        this.flushUnlockModals();
+      }
     }
 
     this.applyStyles();
+  }
+
+  /** Call after the full-screen menu transition has cleared so unlock modals are not hidden under it. */
+  revealDeferredUnlockModals() {
+    if (!this.unlockModalsDeferred || this.unlockQueue.length === 0) return;
+    this.unlockModalsDeferred = false;
+    this.flushUnlockModals?.();
   }
 
   private loadSaveFeed() {
@@ -437,6 +502,8 @@ export class Lobby {
   }
 
   dispose() {
+    this.flushUnlockModals = null;
+    this.unlockModalsDeferred = false;
     this.unlockPreview?.dispose();
     this.unlockPreview = null;
     this.epilogueStatuePreview?.dispose();
@@ -707,6 +774,71 @@ export class Lobby {
       .lobby-overlay.fade-out .lobby-bar {
         transform: translateY(16px);
       }
+      .lobby-overlay.fade-out .lobby-freeplay-wrap:not([hidden]) {
+        transform: translateY(16px);
+      }
+
+      .lobby-freeplay-wrap {
+        align-self: center;
+        margin-top: 14px;
+        max-width: min(520px, calc(100% - 48px));
+        padding: 0 12px;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: center;
+        text-align: center;
+        pointer-events: auto;
+        opacity: 0;
+        transform: translateY(28px);
+        transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        transition-delay: 0.55s;
+        z-index: 101;
+      }
+      .lobby-header.visible .lobby-freeplay-wrap:not([hidden]) {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .lobby-freeplay-wrap[hidden] {
+        display: none !important;
+      }
+      .lobby-freeplay-label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin: 0;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        line-height: 1.35;
+        color: rgba(255, 255, 255, 0.92);
+        user-select: none;
+        white-space: nowrap;
+      }
+      @media (max-width: 480px) {
+        .lobby-freeplay-label {
+          font-size: 0.65rem;
+          gap: 6px;
+        }
+        .lobby-freeplay-label input {
+          width: 14px;
+          height: 14px;
+        }
+      }
+      .lobby-freeplay-label input {
+        flex-shrink: 0;
+        width: 15px;
+        height: 15px;
+        accent-color: #fff;
+        cursor: pointer;
+      }
+      .lobby-freeplay-text {
+        font: inherit;
+        color: inherit;
+        letter-spacing: inherit;
+      }
 
       .lobby-vehicles {
         display: flex;
@@ -946,6 +1078,7 @@ export class Lobby {
       .lobby-unlock-modal.open {
         display: flex;
         pointer-events: auto;
+        z-index: 10050;
       }
       .lobby-unlock-backdrop {
         position: absolute;

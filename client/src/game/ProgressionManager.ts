@@ -55,6 +55,14 @@ export interface SavedPlayerWorldState {
    * Drives approach duration: 0 → 5 min, 1 → 7 min, 2+ → 10 min (see `moonApproachDurationSec`).
    */
   completedMoonApproachRunCount?: number;
+  /** After the first moon-crash run, Freeplay can be chosen in the lobby (moon stays distant). */
+  freeplayModeUnlocked?: boolean;
+  /** One-time lobby popup when {@link freeplayModeUnlocked} first becomes true. */
+  pendingFreeplayUnlockCelebration?: boolean;
+  /** After the player dismisses the Freeplay intro modal; also clears {@link pendingFreeplayUnlockCelebration}. */
+  freeplayUnlockModalAcked?: boolean;
+  /** Lobby checkbox: next flight uses freeplay if {@link freeplayModeUnlocked}. */
+  freeplayLobbyToggle?: boolean;
   /**
    * Once true, the cosmic void portals are permanently removed from the world.
    * Set after the player survives all three void waves and collects the eternal flame.
