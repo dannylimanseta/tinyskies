@@ -69,18 +69,78 @@ export class TransitionOverlay {
   fadeOut(options?: TransitionFadeOutOptions): Promise<void> {
     const durationSec   = options?.durationSec   ?? 0.5;
     const holdAtFullSec = options?.holdAtFullSec  ?? 0;
-    if (options?.bgColor)   this.el.style.background = options.bgColor;
-    if (options?.textColor && this.labelEl) this.labelEl.style.color = options.textColor;
-    this.setMessage(options?.message ?? null);
-    // Apply text colour after setMessage creates the label.
-    if (options?.textColor && this.labelEl) this.labelEl.style.color = options.textColor;
+    const textColor     = options?.textColor ?? "#ede8e3";
+
+    if (options?.bgColor) this.el.style.background = options.bgColor;
+    this.setMessage(null); // clear any old label
+
+    // Split by blank line — if we get multiple sentences, stagger them.
+    const rawMsg  = options?.message ?? null;
+    const sentences = rawMsg
+      ? rawMsg.split("\n\n").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const stagger = sentences.length > 1;
+
+    if (!stagger && rawMsg) {
+      this.setMessage(rawMsg);
+      if (this.labelEl) this.labelEl.style.color = textColor;
+    }
+
     this.el.style.transition = `opacity ${durationSec}s ease`;
     void this.el.offsetHeight;
     this.el.style.opacity = "1";
+
     return new Promise((resolve) => {
       this.el.addEventListener(
         "transitionend",
         () => {
+          if (stagger && sentences.length > 0) {
+            // Shared container matching the existing label layout.
+            const wrap = document.createElement("div");
+            Object.assign(wrap.style, {
+              position: "absolute",
+              inset: "0",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+              fontFamily: "'Domine', Georgia, serif",
+              fontSize: "1.45rem",
+              fontWeight: "500",
+              letterSpacing: "0.04em",
+              lineHeight: "1.6",
+              textAlign: "center",
+              maxWidth: "min(32rem, 92vw)",
+              margin: "0 auto",
+              padding: "0 1.25rem",
+              boxSizing: "border-box",
+              gap: "0.6em",
+            } as CSSStyleDeclaration);
+            this.el.appendChild(wrap);
+            this.labelEl = wrap;
+
+            // Spread sentences evenly across holdAtFullSec.
+            const spacing = (holdAtFullSec * 1000) / (sentences.length + 0.4);
+            sentences.forEach((text, i) => {
+              const p = document.createElement("p");
+              p.textContent = text;
+              Object.assign(p.style, {
+                margin: "0",
+                opacity: "0",
+                transform: "translateY(10px)",
+                transition: "opacity 0.65s ease, transform 0.65s ease",
+                color: textColor,
+              } as CSSStyleDeclaration);
+              wrap.appendChild(p);
+
+              setTimeout(() => {
+                p.style.opacity = "1";
+                p.style.transform = "translateY(0)";
+              }, i * spacing);
+            });
+          }
+
           if (holdAtFullSec > 0) {
             setTimeout(resolve, holdAtFullSec * 1000);
           } else {

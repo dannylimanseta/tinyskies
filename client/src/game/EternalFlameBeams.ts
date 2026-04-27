@@ -177,6 +177,8 @@ export class EternalFlameBeams {
   get state()      { return this.phase; }
   get phase1Done() { return this._p1Done; }
 
+  /** Fired each time a Phase 1 beam launches from a brazier (index = beam index 0–4). */
+  onBeamLaunch:       ((beamIndex: number) => void) | null = null;
   /** Fired each time a P2 beam hits the moon (Game.ts uses this for shake). */
   onPhase2Impact:     (() => void) | null = null;
   /** Fired once when ALL P2 beams have impacted — trigger whiteout here. */
@@ -374,6 +376,7 @@ export class EternalFlameBeams {
         beam.orb.visible = true;
         beam.trail.visible = true;
         if (beam.launchGlowAge !== undefined) beam.launchGlowAge = 0;
+        this.onBeamLaunch?.(bi);
       }
 
       // Brazier launch glow.

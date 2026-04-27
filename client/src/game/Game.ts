@@ -2416,6 +2416,22 @@ export class Game {
         } as CSSStyleDeclaration);
         this.container.appendChild(whiteoutEl);
 
+        // Phase 1 SFX: gong + celebrate when each beam launches from a brazier.
+        this.audioManager.resumeContextIfNeeded();
+        if (this.audioManager.hasSFX("gong"))
+          this.audioManager.playSFX("gong", 0.55);
+        beams.onBeamLaunch = (beamIndex) => {
+          this.audioManager.resumeContextIfNeeded();
+          // Staggered speed-boost whoosh as each orb fires.
+          const BOOSTS = ["speed_boost_1", "speed_boost_2", "speed_boost_3"] as const;
+          const pick = BOOSTS[beamIndex % BOOSTS.length]!;
+          if (this.audioManager.hasSFX(pick))
+            this.audioManager.playSFX(pick, 0.55, 0.72 + beamIndex * 0.06);
+          // Celebrate on the 3rd beam (mid-sequence climax).
+          if (beamIndex === 2 && this.audioManager.hasSFX("celebrate_1"))
+            this.audioManager.playSFX("celebrate_1", 0.35);
+        };
+
         // Render one frame synchronously to avoid a black gap.
         cutsceneCamera.position.copy(camStart);
         cutsceneCamera.lookAt(0, 0, 0);
@@ -2443,19 +2459,32 @@ export class Game {
                 cutsceneCamera.position.copy(phase2CamPos);
                 cutsceneCamera.lookAt(phase2LookAt);
 
+                // Phase 2 intro: deep rumble as we cut to the moon close-up.
+                this.audioManager.resumeContextIfNeeded();
+                if (this.audioManager.hasSFX("rumble"))
+                  this.audioManager.playSFX("rumble", 0.45, 0.8);
+
                 beams.onPhase2Impact = () => {
                   p2Impacts++;
-                  // Shake scales with number of hits (first hit = mild, last = violent).
                   const intensity = 0.35 + (p2Impacts / 5) * 0.65;
                   shakeTrauma = intensity;
+                  // Each hit: layered impact SFX — boom + explosion.
+                  this.audioManager.resumeContextIfNeeded();
+                  const IMPACTS = ["impact_1", "impact_2", "impact_3"] as const;
+                  const pick = IMPACTS[Math.floor(Math.random() * IMPACTS.length)]!;
+                  this.audioManager.playSFX(pick, 0.7);
+                  if (this.audioManager.hasSFX("explosion_1"))
+                    this.audioManager.playSFX("explosion_1", 0.5);
                 };
                 beams.onAllP2Impacted = () => {
                   if (!whiteoutStarted) {
                     whiteoutStarted = true;
-                    // Snap whiteout div to full white instantly (no transition).
+                    // Final flash: choir swell.
+                    this.audioManager.resumeContextIfNeeded();
+                    if (this.audioManager.hasSFX("choir_1"))
+                      this.audioManager.playSFX("choir_1", 0.9);
                     whiteoutEl.style.transition = "none";
                     whiteoutEl.style.opacity = "1";
-                    // Resolve immediately — victory text cuts in on the white flash.
                     resolve();
                   }
                 };
