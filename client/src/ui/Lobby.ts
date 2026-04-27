@@ -121,7 +121,7 @@ export class Lobby {
         return `
         <button type="button" class="${cls}"
           data-vehicle="${v}"
-          disabled
+          tabindex="-1"
           role="radio"
           aria-checked="false"
           aria-disabled="true"
@@ -267,6 +267,12 @@ export class Lobby {
       btn.addEventListener("click", () => {
         const veh = (btn as HTMLButtonElement).dataset.vehicle as Vehicle;
         setSelectedVehicle(veh);
+      });
+    });
+    vehiclesEl.querySelectorAll(".lobby-vbtn.locked").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
       });
     });
 
@@ -548,8 +554,12 @@ export class Lobby {
         will-change: transform, opacity;
       }
       .lobby-header.visible .lobby-title__char {
-        animation: lobby-title-char-in 0.68s cubic-bezier(0.28, 1.25, 0.55, 1) forwards;
-        animation-delay: calc(0.38s + var(--title-char-i) * 0.058s);
+        animation:
+          lobby-title-char-in 0.68s cubic-bezier(0.28, 1.25, 0.55, 1) forwards,
+          lobby-title-char-idle 5s ease-in-out infinite;
+        animation-delay:
+          calc(0.38s + var(--title-char-i) * 0.058s),
+          calc(0.38s + var(--title-last-char-i) * 0.058s + 0.68s + 0.42s + var(--title-char-i) * 0.072s);
       }
       @keyframes lobby-title-char-in {
         0% {
@@ -566,6 +576,16 @@ export class Lobby {
         100% {
           opacity: 1;
           transform: translate3d(0, 0, 0);
+        }
+      }
+      @keyframes lobby-title-char-idle {
+        0%,
+        4.5%,
+        100% {
+          transform: translate3d(0, 0, 0);
+        }
+        2.25% {
+          transform: translate3d(0, -0.072em, 0);
         }
       }
       @keyframes lobby-tagline-in {
@@ -592,6 +612,9 @@ export class Lobby {
           animation: none !important;
           opacity: 1 !important;
           transform: none !important;
+        }
+        .lobby-vbtn.locked:hover .lobby-vicon--lock {
+          animation: none !important;
         }
         .lobby-attribution {
           transition: none !important;
@@ -720,6 +743,28 @@ export class Lobby {
       }
       .lobby-vbtn.locked .lobby-vicon--lock {
         opacity: 0.9;
+        transform-origin: 50% 65%;
+      }
+      @keyframes lobby-lock-wiggle {
+        0%,
+        100% {
+          transform: rotate(0deg);
+        }
+        18% {
+          transform: rotate(-11deg);
+        }
+        40% {
+          transform: rotate(9deg);
+        }
+        62% {
+          transform: rotate(-7deg);
+        }
+        82% {
+          transform: rotate(4deg);
+        }
+      }
+      .lobby-vbtn.locked:hover .lobby-vicon--lock {
+        animation: lobby-lock-wiggle 0.55s ease-in-out infinite;
       }
       .lobby-vicon {
         display: flex;
