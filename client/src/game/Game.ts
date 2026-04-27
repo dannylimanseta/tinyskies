@@ -621,6 +621,10 @@ export class Game {
   private previewAngle = 0;
   /** Time elapsed in the intro zoom-in (seconds). Resets on first load only. */
   private previewZoomElapsed = 0;
+  /** Wall-clock previous sample for menu preview; avoids sharing {@link Clock} with gameplay. */
+  private previewWallPrevMs = 0;
+  /** Integrated time for god-rays during preview (`gameTime` while flying). */
+  private previewGodRayTime = 0;
   private loadingEl: HTMLDivElement | null = null;
   private reservationId?: string;
   /** Set in `start()` via {@link resolveServerUrl}; used by {@link getServerUrl}. */
@@ -935,8 +939,8 @@ export class Game {
       this.previewActive = true;
       window.addEventListener("resize", this.onPreviewResize);
       this.onPreviewResize();
-      const previewDt = Math.min(this.clock.getDelta(), 0.05);
-      this.stepPreview(previewDt);
+      this.resetPreviewAnimationClock();
+      this.stepPreview(this.consumePreviewFrameDt());
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       requestAnimationFrame(this.previewTick);
       if (this.transitionOverlay) {
@@ -1185,7 +1189,7 @@ export class Game {
 
     this.previewCamera = new PerspectiveCamera(60, w / h, 0.1, 100);
     this.previewAngle = 0;
-    this.previewZoomElapsed = 0; // reset only on first load — triggers the intro zoom
+    this.resetPreviewAnimationClock();
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     for (let vi = 0; vi < VOLCANO_COUNT; vi++) {
@@ -1199,8 +1203,32 @@ export class Game {
     window.addEventListener("resize", this.onPreviewResize);
   }
 
+  /** Clears zoom + wall-clock preview timing (e.g. when (re)entering the main-menu globe). */
+  private resetPreviewAnimationClock() {
+    this.previewZoomElapsed = 0;
+    this.previewWallPrevMs = 0;
+    this.previewGodRayTime = 0;
+  }
+
+  /**
+   * Delta for the menu orbit preview only. Uses performance.now() so it stays correct even when
+   * {@link Clock#getDelta} is called elsewhere in the same frame (e.g. {@link Clock#getElapsedTime}
+   * inside {@link #applyDayNightPreset}).
+   */
+  private consumePreviewFrameDt(): number {
+    const now = performance.now();
+    if (this.previewWallPrevMs <= 0) {
+      this.previewWallPrevMs = now;
+      return 1 / 60;
+    }
+    const dt = Math.min((now - this.previewWallPrevMs) / 1000, 0.05);
+    this.previewWallPrevMs = now;
+    return dt;
+  }
+
   /** One preview frame (shared by the RAF loop and return-to-menu while overlay stays black). */
   private stepPreview(dt: number) {
+    this.previewGodRayTime += dt;
     const ZOOM_DURATION = 1.35;
     const endRadius  = this.mobile ? 17 : 12;
     const startRadius = endRadius * 1.1;
@@ -1237,8 +1265,7 @@ export class Game {
     if (!this.previewActive) return;
     requestAnimationFrame(this.previewTick);
 
-    const dt = Math.min(this.clock.getDelta(), 0.05);
-    this.stepPreview(dt);
+    this.stepPreview(this.consumePreviewFrameDt());
   };
 
   private onPreviewResize = () => {
@@ -1253,6 +1280,8 @@ export class Game {
 
   private startGame(vehicle: Vehicle) {
     this.previewActive = false;
+    this.previewWallPrevMs = 0;
+    this.clock.start();
     window.removeEventListener("resize", this.onPreviewResize);
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
@@ -2380,8 +2409,8 @@ export class Game {
     this.previewActive = true;
     window.addEventListener("resize", this.onPreviewResize);
     this.onPreviewResize();
-    const previewDt = Math.min(this.clock.getDelta(), 0.05);
-    this.stepPreview(previewDt);
+    this.resetPreviewAnimationClock();
+    this.stepPreview(this.consumePreviewFrameDt());
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
     requestAnimationFrame(this.previewTick);
@@ -2647,8 +2676,8 @@ export class Game {
       this.previewActive = true;
       window.addEventListener("resize", this.onPreviewResize);
       this.onPreviewResize();
-      const previewDt = Math.min(this.clock.getDelta(), 0.05);
-      this.stepPreview(previewDt);
+      this.resetPreviewAnimationClock();
+      this.stepPreview(this.consumePreviewFrameDt());
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       requestAnimationFrame(this.previewTick);
       if (this.transitionOverlay) {
@@ -5455,8 +5484,8 @@ export class Game {
     this.previewActive = true;
     window.addEventListener("resize", this.onPreviewResize);
     this.onPreviewResize();
-    const previewDt = Math.min(this.clock.getDelta(), 0.05);
-    this.stepPreview(previewDt);
+    this.resetPreviewAnimationClock();
+    this.stepPreview(this.consumePreviewFrameDt());
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     requestAnimationFrame(this.previewTick);
     if (this.transitionOverlay) {
@@ -6053,7 +6082,8 @@ export class Game {
     this.backLight.color.set(p.backColor);
     this.backLight.intensity = p.backIntensity;
 
-    this.godRays.update(this.clock.getElapsedTime(), this.sunLight.position, this.globe.group.position, p.sunColor, p.sunIntensity);
+    const godRayElapsed = this.previewActive ? this.previewGodRayTime : this.gameTime;
+    this.godRays.update(godRayElapsed, this.sunLight.position, this.globe.group.position, p.sunColor, p.sunIntensity);
 
     this.globe.setAtmosphereGlow(p.atmosphereGlow);
     this.globe.setCloudOpacity(p.cloudOpacity);
