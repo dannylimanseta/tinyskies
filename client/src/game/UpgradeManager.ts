@@ -203,7 +203,7 @@ const PLANE_UPGRADES: UpgradeDefinition[] = [
   {
     id: "hull_reinforced",
     name: "Reinforced Hull",
-    description: "+20% max biplane HP (gremlin damage)",
+    description: "+20% max biplane HP",
     category: "performance",
     apply: (s) => { s.planeGremlinHpMaxMult *= 1.2; },
   },

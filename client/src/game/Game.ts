@@ -1782,6 +1782,8 @@ export class Game {
       },
     );
 
+    this.globe.syncMemorialStatueWithProgression();
+
     const landmarkRegistry = new LandmarkRegistry();
     landmarkRegistry.registerVillages(this.globe.villageCenters, seed);
     landmarkRegistry.registerLighthouses(this.globe.lighthouseCenters, seed);
@@ -2673,6 +2675,7 @@ export class Game {
       this.vehicleHintsEl = null;
       this.campsiteHintsEl = null;
       this.mountLobby();
+      this.globe.syncMemorialStatueWithProgression();
       this.previewActive = true;
       window.addEventListener("resize", this.onPreviewResize);
       this.onPreviewResize();

@@ -15,7 +15,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 export const EPILOGUE_STATUE_GLB_URL = "/3D/statue.glb";
 
-const PREVIEW_TARGET_SIZE = 1.15;
+const PREVIEW_TARGET_SIZE = 1.61;
 
 /** WebGL preview of `statue.glb` for the eternal-victory lobby modal. */
 export class EpilogueStatuePreview {

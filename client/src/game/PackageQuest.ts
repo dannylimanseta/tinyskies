@@ -168,13 +168,30 @@ function createDestinationDownArrow(): Group {
   return g;
 }
 
-function createBeamGroup(color: number): Group {
+/**
+ * Same crossed vertical planes + shader as package pickup / delivery beams.
+ * @param color — packed RGB (e.g. `0x88ccff` destination, `0xffd700` pickup).
+ */
+export function createPackageQuestBeamGroup(
+  color: number,
+  opts?: {
+    /** When set, drives the pulse shader (e.g. globe-owned clock). */
+    timeUniform?: { value: number };
+    /** Plane height (default `0.8`). */
+    height?: number;
+    /** Plane width (default `0.06`). */
+    width?: number;
+  },
+): Group {
   const grp = new Group();
+  const timeU = opts?.timeUniform ?? { value: 0 };
+  const h = opts?.height ?? 0.8;
+  const w = opts?.width ?? 0.06;
   const beamMat = new ShaderMaterial({
     vertexShader: beamVert,
     fragmentShader: beamFrag,
     uniforms: {
-      time: { value: 0 },
+      time: timeU,
       color: { value: new Vector3(
         ((color >> 16) & 0xff) / 255,
         ((color >> 8) & 0xff) / 255,
@@ -187,8 +204,8 @@ function createBeamGroup(color: number): Group {
     depthWrite: false,
   });
 
-  const planeGeo = new PlaneGeometry(0.06, 0.8);
-  planeGeo.translate(0, 0.4, 0);
+  const planeGeo = new PlaneGeometry(w, h);
+  planeGeo.translate(0, h / 2, 0);
 
   const p1 = new Mesh(planeGeo, beamMat);
   grp.add(p1);
@@ -197,6 +214,10 @@ function createBeamGroup(color: number): Group {
   grp.add(p2);
 
   return grp;
+}
+
+function createBeamGroup(color: number): Group {
+  return createPackageQuestBeamGroup(color);
 }
 
 /* ── PackageQuestManager ────────────────────────────────────────────── */

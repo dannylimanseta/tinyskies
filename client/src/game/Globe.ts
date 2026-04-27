@@ -47,6 +47,7 @@ import { createNoise3D, sampleTerrain } from "./SimplexNoise";
 import { PROP_TERRAIN_SINK, surfaceAltitudeAt, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
 import { getVolcanoPlacementNormal, VOLCANO_COUNT } from "./Volcano";
 import { ProgressionManager } from "./ProgressionManager";
+import { createPackageQuestBeamGroup } from "./PackageQuest";
 
 const ATMOSPHERE_VERTEX = `
 varying vec3 vNormal;
@@ -204,6 +205,8 @@ export class Globe {
   readonly lighthouseCenters: { normal: Vector3 }[] = [];
   private lighthouseBeams: Mesh[] = [];
   private lighthouseBeamTime = 0;
+  /** Drives memorial statue sky-beacon shader pulse (Eternal Victory landmark). */
+  private statueBeamTimeU = { value: 0 };
   readonly balloons: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; wobbleAmp: number; wobblePhase: number; wobbleBank: number; }[] = [];
   /** Number of hot-air balloons (for proximity greeting logic). */
   readonly balloonCount = BALLOON_COUNT;
@@ -221,6 +224,10 @@ export class Globe {
   readonly pyramidCenters: { normal: Vector3 }[] = [];
   /** Victory `statue.glb` — one inland flat site, away from pyramids. */
   readonly statueCenters: { normal: Vector3 }[] = [];
+  /** True once the memorial model is in {@link group}. */
+  private memorialStatueSpawned = false;
+  /** True after we pick a site and start the GLTF load (prevents duplicate loads / centers). */
+  private memorialStatueLoadStarted = false;
   /** Floating race start banners carried by balloons. */
   readonly raceBannerCenters: { normal: Vector3 }[] = [];
   private raceBanners: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; }[] = [];
@@ -3192,17 +3199,28 @@ transformed.z += sway2;`,
     );
   }
 
+  /**
+   * Eternal-victory memorial: call after {@link ProgressionManager} may have gained
+   * `moonFrozenByEternalFlames` since this globe was constructed (menu preview builds the
+   * globe once; winning in-session left the old globe without a statue until reload).
+   */
+  syncMemorialStatueWithProgression() {
+    this.createStatue();
+  }
+
   /** Inland `statue.glb` — one flat lowland, separated from pyramids and other landmarks. */
   private createStatue() {
     if (!ProgressionManager.loadPlayerWorldState().moonFrozenByEternalFlames) return;
+    if (this.memorialStatueSpawned || this.memorialStatueLoadStarted) return;
 
     const MIN_ELEVATION = 0.02;
     const MAX_ELEVATION = 0.32;
     const INLAND_CHECKS = 8;
     const INLAND_CHECK_DIST = 0.07;
     const MAX_WATER_RATIO = 0.26;
-    const ROUGH_RING_DIST = 0.085;
-    const MAX_ROUGHNESS = 0.26;
+    const ROUGH_RING_DIST = 0.09;
+    /** Prefer flat sites; relax caps so a site always exists and stays discoverable. */
+    const ROUGHNESS_CAPS = [0.14, 0.22, 0.3] as const;
     /** Stay clearly off the pyramid sites (pyramids use 0.80 separation). */
     const MIN_AWAY_FROM_PYRAMID_DOT = 0.78;
 
@@ -3210,47 +3228,53 @@ transformed.z += sway2;`,
 
     type Pooled = { normal: Vector3; elevation: number; rough: number };
     const pool: Pooled[] = [];
-    let attempts = 0;
 
-    while (attempts < 12000 && pool.length < 400) {
-      attempts++;
-      const theta = rand() * Math.PI * 2;
-      const phi = Math.acos(2 * rand() - 1);
-      const nx = Math.sin(phi) * Math.cos(theta);
-      const ny = Math.cos(phi);
-      const nz = Math.sin(phi) * Math.sin(theta);
+    for (const roughCap of ROUGHNESS_CAPS) {
+      pool.length = 0;
+      let attempts = 0;
+      while (attempts < 12000 && pool.length < 400) {
+        attempts++;
+        const theta = rand() * Math.PI * 2;
+        const phi = Math.acos(2 * rand() - 1);
+        const nx = Math.sin(phi) * Math.cos(theta);
+        const ny = Math.cos(phi);
+        const nz = Math.sin(phi) * Math.sin(theta);
 
-      const terrain = this.sampleTerrainAt(nx, ny, nz);
-      if (!terrain.isLand) continue;
-      const elevation = terrain.elevation;
-      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+        const terrain = this.sampleTerrainAt(nx, ny, nz);
+        if (!terrain.isLand) continue;
+        const elevation = terrain.elevation;
+        if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
 
-      const normal = new Vector3(nx, ny, nz);
+        const normal = new Vector3(nx, ny, nz);
 
-      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
+        if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
 
-      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
-      if (rough > MAX_ROUGHNESS) continue;
+        const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
+        if (rough > roughCap) continue;
 
-      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
-      if (this.pyramidCenters.some((v) => normal.dot(v.normal) > MIN_AWAY_FROM_PYRAMID_DOT)) continue;
+        if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+        if (this.pyramidCenters.some((v) => normal.dot(v.normal) > MIN_AWAY_FROM_PYRAMID_DOT)) continue;
 
-      pool.push({ normal, elevation, rough });
+        pool.push({ normal, elevation, rough });
+      }
+      if (pool.length > 0) break;
     }
 
     if (pool.length === 0) return;
 
-    pool.sort((a, b) => a.elevation - b.elevation || a.rough - b.rough);
+    /* Prefer the flattest lowland pockets; tie-break toward lower elevation (plains). */
+    pool.sort((a, b) => a.rough - b.rough || a.elevation - b.elevation);
     const siteNormal = pool[0]!.normal.clone();
 
+    this.memorialStatueLoadStarted = true;
     this.statueCenters.push({ normal: siteNormal.clone() });
 
     const spin = seededRandom(919191 + this.seed);
@@ -3266,7 +3290,7 @@ transformed.z += sway2;`,
         const size = new Vector3();
         box.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z, 1e-4);
-        const targetSize = 0.3;
+        const targetSize = 0.42;
         const uniformScale = targetSize / maxDim;
 
         const normal = siteNormal;
@@ -3314,10 +3338,45 @@ transformed.z += sway2;`,
           }
         });
         this.applyRimLightToPyramid(model);
+
+        /* World AABB → model-local highest Y (local +Y is surface “up” after grounding). */
+        model.updateMatrixWorld(true);
+        const worldB = new Box3().setFromObject(model);
+        const invWorld = new Matrix4().copy(model.matrixWorld).invert();
+        const corner = new Vector3();
+        let localTopY = -Infinity;
+        for (let ix = 0; ix <= 1; ix++) {
+          for (let iy = 0; iy <= 1; iy++) {
+            for (let iz = 0; iz <= 1; iz++) {
+              corner.set(
+                ix ? worldB.max.x : worldB.min.x,
+                iy ? worldB.max.y : worldB.min.y,
+                iz ? worldB.max.z : worldB.min.z,
+              );
+              corner.applyMatrix4(invWorld);
+              if (corner.y > localTopY) localTopY = corner.y;
+            }
+          }
+        }
+        const beaconAnchorY = localTopY - 1.2;
+
+        /* Same crossed planes + shader as package delivery destination beam (`0x88ccff`). */
+        const memorialBeam = createPackageQuestBeamGroup(0x88ccff, {
+          timeUniform: this.statueBeamTimeU,
+          height: Math.max(this.radius * 0.42, 2.0),
+          width: 0.11,
+        });
+        memorialBeam.position.set(0, beaconAnchorY, 0);
+        memorialBeam.renderOrder = 1;
+        model.add(memorialBeam);
+
         this.group.add(model);
+        this.memorialStatueSpawned = true;
       },
       undefined,
       (err) => {
+        this.memorialStatueLoadStarted = false;
+        if (this.statueCenters.length > 0) this.statueCenters.pop();
         console.error("[Globe] Failed to load /3D/statue.glb:", err);
       },
     );
@@ -5581,6 +5640,7 @@ transformed.z += sway2;`,
     }
     this.oceanTime.value += dt;
     this.lighthouseBeamTime += dt;
+    this.statueBeamTimeU.value += dt;
 
     const beamAngle = this.lighthouseBeamTime * 0.8;
     for (const beam of this.lighthouseBeams) {
