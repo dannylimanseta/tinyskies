@@ -15,6 +15,7 @@ export type LandmarkType =
   | "mushroom"
   | "butterfly"
   | "pyramid"
+  | "statue"
   | "race_banner";
 
 export interface Landmark {
@@ -134,6 +135,15 @@ const PYRAMID_SUFFIXES = [
   " Pyramid", " Monument", " Tomb", " Ziggurat", " Mausoleum", " Needle", " Spire", " Mound",
 ];
 
+const STATUE_PREFIXES = [
+  "Guardian", "Stone", "Bronze", "Marble", "Silent", "Forgotten", "Hero", "Sage", "Watcher", "Eternal",
+  "Golden", "Weathered", "Ancient", "Lone", "Sky", "Summit", "Hollow", "Crimson", "Ivory", "Iron",
+];
+
+const STATUE_SUFFIXES = [
+  " Memorial", " Monument", " Statue", " Figure", " Effigy", " Colossus", " Sentinel", " Tribute",
+];
+
 const RACE_BANNER_PREFIXES = [
   "Sky", "Cloud", "Aero", "Wind", "Storm", "Gale", "Breeze", "Sun", "Star", "Moon",
   "High", "Grand", "Apex", "Zenith", "Summit", "Crest", "Peak", "Crown",
@@ -159,6 +169,7 @@ const WORD_LISTS: Record<LandmarkType, { prefixes: string[]; suffixes: string[] 
   mushroom:     { prefixes: MUSHROOM_PREFIXES,    suffixes: MUSHROOM_SUFFIXES },
   butterfly:    { prefixes: BUTTERFLY_PREFIXES,   suffixes: BUTTERFLY_SUFFIXES },
   pyramid:      { prefixes: PYRAMID_PREFIXES,     suffixes: PYRAMID_SUFFIXES },
+  statue:       { prefixes: STATUE_PREFIXES,      suffixes: STATUE_SUFFIXES },
   race_banner:  { prefixes: RACE_BANNER_PREFIXES, suffixes: RACE_BANNER_SUFFIXES },
 };
 
@@ -352,6 +363,22 @@ export class LandmarkRegistry {
         type: "pyramid",
         name: names[i]!,
         normal: pyramids[i]!.normal.clone().normalize(),
+        enterDot: 0.995,
+        exitDot: 0.991,
+      });
+    }
+  }
+
+  registerStatues(
+    statues: { normal: Vector3 }[],
+    seed: number,
+  ) {
+    const names = generateLandmarkNames(seed, statues.length, "statue");
+    for (let i = 0; i < statues.length; i++) {
+      this.landmarks.push({
+        type: "statue",
+        name: names[i]!,
+        normal: statues[i]!.normal.clone().normalize(),
         enterDot: 0.995,
         exitDot: 0.991,
       });

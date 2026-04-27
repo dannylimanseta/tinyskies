@@ -1,5 +1,6 @@
 import type { Vehicle } from "@globefly/shared";
 import { ProgressionManager } from "../game/ProgressionManager";
+import { EpilogueStatuePreview } from "./EpilogueStatuePreview";
 import { VehicleUnlockPreview } from "./VehicleUnlockPreview";
 
 const VEHICLE_ORDER: Vehicle[] = ["plane", "carpet", "boat"];
@@ -79,6 +80,7 @@ export class Lobby {
   private selectedVehicle: Vehicle = "plane";
   private unlockQueue: ("worldSaved" | "carpet" | "boat")[] = [];
   private unlockPreview: VehicleUnlockPreview | null = null;
+  private epilogueStatuePreview: EpilogueStatuePreview | null = null;
 
   constructor(container: HTMLElement, options: LobbyOptions) {
     this.container = container;
@@ -173,11 +175,13 @@ export class Lobby {
           <div class="lobby-unlock-backdrop"></div>
           <div class="lobby-unlock-panel" role="dialog" aria-modal="true" aria-labelledby="lobby-unlock-title">
             <div class="lobby-unlock-preview-canvas" id="lobby-unlock-preview" aria-hidden="true"></div>
+            <div class="lobby-unlock-preview-canvas lobby-unlock-preview-canvas--statue" id="lobby-unlock-preview-statue" aria-hidden="true"></div>
             <h2 class="lobby-unlock-title" id="lobby-unlock-title"></h2>
             <p class="lobby-unlock-body"></p>
             <button type="button" class="lobby-unlock-ok" id="btn-unlock-ok">Got it</button>
           </div>
         </div>
+        <p class="lobby-attribution">Built with <strong class="lobby-attribution__brand">Cursor</strong>, Music by <strong class="lobby-attribution__brand">Suno</strong>, SFX by <strong class="lobby-attribution__brand">ElevenLabs</strong>, 3D Assets by <strong class="lobby-attribution__brand">Tripo3D</strong></p>
       </div>
     `;
 
@@ -234,6 +238,7 @@ export class Lobby {
     const unlockTitle = unlockModal.querySelector(".lobby-unlock-title") as HTMLElement;
     const unlockBody = unlockModal.querySelector(".lobby-unlock-body") as HTMLElement;
     const unlockPreviewHost = this.el.querySelector("#lobby-unlock-preview") as HTMLElement;
+    const unlockStatuePreviewHost = this.el.querySelector("#lobby-unlock-preview-statue") as HTMLElement;
     const unlockOk = this.el.querySelector("#btn-unlock-ok") as HTMLButtonElement;
 
     const setSelectedVehicle = (v: Vehicle) => {
@@ -268,6 +273,9 @@ export class Lobby {
     const showNextUnlockModal = () => {
       if (this.unlockQueue.length === 0) {
         this.unlockPreview?.hide();
+        this.epilogueStatuePreview?.hide();
+        unlockPreviewHost.style.display = "";
+        unlockStatuePreviewHost.style.display = "none";
         unlockModal.classList.remove("open");
         unlockModal.classList.remove("lobby-unlock-modal--epilogue");
         unlockModal.setAttribute("aria-hidden", "true");
@@ -277,11 +285,20 @@ export class Lobby {
       const kind = this.unlockQueue[0]!;
       if (kind === "worldSaved") {
         this.unlockPreview?.hide();
+        unlockPreviewHost.style.display = "none";
+        unlockStatuePreviewHost.style.display = "";
+        if (!this.epilogueStatuePreview) {
+          this.epilogueStatuePreview = new EpilogueStatuePreview(unlockStatuePreviewHost);
+        }
+        this.epilogueStatuePreview.show();
         unlockModal.classList.add("lobby-unlock-modal--epilogue");
         unlockTitle.textContent = "The world is safe";
         unlockBody.textContent =
-          "All five braziers now hold Eternal Flame. The moon will not fall on this world again. Whenever you play Tiny Skies, you can wander the sky without that last threat closing in. Thank you for flying for us all.";
+          "All five braziers now hold Eternal Flame. The moon will not fall on this world again. Whenever you play Tiny Skies, you can wander the sky without that last threat closing in. A memorial statue has been placed on the globe as a new landmark—fly by and see it. Thank you for flying for us all.";
       } else {
+        this.epilogueStatuePreview?.hide();
+        unlockStatuePreviewHost.style.display = "none";
+        unlockPreviewHost.style.display = "";
         unlockModal.classList.remove("lobby-unlock-modal--epilogue");
         if (!this.unlockPreview) {
           this.unlockPreview = new VehicleUnlockPreview(unlockPreviewHost);
@@ -383,6 +400,7 @@ export class Lobby {
     this.loadSaveFeed();
     requestAnimationFrame(() => {
       this.unlockPreview?.resize();
+      this.epilogueStatuePreview?.resize();
       this.el.querySelector(".lobby-header")?.classList.add("visible");
       this.el.querySelector(".lobby-bar")?.classList.add("visible");
     });
@@ -409,6 +427,8 @@ export class Lobby {
   dispose() {
     this.unlockPreview?.dispose();
     this.unlockPreview = null;
+    this.epilogueStatuePreview?.dispose();
+    this.epilogueStatuePreview = null;
     this.el.remove();
     document.getElementById("lobby-styles")?.remove();
   }
@@ -429,9 +449,38 @@ export class Lobby {
         pointer-events: none;
       }
 
+      .lobby-attribution {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: max(22px, calc(env(safe-area-inset-bottom, 0px) + 10px));
+        margin: 0 auto;
+        padding: 0 16px;
+        box-sizing: border-box;
+        max-width: min(40rem, calc(100% - 32px));
+        text-align: center;
+        font-size: clamp(0.72rem, 2.05vw, 0.84rem);
+        font-weight: 400;
+        line-height: 1.45;
+        letter-spacing: 0.03em;
+        color: #7a7a7a;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0;
+        transition: opacity 0.8s ease-out;
+        transition-delay: 0.35s;
+      }
+      .lobby-attribution__brand {
+        font-weight: 700;
+        color: #696969;
+      }
+      .lobby-header.visible ~ .lobby-attribution {
+        opacity: 1;
+      }
+
       .lobby-header {
         position: fixed;
-        top: 28vh;
+        top: calc(28vh - 22px);
         left: 0; right: 0;
         display: flex;
         flex-direction: column;
@@ -454,7 +503,7 @@ export class Lobby {
         flex-direction: column;
         align-items: center;
         gap: 0;
-        padding-bottom: clamp(0.28rem, 0.9vw, 0.5rem);
+        padding-bottom: clamp(0.42rem, 1.15vw, 0.72rem);
       }
       .lobby-tagline {
         font-family: 'Darumadrop One', 'Domine', Georgia, serif;
@@ -516,9 +565,12 @@ export class Lobby {
           opacity: 1 !important;
           transform: none !important;
         }
+        .lobby-attribution {
+          transition: none !important;
+        }
       }
       .lobby-username {
-        margin: 8px 0 0;
+        margin: 20px 0 0;
         width: 100%;
         padding: 0 40px;
         box-sizing: border-box;
@@ -841,7 +893,7 @@ export class Lobby {
         height: 100%;
         display: block;
       }
-      #lobby-unlock-modal.lobby-unlock-modal--epilogue .lobby-unlock-preview-canvas {
+      #lobby-unlock-preview-statue {
         display: none;
       }
       .lobby-unlock-title {
@@ -884,7 +936,9 @@ export class Lobby {
       .lobby-unlock-ok:active { transform: scale(0.98); }
 
       @media (max-width: 480px) {
-        .lobby-header { top: max(14vh, calc(env(safe-area-inset-top, 0px) + 10vh)); }
+        .lobby-header {
+          top: calc(max(14vh, calc(env(safe-area-inset-top, 0px) + 10vh)) - 22px);
+        }
         .lobby-username { font-size: 1rem; padding: 0 20px; }
         .lobby-edit-btn { padding: 8px 12px; min-width: 44px; min-height: 44px; }
         .lobby-bar {
@@ -919,6 +973,12 @@ export class Lobby {
           border-radius: 16px 16px 0 0;
         }
         .lobby-unlock-body { font-size: 0.9rem; }
+        .lobby-attribution {
+          font-size: 0.7rem;
+          bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 8px));
+          padding: 0 12px;
+          letter-spacing: 0.025em;
+        }
       }
     `;
     document.head.appendChild(style);

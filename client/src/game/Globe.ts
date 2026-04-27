@@ -46,6 +46,7 @@ import { MOON_APPROACH_DIR } from "./MoonThreat";
 import { createNoise3D, sampleTerrain } from "./SimplexNoise";
 import { PROP_TERRAIN_SINK, surfaceAltitudeAt, surfaceDisplacementAt, surfaceDisplacementFromValue } from "./TerrainSurface";
 import { getVolcanoPlacementNormal, VOLCANO_COUNT } from "./Volcano";
+import { ProgressionManager } from "./ProgressionManager";
 
 const ATMOSPHERE_VERTEX = `
 varying vec3 vNormal;
@@ -218,6 +219,8 @@ export class Globe {
   readonly butterflyCenters: { normal: Vector3 }[] = [];
   /** Single GLB pyramid — one per world, inland lowlands (low elevation + flat), not hills. */
   readonly pyramidCenters: { normal: Vector3 }[] = [];
+  /** Victory `statue.glb` — one inland flat site, away from pyramids. */
+  readonly statueCenters: { normal: Vector3 }[] = [];
   /** Floating race start banners carried by balloons. */
   readonly raceBannerCenters: { normal: Vector3 }[] = [];
   private raceBanners: { pivot: Group; inner: Group; normal: Vector3; baseAlt: number; phase: number; }[] = [];
@@ -376,6 +379,7 @@ export class Globe {
     this.createMushrooms();
     this.createButterflyGardens();
     this.createPyramid();
+    this.createStatue();
     this.createMoonstoneRuins();
     this.createFloatingTreeClusters();
     this.createBalloons();
@@ -3116,6 +3120,10 @@ transformed.z += sway2;`,
     const spin = seededRandom(484848 + this.seed);
     const REF_UP = new Vector3(0, 1, 0);
 
+    for (const normal of chosen) {
+      this.pyramidCenters.push({ normal: normal.clone() });
+    }
+
     const loader = new GLTFLoader();
     loader.load(
       "/3D/pyramid.glb",
@@ -3130,8 +3138,6 @@ transformed.z += sway2;`,
         const uniformScale = targetSize / maxDim;
 
         for (const normal of chosen) {
-          this.pyramidCenters.push({ normal: normal.clone() });
-
           const displacement = surfaceDisplacementAt(
             this.seed,
             this.terrainType,
@@ -3182,6 +3188,137 @@ transformed.z += sway2;`,
       undefined,
       (err) => {
         console.error("[Globe] Failed to load /3D/pyramid.glb:", err);
+      },
+    );
+  }
+
+  /** Inland `statue.glb` — one flat lowland, separated from pyramids and other landmarks. */
+  private createStatue() {
+    if (!ProgressionManager.loadPlayerWorldState().moonFrozenByEternalFlames) return;
+
+    const MIN_ELEVATION = 0.02;
+    const MAX_ELEVATION = 0.32;
+    const INLAND_CHECKS = 8;
+    const INLAND_CHECK_DIST = 0.07;
+    const MAX_WATER_RATIO = 0.26;
+    const ROUGH_RING_DIST = 0.085;
+    const MAX_ROUGHNESS = 0.26;
+    /** Stay clearly off the pyramid sites (pyramids use 0.80 separation). */
+    const MIN_AWAY_FROM_PYRAMID_DOT = 0.78;
+
+    const rand = seededRandom(626262 + this.seed);
+
+    type Pooled = { normal: Vector3; elevation: number; rough: number };
+    const pool: Pooled[] = [];
+    let attempts = 0;
+
+    while (attempts < 12000 && pool.length < 400) {
+      attempts++;
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      const terrain = this.sampleTerrainAt(nx, ny, nz);
+      if (!terrain.isLand) continue;
+      const elevation = terrain.elevation;
+      if (elevation < MIN_ELEVATION || elevation > MAX_ELEVATION) continue;
+
+      const normal = new Vector3(nx, ny, nz);
+
+      if (this.waterRatioAround(normal, INLAND_CHECK_DIST, INLAND_CHECKS) > MAX_WATER_RATIO) continue;
+
+      const rough = this.terrainRingElevationRoughness(normal, ROUGH_RING_DIST);
+      if (rough > MAX_ROUGHNESS) continue;
+
+      if (this.villageCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.lighthouseCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.windmillCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.observatoryCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.stonehengeCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.shrineCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.hotspringCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.pyramidCenters.some((v) => normal.dot(v.normal) > MIN_AWAY_FROM_PYRAMID_DOT)) continue;
+
+      pool.push({ normal, elevation, rough });
+    }
+
+    if (pool.length === 0) return;
+
+    pool.sort((a, b) => a.elevation - b.elevation || a.rough - b.rough);
+    const siteNormal = pool[0]!.normal.clone();
+
+    this.statueCenters.push({ normal: siteNormal.clone() });
+
+    const spin = seededRandom(919191 + this.seed);
+    const REF_UP = new Vector3(0, 1, 0);
+
+    const loader = new GLTFLoader();
+    loader.load(
+      "/3D/statue.glb",
+      (gltf) => {
+        const template = gltf.scene;
+        template.updateMatrixWorld(true);
+        const box = new Box3().setFromObject(template);
+        const size = new Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z, 1e-4);
+        const targetSize = 0.3;
+        const uniformScale = targetSize / maxDim;
+
+        const normal = siteNormal;
+        const displacement = surfaceDisplacementAt(
+          this.seed,
+          this.terrainType,
+          normal.x,
+          normal.y,
+          normal.z,
+        );
+        const surfaceR = this.radius + displacement - PROP_TERRAIN_SINK;
+
+        const model = template.clone(true);
+        model.scale.setScalar(uniformScale);
+        model.position.copy(normal.clone().multiplyScalar(surfaceR));
+        model.quaternion.setFromUnitVectors(REF_UP, normal);
+        model.rotateY(spin() * Math.PI * 2);
+        model.updateMatrixWorld(true);
+        let minAlong = minMeshVertexProjectionAlongNormal(model, normal);
+        if (!Number.isFinite(minAlong)) {
+          const bb = new Box3().setFromObject(model);
+          const corners = [
+            new Vector3(bb.min.x, bb.min.y, bb.min.z),
+            new Vector3(bb.max.x, bb.min.y, bb.min.z),
+            new Vector3(bb.min.x, bb.max.y, bb.min.z),
+            new Vector3(bb.max.x, bb.max.y, bb.min.z),
+            new Vector3(bb.min.x, bb.min.y, bb.max.z),
+            new Vector3(bb.max.x, bb.min.y, bb.max.z),
+            new Vector3(bb.min.x, bb.max.y, bb.max.z),
+            new Vector3(bb.max.x, bb.max.y, bb.max.z),
+          ];
+          minAlong = Infinity;
+          for (const c of corners) {
+            const d = c.dot(normal);
+            if (d < minAlong) minAlong = d;
+          }
+        }
+        const lift = surfaceR - minAlong;
+        model.position.addScaledVector(normal, lift);
+
+        model.traverse((child) => {
+          if ((child as Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        this.applyRimLightToPyramid(model);
+        this.group.add(model);
+      },
+      undefined,
+      (err) => {
+        console.error("[Globe] Failed to load /3D/statue.glb:", err);
       },
     );
   }
@@ -3266,6 +3403,7 @@ transformed.z += sway2;`,
       if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.pyramidCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.statueCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
 
       candidates.push({ normal, elevation });
     }
@@ -4897,6 +5035,7 @@ transformed.z += sway2;`,
       if (this.mushroomCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.butterflyCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
       if (this.pyramidCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
+      if (this.statueCenters.some((v) => normal.dot(v.normal) > 0.97)) continue;
 
       candidates.push({ normal, elevation });
     }
