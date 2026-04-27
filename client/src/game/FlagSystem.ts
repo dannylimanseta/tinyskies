@@ -22,11 +22,17 @@ import {
 } from "three";
 import { CircularProgressRing } from "../ui/CircularProgressRing";
 import type { HUD } from "../ui/HUD";
+import { createPackageQuestBeamGroup } from "./PackageQuest";
 import type { RemotePlaneManager } from "./RemotePlane";
 
 const FLAG_BOB_SPEED = 2.2;
 const FLAG_OFFSET_LOCAL_Y = 0.38;
 const RING_ANCHOR_Y = 0.32;
+/** Tall pickup beam (same shader as package quest); must read from orbit. */
+const FLAG_FREE_BEAM_HEIGHT = 4.5;
+const FLAG_FREE_BEAM_WIDTH = 0.11;
+const FLAG_BEAM_GOLD = 0xf7c948;
+const _BEAM_REF_Y = new Vector3(0, 1, 0);
 
 /**
  * Client visuals + HUD for the multiplayer hot-flag (server-authoritative).
@@ -39,6 +45,10 @@ export class FlagSystem {
   private remotePlanes: RemotePlaneManager;
 
   private readonly flagRoot = new Group();
+  /** Radial-aligned parent for the quest-style beam (local +Y → sky / outward). */
+  private readonly freeBeamAlign = new Group();
+  private readonly freeBeam: Group;
+  private readonly beamTime = { value: 0 };
   private bobTime = Math.random() * Math.PI * 2;
   private readonly carrierLight: PointLight;
 
@@ -65,6 +75,15 @@ export class FlagSystem {
     this.getLocalPlayerId = deps.getLocalPlayerId;
     this.getLocalPlayerGroup = deps.getLocalPlayerGroup;
     this.remotePlanes = deps.remotePlanes;
+
+    this.freeBeam = createPackageQuestBeamGroup(FLAG_BEAM_GOLD, {
+      timeUniform: this.beamTime,
+      height: FLAG_FREE_BEAM_HEIGHT,
+      width: FLAG_FREE_BEAM_WIDTH,
+    });
+    this.freeBeam.visible = false;
+    this.freeBeamAlign.add(this.freeBeam);
+    this.flagRoot.add(this.freeBeamAlign);
 
     const pole = new Mesh(
       new CylinderGeometry(0.015, 0.018, 0.28, 8),
@@ -118,21 +137,32 @@ export class FlagSystem {
     this.freeBasePos.copy(world);
     this.flagRoot.position.copy(world);
     this.flagRoot.visible = true;
-    this.carrierLight.intensity = 0.85;
+    this.freeBeam.visible = true;
+    this.alignFreeBeamToRadial();
+    this.carrierLight.intensity = 1.15;
     this.mode = "free";
     this.holderId = null;
+  }
+
+  /** Orients the pickup beam along globe outward normal so it reads “tall” in the sky. */
+  private alignFreeBeamToRadial() {
+    this.scratchWorld.copy(this.flagRoot.position).normalize();
+    if (this.scratchWorld.lengthSq() < 1e-8) return;
+    this.freeBeamAlign.quaternion.setFromUnitVectors(_BEAM_REF_Y, this.scratchWorld);
   }
 
   private applyHeld() {
     if (!this.holderId) return;
     this.clearAllRemoteFlagDecor();
     this.detachFlagFromParents();
+    this.freeBeam.visible = false;
     if (this.holderId === this.localId()) {
       const g = this.getLocalPlayerGroup();
       if (g) {
         g.add(this.flagRoot);
         this.flagRoot.position.set(0, FLAG_OFFSET_LOCAL_Y, 0);
         this.flagRoot.visible = true;
+        this.freeBeamAlign.quaternion.identity();
         this.carrierLight.intensity = 0.65;
       }
     } else {
@@ -241,6 +271,7 @@ export class FlagSystem {
     this.mode = "none";
     this.clearCaptureUi();
     this.flagRoot.visible = false;
+    this.freeBeam.visible = false;
     this.clearAllRemoteFlagDecor();
     this.detachFlagFromParents();
   }
@@ -265,9 +296,11 @@ export class FlagSystem {
     const lid = this.localId();
 
     if (this.mode === "free" && this.flagRoot.visible) {
+      this.beamTime.value += dt;
       this.bobTime += dt * FLAG_BOB_SPEED;
       const bob = Math.sin(this.bobTime) * 0.045;
       this.flagRoot.position.set(this.freeBasePos.x, this.freeBasePos.y + bob, this.freeBasePos.z);
+      this.alignFreeBeamToRadial();
     } else if (this.mode === "held" && this.holderId === lid && this.flagRoot.visible) {
       this.bobTime += dt * FLAG_BOB_SPEED;
       const bob = Math.sin(this.bobTime) * 0.022;
