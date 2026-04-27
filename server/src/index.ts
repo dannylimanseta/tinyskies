@@ -83,13 +83,19 @@ io.on("connection", (socket) => {
     console.log(`Player ${socket.id} joining world: ${slug}`);
     const v = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
     let globeRadius = 5;
+    let worldSeed = 0;
+    let terrainType = "default";
     try {
       const world = await prisma.world.findUnique({ where: { slug } });
-      if (world) globeRadius = world.globeRadius;
+      if (world) {
+        globeRadius = world.globeRadius;
+        worldSeed = world.seed;
+        terrainType = world.terrainType;
+      }
     } catch (err) {
       console.warn("world:join globeRadius lookup failed:", err);
     }
-    roomManager.joinRoom(slug, socket, playerName, v, reservationId, globeRadius);
+    roomManager.joinRoom(slug, socket, playerName, v, reservationId, globeRadius, worldSeed, terrainType);
   });
 
   socket.on("disconnect", () => {

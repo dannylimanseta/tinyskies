@@ -33,6 +33,9 @@ import {
   PAINTBALL_SPEED_MULT_MAX,
 } from "../paintball/constants.js";
 import { cartesianFromSpherical, computePaintballShot } from "../paintball/hitTest.js";
+import { surfaceDisplacementAt } from "../terrain/TerrainSurface.js";
+
+const REF_UP = new Vector3(0, 1, 0);
 
 interface PaintballUpgradeRecord {
   doubleTap: boolean;
@@ -89,6 +92,10 @@ export class Room {
   readonly slug: string;
   /** World globe radius — used for paintball raycast (matches Prisma world row). */
   readonly globeRadius: number;
+  /** Matches client Globe terrain (Prisma `World.seed`). */
+  readonly worldSeed: number;
+  /** Matches client terrain preset id (Prisma `World.terrainType`). */
+  readonly terrainType: string;
   private players = new Map<string, ConnectedPlayer>();
   /** Rolling pair of the two most recent paintball shot timestamps per socket (ms). */
   private paintballShotHistory = new Map<string, number[]>();
@@ -105,9 +112,11 @@ export class Room {
   private hotFlagSpawnTimer: ReturnType<typeof setTimeout> | null = null;
   private hotFlagFreeRespawnTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(slug: string, globeRadius: number) {
+  constructor(slug: string, globeRadius: number, worldSeed: number, terrainType: string) {
     this.slug = slug;
     this.globeRadius = globeRadius;
+    this.worldSeed = worldSeed;
+    this.terrainType = terrainType;
   }
 
   get playerCount() {
@@ -196,7 +205,15 @@ export class Room {
 
   private spawnHotFlagAtRandomPosition() {
     randomUnitQuaternion(_qFlag);
-    const pos = cartesianFromSpherical(_qFlag, FLAG_HOVER_ALTITUDE, this.globeRadius);
+    _vFlag.copy(REF_UP).applyQuaternion(_qFlag).normalize();
+    const surfaceAlt = surfaceDisplacementAt(
+      this.worldSeed,
+      this.terrainType,
+      _vFlag.x,
+      _vFlag.y,
+      _vFlag.z,
+    );
+    const pos = cartesianFromSpherical(_qFlag, surfaceAlt + FLAG_HOVER_ALTITUDE, this.globeRadius);
     this.hotFlagMode = "free";
     this.hotFlagX = pos.x;
     this.hotFlagY = pos.y;

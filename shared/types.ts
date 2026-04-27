@@ -116,7 +116,10 @@ export interface PaintballHitEvent {
 export const FLAG_COLLECT_RADIUS = 0.6;
 /** Hot-potato flag: challenger must stay within this of carrier. */
 export const FLAG_CAPTURE_RADIUS = 1.0;
-/** Altitude above base globe radius for free flag spawn (matches carpet `CARPET_HOVER_HEIGHT`). */
+/**
+ * Clearance above terrain surface for free flag spawn (server: `surfaceDisplacement + this`).
+ * Matches carpet low hover; spawn altitude must include terrain (see server `Room.spawnHotFlagAtRandomPosition`).
+ */
 export const FLAG_HOVER_ALTITUDE = 0.03;
 export const FLAG_CAPTURE_DURATION_MS = 3000;
 export const FLAG_IMMUNITY_MS = 10_000;

@@ -3,6 +3,7 @@
  */
 export const FLAG_COLLECT_RADIUS = 0.6;
 export const FLAG_CAPTURE_RADIUS = 1.0;
+/** Added to `surfaceDisplacementAt` at spawn so height matches client terrain + carpet hover. */
 export const FLAG_HOVER_ALTITUDE = 0.03;
 export const FLAG_CAPTURE_DURATION_MS = 3000;
 export const FLAG_IMMUNITY_MS = 10_000;
