@@ -37,8 +37,8 @@ import { surfaceAltitudeAt } from "./TerrainSurface";
 import { addRimLight } from "./RimLight";
 import { Trail } from "./Trail";
 
-const GREMLIN_BASE_COUNT = 6;
-const GREMLIN_MAX_COUNT = 9;
+const GREMLIN_BASE_COUNT = 3;
+const GREMLIN_MAX_COUNT = 5;
 export const SKY_GREMLIN_XP = 30;
 /** XP when the Gremlin King is defeated (10 hits). */
 export const SKY_GREMLIN_KING_XP = 120;
@@ -92,8 +92,8 @@ const GREMLIN_FIRE_COOLDOWN_MIN = 1.85;
 const GREMLIN_FIRE_COOLDOWN_MAX = 2.95;
 const GREMLIN_KING_FIRE_COOLDOWN_MIN = 2.5;
 const GREMLIN_KING_FIRE_COOLDOWN_MAX = 3.85;
-const GREMLIN_RESPAWN_MIN_SEC = 6.5;
-const GREMLIN_RESPAWN_MAX_SEC = 9.5;
+const GREMLIN_RESPAWN_MIN_SEC = 13.0;
+const GREMLIN_RESPAWN_MAX_SEC = 19.0;
 const GREMLIN_HIT_RADIUS = 0.16;
 const PLAYER_HIT_RADIUS = 0.22;
 const GREMLIN_FALL_SEC = 0.8;
