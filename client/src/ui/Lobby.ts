@@ -22,6 +22,12 @@ const VEHICLE_ICON_SRC: Record<Vehicle, string> = {
 
 const LOBBY_DISPLAY_TITLE = "Tiny Skies";
 
+/** Last per-letter animation index (non-space chars); drives tagline entrance delay. */
+const LOBBY_TITLE_LAST_CHAR_I = Math.max(
+  0,
+  [...LOBBY_DISPLAY_TITLE].filter((ch) => ch !== " ").length - 1,
+);
+
 /** Per-letter spans for staggered entrance; `aria-label` on h1 carries the accessible name. */
 function lobbyTitleLettersHtml(): string {
   let letterIndex = 0;
@@ -140,7 +146,7 @@ export class Lobby {
     this.el.innerHTML = `
       <div class="lobby-overlay">
         <div class="lobby-header">
-          <div class="lobby-title-block">
+          <div class="lobby-title-block" style="--title-last-char-i:${LOBBY_TITLE_LAST_CHAR_I}">
             <p class="lobby-tagline">A Cosy Exploration Game</p>
             <h1 class="lobby-title" aria-label="${LOBBY_DISPLAY_TITLE}">${lobbyTitleLettersHtml()}</h1>
           </div>
@@ -463,7 +469,7 @@ export class Lobby {
         font-weight: 400;
         line-height: 1.45;
         letter-spacing: 0.03em;
-        color: #7a7a7a;
+        color: #8a8a8a;
         pointer-events: none;
         z-index: 50;
         opacity: 0;
@@ -472,7 +478,7 @@ export class Lobby {
       }
       .lobby-attribution__brand {
         font-weight: 700;
-        color: #696969;
+        color: #767676;
       }
       .lobby-header.visible ~ .lobby-attribution {
         opacity: 1;
@@ -509,11 +515,18 @@ export class Lobby {
         font-family: 'Darumadrop One', 'Domine', Georgia, serif;
         font-size: clamp(1.05rem, 3.3vw, 1.32rem);
         font-weight: 400;
-        margin: 0 0 -0.24em;
-        line-height: 1.1;
+        margin: 0 0 -0.4em;
+        line-height: 1.05;
         letter-spacing: 0.08em;
         color: rgba(255, 255, 255, 0.88);
         text-shadow: none;
+        opacity: 0;
+        transform: translate3d(0, 0.42em, 0);
+        will-change: opacity, transform;
+      }
+      .lobby-header.visible .lobby-tagline {
+        animation: lobby-tagline-in 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        animation-delay: calc(0.38s + var(--title-last-char-i) * 0.058s + 0.68s + 0.05s);
       }
       .lobby-title {
         font-family: 'Darumadrop One', 'Domine', Georgia, serif;
@@ -555,12 +568,27 @@ export class Lobby {
           transform: translate3d(0, 0, 0);
         }
       }
+      @keyframes lobby-tagline-in {
+        from {
+          opacity: 0;
+          transform: translate3d(0, 0.42em, 0);
+        }
+        to {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+      }
       .lobby-title__space {
         display: inline-block;
         white-space: pre;
       }
       @media (prefers-reduced-motion: reduce) {
         .lobby-title__char {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .lobby-header.visible .lobby-tagline {
           animation: none !important;
           opacity: 1 !important;
           transform: none !important;
@@ -818,14 +846,14 @@ export class Lobby {
         padding: 0;
         display: flex;
         flex-direction: column;
-        gap: 0.4em;
+        gap: 11px;
         text-align: center;
         font-size: 0.78rem;
         font-weight: 450;
         line-height: 1.4;
         letter-spacing: 0.02em;
         color: #ffffff;
-        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
       }
       .lobby-save-feed-item { margin: 0; }
       .lobby-save-feed-empty {
@@ -836,7 +864,7 @@ export class Lobby {
         line-height: 1.4;
         letter-spacing: 0.02em;
         color: #ffffff;
-        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
       }
       .lobby-save-feed-empty[hidden] { display: none !important; }
 
@@ -959,7 +987,7 @@ export class Lobby {
         }
         .lobby-save-feed-head { gap: 10px; margin-bottom: 10px; }
         .lobby-save-feed-crown { width: 20px; height: 20px; }
-        .lobby-save-feed-list { font-size: 0.72rem; }
+        .lobby-save-feed-list { font-size: 0.72rem; gap: 10px; }
         .lobby-save-feed-empty { font-size: 0.72rem; }
         .lobby-unlock-panel {
           width: min(22rem, calc(100% - 32px));

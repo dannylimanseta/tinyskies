@@ -1136,9 +1136,9 @@ export class Game {
 
   /** One preview frame (shared by the RAF loop and return-to-menu while overlay stays black). */
   private stepPreview(dt: number) {
-    const ZOOM_DURATION = 3.5;
+    const ZOOM_DURATION = 1.35;
     const endRadius  = this.mobile ? 17 : 12;
-    const startRadius = endRadius * 2.4;
+    const startRadius = endRadius * 1.1;
 
     this.previewZoomElapsed = Math.min(this.previewZoomElapsed + dt, ZOOM_DURATION);
     const t = this.previewZoomElapsed / ZOOM_DURATION;
