@@ -647,6 +647,7 @@ export class Game {
   async start() {
     this.mobile = isMobile();
     this.showLoadingOverlay();
+    const loadingOverlayT0 = performance.now();
 
     this.serverUrlCache = await resolveServerUrl();
     const serverUrl = this.getServerUrl();
@@ -739,6 +740,12 @@ export class Game {
     this.initPreview();
     this.previewActive = true;
     requestAnimationFrame(this.previewTick);
+
+    const loadingMinMs = 1500;
+    const loadingWait = loadingMinMs - (performance.now() - loadingOverlayT0);
+    if (loadingWait > 0) {
+      await new Promise<void>((r) => setTimeout(r, loadingWait));
+    }
 
     this.removeLoadingOverlay();
 
@@ -948,7 +955,12 @@ export class Game {
     this.loadingEl = document.createElement("div");
     this.loadingEl.id = "loading-overlay";
     this.loadingEl.innerHTML = `
-      <h1 class="loading-title">Tiny Skies</h1>
+      <div class="loading-stack">
+        <div class="loading-built-with" aria-label="Built with Cursor">
+          <span class="loading-built-text">Built with</span>
+          <img class="loading-cursor-logo" src="/2D/logo_cursor.png" alt="" width="180" height="47" decoding="async" />
+        </div>
+      </div>
     `;
     Object.assign(this.loadingEl.style, {
       position: "fixed",
@@ -958,27 +970,45 @@ export class Game {
       alignItems: "center",
       justifyContent: "center",
       background: "#000",
-      fontFamily: "'Darumadrop One', 'Domine', Georgia, serif",
-    });
-    const title = this.loadingEl.querySelector(".loading-title") as HTMLElement;
-    Object.assign(title.style, {
-      fontSize: "clamp(2.8rem, 11.2vw, 4.2rem)",
-      fontWeight: "800",
-      margin: "0",
-      background: "linear-gradient(135deg, #4488ff 0%, #44ddff 100%)",
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-      backgroundClip: "text",
-      animation: "loading-pulse 1.5s ease-in-out infinite",
+      fontFamily: "'Domine', Georgia, serif",
     });
 
     if (!document.getElementById("loading-styles")) {
       const s = document.createElement("style");
       s.id = "loading-styles";
       s.textContent = `
-        @keyframes loading-pulse {
-          0%, 100% { opacity: 0.5; }
-          50% { opacity: 1; }
+        .loading-stack {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+        }
+        .loading-built-with {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: clamp(0.32rem, 1.1vh, 0.5rem);
+          text-align: center;
+        }
+        .loading-built-text {
+          font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+            'Helvetica Neue', Arial, sans-serif;
+          font-size: clamp(0.78rem, 2.35vw, 0.92rem);
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(200, 210, 230, 0.78);
+          white-space: nowrap;
+        }
+        .loading-cursor-logo {
+          width: clamp(118px, 34vw, 195px);
+          height: auto;
+          max-width: 88vw;
+          display: block;
+          object-fit: contain;
+          opacity: 0.94;
         }
       `;
       document.head.appendChild(s);
@@ -991,10 +1021,12 @@ export class Game {
     if (!this.loadingEl) return;
     this.loadingEl.innerHTML = `
       <div style="text-align:center;padding:0 24px;">
-        <h1 class="loading-title" style="font-family:'Darumadrop One', 'Domine', Georgia, serif;font-size:clamp(2.8rem,11.2vw,4.2rem);font-weight:800;margin:0;
-          background:linear-gradient(135deg,#4488ff,#44ddff);
-          -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-          background-clip:text;animation:none;">Tiny Skies</h1>
+        <div class="loading-stack">
+          <div class="loading-built-with" aria-label="Built with Cursor">
+            <span class="loading-built-text">Built with</span>
+            <img class="loading-cursor-logo" src="/2D/logo_cursor.png" alt="" width="180" height="47" decoding="async" />
+          </div>
+        </div>
         <p style="color:rgba(180,200,255,0.5);margin:16px 0 20px;font-size:0.9rem;">
           Could not connect to server
         </p>
@@ -1006,15 +1038,48 @@ export class Game {
       </div>
     `;
     this.loadingEl.querySelector("#btn-retry")!.addEventListener("click", () => {
-      this.removeLoadingOverlay();
+      this.removeLoadingOverlay({ immediate: true });
       this.start();
     });
   }
 
-  private removeLoadingOverlay() {
-    this.loadingEl?.remove();
-    this.loadingEl = null;
-    document.getElementById("loading-styles")?.remove();
+  private removeLoadingOverlay(opts?: { immediate?: boolean }) {
+    const el = this.loadingEl;
+    if (!el) return;
+
+    if (opts?.immediate) {
+      el.remove();
+      this.loadingEl = null;
+      document.getElementById("loading-styles")?.remove();
+      return;
+    }
+
+    if (el.dataset.loadingFadeOut === "1") return;
+    el.dataset.loadingFadeOut = "1";
+    el.style.pointerEvents = "none";
+    el.style.transition = "opacity 0.55s ease-out";
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.style.opacity = "0";
+      });
+    });
+
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      el.removeEventListener("transitionend", onEnd);
+      clearTimeout(fallback);
+      el.remove();
+      if (this.loadingEl === el) this.loadingEl = null;
+      document.getElementById("loading-styles")?.remove();
+    };
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName !== "opacity") return;
+      finish();
+    };
+    el.addEventListener("transitionend", onEnd);
+    const fallback = setTimeout(finish, 900);
   }
 
   /* ── Phase 1: Preview (globe + orbiting camera) ──────────────────── */
@@ -6649,6 +6714,6 @@ export class Game {
     this.audioManager.dispose();
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("resize", this.onPreviewResize);
-    this.removeLoadingOverlay();
+    this.removeLoadingOverlay({ immediate: true });
   }
 }
