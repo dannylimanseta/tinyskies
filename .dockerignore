@@ -1,0 +1,10 @@
+# server/Dockerfile only needs root workspace files + shared + server.
+client/
+node_modules/
+dist/
+.git/
+.env
+*.log
+.DS_Store
+.vercel/
+.cursor/
