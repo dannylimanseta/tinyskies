@@ -79,7 +79,10 @@ function randomUnitQuaternion(target: Quaternion): Quaternion {
 }
 
 const _qFlag = new Quaternion();
+/** Scratch for flag spawn / drop / free pickup only — never alias two live positions in one scope. */
 const _vFlag = new Vector3();
+const _vCarrier = new Vector3();
+const _vOtherPlayer = new Vector3();
 
 function playerWorldPos(state: PlayerState, globeRadius: number, out: Vector3): Vector3 {
   _qFlag.set(state.qx, state.qy, state.qz, state.qw);
@@ -308,7 +311,7 @@ export class Room {
       return;
     }
 
-    const carrierPos = playerWorldPos(carrier.state, this.globeRadius, _vFlag);
+    playerWorldPos(carrier.state, this.globeRadius, _vCarrier);
     const immune = now < this.hotFlagImmuneUntilMs;
 
     for (const [cid, entry] of [...this.hotFlagChallengers.entries()]) {
@@ -318,10 +321,10 @@ export class Room {
         this.broadcastFlagCaptureEnd({ challengerId: cid });
         continue;
       }
-      const cpos = playerWorldPos(ch.state, this.globeRadius, _vFlag);
-      const dx = cpos.x - carrierPos.x;
-      const dy = cpos.y - carrierPos.y;
-      const dz = cpos.z - carrierPos.z;
+      const cpos = playerWorldPos(ch.state, this.globeRadius, _vOtherPlayer);
+      const dx = cpos.x - _vCarrier.x;
+      const dy = cpos.y - _vCarrier.y;
+      const dz = cpos.z - _vCarrier.z;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
       const inRange = dist < FLAG_CAPTURE_RADIUS && !immune;
 
@@ -364,10 +367,10 @@ export class Room {
       if (id === this.hotFlagHolderId) continue;
       if (!isFlagVehicle(pl.state.vehicle)) continue;
       if (this.hotFlagChallengers.has(id)) continue;
-      const ppos = playerWorldPos(pl.state, this.globeRadius, _vFlag);
-      const dx = ppos.x - carrierPos.x;
-      const dy = ppos.y - carrierPos.y;
-      const dz = ppos.z - carrierPos.z;
+      const ppos = playerWorldPos(pl.state, this.globeRadius, _vOtherPlayer);
+      const dx = ppos.x - _vCarrier.x;
+      const dy = ppos.y - _vCarrier.y;
+      const dz = ppos.z - _vCarrier.z;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (dist < FLAG_CAPTURE_RADIUS) {
         const startMs = Date.now();
