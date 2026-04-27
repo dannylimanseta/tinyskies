@@ -3886,6 +3886,10 @@ export class Game {
     for (const portal of this.cosmicWorldPortals) {
       portal.update(dt, this.cameraRig.camera, 1.0);
     }
+    /* Twister materials use `time`; skipping this during the cinematic froze the vortex. */
+    if (!this.inCosmicVoid) {
+      this.waterSpouts?.update(dt);
+    }
 
     if (this.moonThreat) {
       this.cameraRig.setTrauma(this.moonThreat.getShakeTrauma());
@@ -4213,6 +4217,9 @@ export class Game {
   private tickMoonstoneUnionCinematic(dt: number) {
     this.moonstoneUnionTimer += dt;
     this.globe.update(dt);
+    if (!this.inCosmicVoid) {
+      this.waterSpouts?.update(dt);
+    }
     this.localPlayer.group.updateMatrixWorld(true);
     if (this.moonstoneUnionStep === "brazierMontage") {
       this.braziers?.startReveal();

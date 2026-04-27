@@ -460,6 +460,7 @@ export class Carpet {
   }
 
   dispose() {
+    this.group.removeFromParent();
     this.group.traverse((child) => {
       if ((child as any).geometry) (child as any).geometry.dispose();
       if ((child as any).material) (child as any).material.dispose();

@@ -424,6 +424,7 @@ export class Plane {
 
   dispose() {
     this.gremlinHpBarRoot.removeFromParent();
+    this.group.removeFromParent();
     this.gremlinHpBarRoot.traverse((child) => {
       const m = child as Mesh;
       m.geometry?.dispose();
