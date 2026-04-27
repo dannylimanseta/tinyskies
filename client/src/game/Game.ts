@@ -4999,7 +4999,8 @@ export class Game {
       });
     } else if (v === "carpet") {
       const jelly = this.skyJellyfish?.getCollectedCount() ?? 0;
-      const eternalFlameActive = !!ProgressionManager.loadPlayerWorldState().moonFrozenByEternalFlames;
+      const ws = ProgressionManager.loadPlayerWorldState();
+      const eternalFlameActive = !!(ws.moonFrozenByEternalFlames || ws.voidPortalsClosed);
       this.hud.setQuestTrackers({
         vehicle: "carpet",
         jelly: { current: jelly, max: JELLY_COUNT },
