@@ -55,6 +55,9 @@ function injectStyles() {
       transform: translateY(0);
       transition: opacity 0.35s ease, transform 0.35s ease;
     }
+    .control-hints.control-hints--tutorial {
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
     .control-hints--hidden {
       opacity: 0;
       transform: translateY(8px);

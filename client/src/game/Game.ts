@@ -307,10 +307,15 @@ const VEHICLE_TUTORIAL_FINISH_LABELS: Record<Vehicle, string> = {
   carpet: "That's it. Enjoy flying!",
   boat: "That's it. Enjoy boating!",
 };
-const VEHICLE_TUTORIAL_ADVANCE_DELAY_MS = 4000;
+const VEHICLE_TUTORIAL_ADVANCE_DELAY_MS = 2000;
 /** After Space / portal travel steps, advance quickly so the next prompt is not buried. */
 const VEHICLE_TUTORIAL_CARPET_PORTAL_ADVANCE_MS = 300;
+/** Fade when dismissing the whole tutorial or swapping to the full controls panel. */
 const VEHICLE_TUTORIAL_FADE_MS = 350;
+/** Faster opacity/transform crossfade between tutorial steps (see ControlHints tutorial transition). */
+const VEHICLE_TUTORIAL_STEP_FADE_MS = 220;
+/** Drop the tutorial and show keyboard hints if the player has not finished within this time. */
+const VEHICLE_TUTORIAL_OVERALL_MAX_MS = 30_000;
 
 function vehicleTutorialAdvanceDelayMs(vehicle: Vehicle, completedStepIndex: number): number {
   if (vehicle !== "carpet") return VEHICLE_TUTORIAL_ADVANCE_DELAY_MS;
@@ -546,6 +551,13 @@ export class Game {
   private activeVehicleTutorial: { vehicle: Vehicle; stepIndex: number } | null = null;
   private vehicleTutorialAdvanceTimeout: ReturnType<typeof setTimeout> | null = null;
   private vehicleTutorialAdvancePending = false;
+  private vehicleTutorialOverallTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Full-screen dim with a hole over desktop control/tutorial hints; cleared after a few seconds. */
+  private tutorialSpotlightEl: HTMLDivElement | null = null;
+  private tutorialSpotlightOnResize: (() => void) | null = null;
+  private tutorialSpotlightRepaintTimer: ReturnType<typeof setTimeout> | null = null;
+  private tutorialSpotlightHoldTimer: ReturnType<typeof setTimeout> | null = null;
+  private tutorialSpotlightFadeTimer: ReturnType<typeof setTimeout> | null = null;
   private transitionOverlay: TransitionOverlay | null = null;
   private hullColor = 0xff4444;
   private moonThreat: MoonThreat | null = null;
@@ -1887,11 +1899,8 @@ export class Game {
     this.vehicleTutorialHints?.dispose();
     this.vehicleTutorialHints = null;
     this.activeVehicleTutorial = null;
-    if (this.vehicleTutorialAdvanceTimeout != null) {
-      clearTimeout(this.vehicleTutorialAdvanceTimeout);
-      this.vehicleTutorialAdvanceTimeout = null;
-    }
-    this.vehicleTutorialAdvancePending = false;
+    this.clearVehicleTutorialTimers();
+    this.clearTutorialSpotlight();
     this.speedLines?.dispose();
     this.contrails?.dispose();
     this.wakeTrail?.dispose();
@@ -2698,6 +2707,9 @@ export class Game {
   private static readonly INTRO_DURATION = 5.2;
   /** Ease the live end target in only in this tail fraction so `snapTo` matches the last frame. */
   private static readonly INTRO_LIVE_END_BLEND_START = 0.85;
+  /** Desktop spotlight dim: hold at full strength, then fade out (ms). */
+  private static readonly TUTORIAL_SPOTLIGHT_HOLD_MS = 4000;
+  private static readonly TUTORIAL_SPOTLIGHT_FADE_MS = 450;
   /** Gremlins stay hidden until this many seconds after the session starts (`gameTime`). */
   private static readonly SKY_GREMLIN_SPAWN_DELAY_SEC = 30;
   /** Tangent-plane heading (rad) for the Home intro camera approach toward the campsite. */
@@ -2943,6 +2955,9 @@ export class Game {
           );
         }
         this.hud.show();
+        if (!landingAtCampsite) {
+          this.beginTutorialSpotlightAfterIntro();
+        }
         if (landingAtCampsite) {
           this.pendingCampsiteAfterIntro = false;
           void this.doLanding();
@@ -4897,15 +4912,131 @@ export class Game {
     }
   }
 
-  private startVehicleTutorialIfNeeded(vehicle: Vehicle) {
-    this.vehicleTutorialHints?.dispose();
-    this.vehicleTutorialHints = null;
-    this.activeVehicleTutorial = null;
+  private clearTutorialSpotlight() {
+    if (this.tutorialSpotlightOnResize) {
+      window.removeEventListener("resize", this.tutorialSpotlightOnResize);
+      this.tutorialSpotlightOnResize = null;
+    }
+    if (this.tutorialSpotlightRepaintTimer != null) {
+      clearTimeout(this.tutorialSpotlightRepaintTimer);
+      this.tutorialSpotlightRepaintTimer = null;
+    }
+    if (this.tutorialSpotlightHoldTimer != null) {
+      clearTimeout(this.tutorialSpotlightHoldTimer);
+      this.tutorialSpotlightHoldTimer = null;
+    }
+    if (this.tutorialSpotlightFadeTimer != null) {
+      clearTimeout(this.tutorialSpotlightFadeTimer);
+      this.tutorialSpotlightFadeTimer = null;
+    }
+    this.tutorialSpotlightEl?.remove();
+    this.tutorialSpotlightEl = null;
+  }
+
+  private getTutorialSpotlightTargetEl(): HTMLElement | null {
+    if (this.vehicleTutorialHints?.root.isConnected) {
+      return this.vehicleTutorialHints.root;
+    }
+    const hints = this.vehicleHintsEl;
+    if (hints?.isConnected && hints.style.display !== "none") {
+      return hints;
+    }
+    return null;
+  }
+
+  private syncTutorialSpotlightRect(spotlight: HTMLDivElement, target: HTMLElement, pad: number) {
+    const r = target.getBoundingClientRect();
+    const w = r.width + pad * 2;
+    const h = r.height + pad * 2;
+    if (w <= 1 || h <= 1) return;
+    spotlight.style.left = `${Math.max(0, r.left - pad)}px`;
+    spotlight.style.top = `${Math.max(0, r.top - pad)}px`;
+    spotlight.style.width = `${w}px`;
+    spotlight.style.height = `${h}px`;
+  }
+
+  /**
+   * After the lobby preview zoom and the in-world intro camera finish, briefly dim the screen
+   * and leave the desktop control / first-flight tutorial panel clear.
+   */
+  private beginTutorialSpotlightAfterIntro() {
+    this.clearTutorialSpotlight();
+    if (this.mobile) return;
+    const target = this.getTutorialSpotlightTargetEl();
+    if (!target) return;
+
+    const pad = 14;
+    const dim = "rgba(0, 0, 0, 0.5)";
+    const el = document.createElement("div");
+    el.setAttribute("aria-hidden", "true");
+    el.style.cssText = [
+      "position:fixed",
+      "pointer-events:none",
+      "z-index:150",
+      "border-radius:16px",
+      `box-shadow:0 0 0 9999px ${dim}`,
+      "opacity:0",
+      "transition:opacity 0.35s ease",
+    ].join(";");
+
+    this.syncTutorialSpotlightRect(el, target, pad);
+    this.container.appendChild(el);
+    this.tutorialSpotlightEl = el;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!this.tutorialSpotlightEl) return;
+        this.syncTutorialSpotlightRect(this.tutorialSpotlightEl, target, pad);
+        this.tutorialSpotlightEl.style.opacity = "1";
+      });
+    });
+
+    const onResize = () => {
+      if (!this.tutorialSpotlightEl || !target.isConnected) return;
+      this.syncTutorialSpotlightRect(this.tutorialSpotlightEl, target, pad);
+    };
+    this.tutorialSpotlightOnResize = onResize;
+    window.addEventListener("resize", onResize);
+
+    this.tutorialSpotlightRepaintTimer = setTimeout(() => {
+      this.tutorialSpotlightRepaintTimer = null;
+      if (this.tutorialSpotlightEl && target.isConnected) {
+        this.syncTutorialSpotlightRect(this.tutorialSpotlightEl, target, pad);
+      }
+    }, 420);
+
+    this.tutorialSpotlightHoldTimer = setTimeout(() => {
+      this.tutorialSpotlightHoldTimer = null;
+      if (!this.tutorialSpotlightEl) return;
+      const s = this.tutorialSpotlightEl;
+      const fadeMs = Game.TUTORIAL_SPOTLIGHT_FADE_MS;
+      s.style.transition = `opacity ${fadeMs / 1000}s ease, box-shadow ${fadeMs / 1000}s ease`;
+      s.style.opacity = "0";
+      s.style.boxShadow = "0 0 0 9999px rgba(0,0,0,0)";
+      this.tutorialSpotlightFadeTimer = setTimeout(() => {
+        this.tutorialSpotlightFadeTimer = null;
+        this.clearTutorialSpotlight();
+      }, fadeMs + 40);
+    }, Game.TUTORIAL_SPOTLIGHT_HOLD_MS);
+  }
+
+  private clearVehicleTutorialTimers() {
     if (this.vehicleTutorialAdvanceTimeout != null) {
       clearTimeout(this.vehicleTutorialAdvanceTimeout);
       this.vehicleTutorialAdvanceTimeout = null;
     }
+    if (this.vehicleTutorialOverallTimeout != null) {
+      clearTimeout(this.vehicleTutorialOverallTimeout);
+      this.vehicleTutorialOverallTimeout = null;
+    }
     this.vehicleTutorialAdvancePending = false;
+  }
+
+  private startVehicleTutorialIfNeeded(vehicle: Vehicle) {
+    this.vehicleTutorialHints?.dispose();
+    this.vehicleTutorialHints = null;
+    this.activeVehicleTutorial = null;
+    this.clearVehicleTutorialTimers();
 
     if (this.mobile) return;
     const tutorials = ProgressionManager.loadPlayerWorldState().vehicleTutorialsCompleted;
@@ -4923,6 +5054,10 @@ export class Game {
       vehicleTutorialRows(vehicle),
       vehicle === "boat" ? "First voyage" : "First flight",
     );
+    this.vehicleTutorialOverallTimeout = setTimeout(() => {
+      this.vehicleTutorialOverallTimeout = null;
+      this.expireVehicleTutorialDueToTimeout();
+    }, VEHICLE_TUTORIAL_OVERALL_MAX_MS);
   }
 
   private updateVehicleTutorial(input: {
@@ -5013,27 +5148,11 @@ export class Game {
           this.vehicleTutorialAdvancePending = false;
         }
       });
-    }, VEHICLE_TUTORIAL_FADE_MS);
+    }, VEHICLE_TUTORIAL_STEP_FADE_MS);
   }
 
-  private finishVehicleTutorial() {
-    const tutorial = this.activeVehicleTutorial;
-    if (!tutorial) return;
-
-    if (this.vehicleTutorialAdvanceTimeout != null) {
-      clearTimeout(this.vehicleTutorialAdvanceTimeout);
-      this.vehicleTutorialAdvanceTimeout = null;
-    }
-    this.vehicleTutorialAdvancePending = false;
-
-    const prev = ProgressionManager.loadPlayerWorldState();
-    this.savePlayerWorldState({
-      vehicleTutorialsCompleted: {
-        ...(prev.vehicleTutorialsCompleted ?? {}),
-        [tutorial.vehicle]: true,
-      },
-    });
-
+  /** Hide tutorial panel, restore full controls hints (after normal completion or timeout). */
+  private removeVehicleTutorialFromDomAfterFade() {
     const hints = this.vehicleTutorialHints;
     hints?.root.classList.add("control-hints--hidden");
     this.vehicleTutorialHints = null;
@@ -5047,6 +5166,44 @@ export class Game {
         this.vehicleHintsEl?.classList.remove("control-hints--hidden");
       });
     }, VEHICLE_TUTORIAL_FADE_MS + 10);
+  }
+
+  private finishVehicleTutorial() {
+    const tutorial = this.activeVehicleTutorial;
+    if (!tutorial) return;
+
+    this.clearVehicleTutorialTimers();
+
+    const prev = ProgressionManager.loadPlayerWorldState();
+    this.savePlayerWorldState({
+      vehicleTutorialsCompleted: {
+        ...(prev.vehicleTutorialsCompleted ?? {}),
+        [tutorial.vehicle]: true,
+      },
+    });
+
+    this.removeVehicleTutorialFromDomAfterFade();
+  }
+
+  /**
+   * Tutorial exceeded the overall time budget: free the player and show keyboard hints.
+   * Marked complete in save so the flow is not repeated every session.
+   */
+  private expireVehicleTutorialDueToTimeout() {
+    if (!this.activeVehicleTutorial) return;
+
+    this.clearVehicleTutorialTimers();
+
+    const v = this.activeVehicleTutorial.vehicle;
+    const prev = ProgressionManager.loadPlayerWorldState();
+    this.savePlayerWorldState({
+      vehicleTutorialsCompleted: {
+        ...(prev.vehicleTutorialsCompleted ?? {}),
+        [v]: true,
+      },
+    });
+
+    this.removeVehicleTutorialFromDomAfterFade();
   }
 
   private startVoidAmbientMusic() {
@@ -6380,6 +6537,7 @@ export class Game {
   /* ── Cleanup ─────────────────────────────────────────────────────── */
 
   dispose() {
+    this.clearTutorialSpotlight();
     this.container.removeEventListener("click", this.onUiClickSound);
     this.running = false;
     this.previewActive = false;
