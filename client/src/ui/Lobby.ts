@@ -163,7 +163,7 @@ export class Lobby {
             <div class="lobby-vehicles" role="radiogroup" aria-label="Vehicle">
               ${this.buildVehicleButtonsHTML()}
             </div>
-            <button type="button" class="lobby-fly" id="btn-fly">GO!</button>
+            <button type="button" class="lobby-fly" id="btn-fly"><span class="lobby-fly__label">GO!</span></button>
           </div>
           <div class="lobby-save-feed" id="lobby-save-feed" hidden>
             <div class="lobby-save-feed-head" aria-hidden="true">
@@ -616,6 +616,12 @@ export class Lobby {
         .lobby-vbtn.locked:hover .lobby-vicon--lock {
           animation: none !important;
         }
+        .lobby-vbtn:hover:not(.locked) .lobby-vicon {
+          animation: none !important;
+        }
+        .lobby-fly:hover:not(:disabled) .lobby-fly__label {
+          animation: none !important;
+        }
         .lobby-attribution {
           transition: none !important;
         }
@@ -663,15 +669,13 @@ export class Lobby {
         margin-left: 6px;
         background: none;
         border: none;
-        color: rgba(255, 255, 255, 0.4);
+        color: rgba(255, 255, 255, 1);
         cursor: pointer;
         padding: 4px 6px;
-        transition: color 0.2s;
         line-height: 1;
         display: inline-flex;
         align-items: center;
       }
-      .lobby-edit-btn:hover { color: rgba(255, 255, 255, 0.8); }
 
       .lobby-bar {
         position: relative;
@@ -745,7 +749,7 @@ export class Lobby {
         opacity: 0.9;
         transform-origin: 50% 65%;
       }
-      @keyframes lobby-lock-wiggle {
+      @keyframes lobby-tilt-wiggle {
         0%,
         100% {
           transform: rotate(0deg);
@@ -764,7 +768,11 @@ export class Lobby {
         }
       }
       .lobby-vbtn.locked:hover .lobby-vicon--lock {
-        animation: lobby-lock-wiggle 0.55s ease-in-out infinite;
+        animation: lobby-tilt-wiggle 0.55s ease-in-out infinite;
+      }
+      .lobby-vbtn:hover:not(.locked) .lobby-vicon {
+        transform-origin: 50% 65%;
+        animation: lobby-tilt-wiggle 0.55s ease-in-out infinite;
       }
       .lobby-vicon {
         display: flex;
@@ -814,11 +822,23 @@ export class Lobby {
         transition: background 0.2s, transform 0.15s, opacity 0.2s;
         flex-shrink: 0;
       }
+      .lobby-fly__label {
+        display: inline-block;
+        transform-origin: 50% 65%;
+      }
       .lobby-fly:hover:not(:disabled) {
         background: #1a1a1a;
         transform: scale(1.03);
       }
-      .lobby-fly:active:not(:disabled) { transform: scale(0.97); }
+      .lobby-fly:hover:not(:disabled) .lobby-fly__label {
+        animation: lobby-tilt-wiggle 0.55s ease-in-out infinite;
+      }
+      .lobby-fly:active:not(:disabled) {
+        transform: scale(0.97);
+      }
+      .lobby-fly:active:not(:disabled) .lobby-fly__label {
+        animation: none;
+      }
       .lobby-fly:disabled {
         opacity: 0.52;
         cursor: default;
