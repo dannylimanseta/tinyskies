@@ -2150,6 +2150,13 @@ export class Game {
       this.moonstoneUnionCoreGlow = null;
     }
 
+    /* Cosmic void flags are not tied to disposable objects; reset so a later run (e.g. after
+     * moon-impact teardown → new game → void) cannot keep stale visibility or camera blend. */
+    this.inCosmicVoid = false;
+    this.voidEntryInProgress = false;
+    this.coastCarpetDuringCosmicTransition = false;
+    this.voidCameraBlend = 0;
+
     window.removeEventListener("resize", this.onResize);
   }
 
@@ -2922,6 +2929,9 @@ export class Game {
     const twisterSuppressed = this.inCosmicVoid || this.coastCarpetDuringCosmicTransition;
     const voidCamTarget = this.inCosmicVoid || this.voidEntryInProgress ? 1 : 0;
     this.voidCameraBlend += (voidCamTarget - this.voidCameraBlend) * (1 - Math.exp(-VOID_CAMERA_BLEND_SPEED * dt));
+    if (this.waterSpouts && this.inCosmicVoid) {
+      this.waterSpouts.group.visible = false;
+    }
     this.dayNightCycle.moonProgress = this.moonThreat?.progress ?? 0;
 
     if (this.localPlayer instanceof Boat && this.progression) {
