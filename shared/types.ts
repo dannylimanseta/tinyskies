@@ -112,8 +112,11 @@ export interface PaintballHitEvent {
   splatSeed: number;
 }
 
-/** Hot-potato flag: collect radius (world units). Server copy: `server/src/flagConstants.ts`. */
-export const FLAG_COLLECT_RADIUS = 0.6;
+/**
+ * Hot-potato flag: max 3D distance for free-flag pickup (world units).
+ * ~1.35 allows a fly-by on a ~radius-5 globe without lining up on the exact radial (see server copy).
+ */
+export const FLAG_COLLECT_RADIUS = 1.35;
 /** Hot-potato flag: challenger must stay within this of carrier. */
 export const FLAG_CAPTURE_RADIUS = 1.0;
 /**

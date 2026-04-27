@@ -1,7 +1,7 @@
 /**
  * Hot-flag tuning for `Room.ts`. Must stay in sync with `shared/types.ts` (client + types).
  */
-export const FLAG_COLLECT_RADIUS = 0.6;
+export const FLAG_COLLECT_RADIUS = 1.35;
 export const FLAG_CAPTURE_RADIUS = 1.0;
 /** Added to `surfaceDisplacementAt` at spawn so height matches client terrain + carpet hover. */
 export const FLAG_HOVER_ALTITUDE = 0.03;
