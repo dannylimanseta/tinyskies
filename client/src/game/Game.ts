@@ -1027,6 +1027,10 @@ export class Game {
     }
 
     this.container.appendChild(this.loadingEl);
+    if (this.mobile) {
+      const built = this.loadingEl.querySelector(".loading-built-with") as HTMLElement | null;
+      if (built) built.style.display = "none";
+    }
   }
 
   private showLoadingError() {
@@ -1053,6 +1057,10 @@ export class Game {
       this.removeLoadingOverlay({ immediate: true });
       this.start();
     });
+    if (this.mobile) {
+      const built = this.loadingEl.querySelector(".loading-built-with") as HTMLElement | null;
+      if (built) built.style.display = "none";
+    }
   }
 
   private removeLoadingOverlay(opts?: { immediate?: boolean }) {
