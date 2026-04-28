@@ -24,6 +24,14 @@ export class PackageQuestHUD {
   /** `npcName` is set when `visible` is true (dialogue bubble shown). */
   onVisibilityChange?: (visible: boolean, npcName?: string) => void;
 
+  /**
+   * True while an NPC bubble or stonehenge whisper is on-screen (timers active).
+   * For HUD layout (e.g. hide quest tracker on mobile); does not drive dialogue SFX.
+   */
+  onDialogueBubbleOrWhisperChange?: (visible: boolean) => void;
+
+  private lastDialogueOverlayForHud = false;
+
   constructor(parent: HTMLElement) {
     this.progressRing = new CircularProgressRing(parent, { centerIcon: "package" });
 
@@ -68,6 +76,13 @@ export class PackageQuestHUD {
     this.applyStyles();
   }
 
+  private syncDialogueBubbleOverlayHud() {
+    const open = this.bubbleTimer !== null || this.whisperTimer !== null;
+    if (open === this.lastDialogueOverlayForHud) return;
+    this.lastDialogueOverlayForHud = open;
+    this.onDialogueBubbleOrWhisperChange?.(open);
+  }
+
   /** True while the dialogue bubble is on-screen (timer running until fade-out completes). */
   get isBubbleShowing(): boolean {
     return this.bubbleTimer !== null;
@@ -87,6 +102,7 @@ export class PackageQuestHUD {
     const narrow = isNarrowDialogueViewport();
     this.bubbleEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
     this.onVisibilityChange?.(false);
+    this.syncDialogueBubbleOverlayHud();
   }
 
   hideWhisper() {
@@ -97,6 +113,7 @@ export class PackageQuestHUD {
     this.whisperEl.style.opacity = "0";
     const narrow = isNarrowDialogueViewport();
     this.whisperEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
+    this.syncDialogueBubbleOverlayHud();
   }
 
   setProgress(value: number) {
@@ -128,7 +145,9 @@ export class PackageQuestHUD {
       this.bubbleEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
       this.onVisibilityChange?.(false);
       this.bubbleTimer = null;
+      this.syncDialogueBubbleOverlayHud();
     }, 4000);
+    this.syncDialogueBubbleOverlayHud();
   }
 
   /** Show an ambient stonehenge whisper — no portrait, italic, same position as NPC bubble. */
@@ -143,7 +162,9 @@ export class PackageQuestHUD {
       this.whisperEl.style.opacity = "0";
       this.whisperEl.style.transform = narrow ? "translate(0, -6px)" : "translate(-50%, -6px)";
       this.whisperTimer = null;
+      this.syncDialogueBubbleOverlayHud();
     }, 5500);
+    this.syncDialogueBubbleOverlayHud();
   }
 
   showDeliveryTarget(villageName: string) {
@@ -357,6 +378,14 @@ export class PackageQuestHUD {
     if (this.bubbleTimer) {
       clearTimeout(this.bubbleTimer);
       this.bubbleTimer = null;
+    }
+    if (this.whisperTimer) {
+      clearTimeout(this.whisperTimer);
+      this.whisperTimer = null;
+    }
+    if (this.lastDialogueOverlayForHud) {
+      this.lastDialogueOverlayForHud = false;
+      this.onDialogueBubbleOrWhisperChange?.(false);
     }
     this.progressRing.dispose();
     this.bubbleEl.remove();

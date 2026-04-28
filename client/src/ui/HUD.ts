@@ -70,9 +70,14 @@ export class HUD {
   private questTrackersEl: HTMLElement | null = null;
   private lastQuestTrackerSig = "";
 
-  constructor(container: HTMLElement) {
+  /** True when the game client was started with mobile optimizations (`isMobile()`). */
+  private mobileSession = false;
+
+  constructor(container: HTMLElement, opts?: { mobile?: boolean }) {
     this.el = document.createElement("div");
     this.el.id = "hud";
+    this.mobileSession = opts?.mobile ?? false;
+    if (this.mobileSession) this.el.classList.add("hud--mobile-session");
     this.buildUI();
     container.appendChild(this.el);
 
@@ -655,6 +660,15 @@ export class HUD {
     }
   }
 
+  /**
+   * While true on mobile builds, quest tracker rows stay hidden so they do not stack with
+   * package NPC bubbles / stonehenge whispers (same vertical band).
+   */
+  setMobileQuestTrackerSuppressedByDialogue(suppressed: boolean) {
+    if (!this.mobileSession) return;
+    this.el.classList.toggle("hud--quest-suppressed-dialogue", suppressed);
+  }
+
   private applyStyles() {
     if (document.getElementById("hud-styles")) return;
     const style = document.createElement("style");
@@ -730,6 +744,10 @@ export class HUD {
         font-weight: 400;
         color: rgba(255, 255, 255, 0.45);
       }
+      #hud.hud--mobile-session.hud--quest-suppressed-dialogue .hud-quest-trackers {
+        display: none !important;
+      }
+
       .hud-quest-trackers {
         display: flex;
         flex-direction: column;

@@ -1566,7 +1566,7 @@ export class Game {
       this.handleLevelUp(level);
     };
 
-    this.hud = new HUD(this.container);
+    this.hud = new HUD(this.container, { mobile: this.mobile });
     this.hud.setWorldName(this.worldConfig?.name ?? "Unknown World");
     this.hud.setMuteToggle(() => this.audioManager.toggleMute());
     this.hud.setCampsiteAction(() => {
@@ -1841,6 +1841,9 @@ export class Game {
           this.audioManager.fadeOutLoop(id);
         }
       }
+    };
+    this.packageQuestHUD.onDialogueBubbleOrWhisperChange = (visible) => {
+      this.hud.setMobileQuestTrackerSuppressedByDialogue(visible);
     };
 
     this.raceManager?.dispose();
