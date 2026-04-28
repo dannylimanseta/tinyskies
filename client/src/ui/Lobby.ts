@@ -249,6 +249,7 @@ export class Lobby {
           aria-label="Vibe Jam 2026 — continue to the next game in the webring"
         >
           <img src="${PORTAL_ICON_SRC}" alt="" width="26" height="26" decoding="async" />
+          <span class="lobby-vibejam-portal__label" aria-hidden="true">Vibejam Portal</span>
         </a>
         <p class="lobby-attribution">Built with <strong class="lobby-attribution__brand">Cursor</strong>, Music by <strong class="lobby-attribution__brand">Suno</strong>, SFX by <strong class="lobby-attribution__brand">ElevenLabs</strong>, 3D Assets by <strong class="lobby-attribution__brand">Tripo3D</strong></p>
       </div>
@@ -620,27 +621,50 @@ export class Lobby {
         left: max(12px, calc(env(safe-area-inset-left, 0px) + 8px));
         bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px));
         z-index: 102;
-        display: flex;
+        display: inline-flex;
+        flex-direction: row;
         align-items: center;
         justify-content: center;
-        width: 44px;
-        height: 44px;
+        gap: 10px;
+        min-height: 44px;
+        padding: 8px 14px 8px 12px;
+        box-sizing: border-box;
         border-radius: 12px;
-        background: rgba(255, 255, 255, 0.12);
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(0, 0, 0, 0.2);
+        border: none;
         backdrop-filter: blur(12px) saturate(120%);
         -webkit-backdrop-filter: blur(12px) saturate(120%);
         pointer-events: auto;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+        box-shadow: none;
         opacity: 0;
         transition: background 0.2s, transform 0.15s, opacity 0.8s ease-out;
         transition-delay: 0s, 0s, 0.35s;
+        text-decoration: none;
+        color: rgba(255, 255, 255, 0.95);
+        font-family: 'Domine', Georgia, serif;
+        font-size: clamp(0.78rem, 1.35vw, 0.88rem);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+      .lobby-vibejam-portal__label {
+        line-height: 1.2;
+      }
+      .lobby--mobile .lobby-vibejam-portal__label {
+        display: none;
+      }
+      .lobby--mobile .lobby-vibejam-portal {
+        gap: 0;
+        width: 44px;
+        height: 44px;
+        min-height: 44px;
+        padding: 0;
       }
       .lobby-header.visible ~ .lobby-vibejam-portal {
         opacity: 1;
       }
       .lobby-vibejam-portal:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.32);
         transform: scale(1.05);
       }
       .lobby-vibejam-portal:active {
