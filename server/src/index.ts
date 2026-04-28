@@ -68,9 +68,201 @@ app.use(express.json());
 
 const roomManager = new RoomManager();
 
+const DASHBOARD_META_CACHE_MS = 30_000;
+type DashboardWorldMeta = { slug: string; name: string; createdBy: string };
+let dashboardWorldMetaCacheUntil = 0;
+let dashboardWorldMetaCache = new Map<string, DashboardWorldMeta>();
+
+async function loadDashboardWorldMeta(activeSlugs: string[]): Promise<Map<string, DashboardWorldMeta>> {
+  if (activeSlugs.length === 0) return new Map();
+  const now = Date.now();
+  const cacheCoversActive = activeSlugs.every((slug) => dashboardWorldMetaCache.has(slug));
+  if (now < dashboardWorldMetaCacheUntil && cacheCoversActive) {
+    return dashboardWorldMetaCache;
+  }
+
+  const worlds = await prisma.world.findMany({
+    where: { slug: { in: activeSlugs } },
+    select: { slug: true, name: true, createdBy: true },
+  });
+  dashboardWorldMetaCache = new Map(
+    worlds.map((world) => [
+      world.slug,
+      {
+        slug: world.slug,
+        name: world.name,
+        createdBy: world.createdBy,
+      },
+    ]),
+  );
+  dashboardWorldMetaCacheUntil = now + DASHBOARD_META_CACHE_MS;
+  return dashboardWorldMetaCache;
+}
+
 app.use("/api/worlds", createWorldsRouter(prisma, roomManager));
 app.use("/api/lanterns", createLanternsRouter(prisma));
 app.use("/api/save-feed", createSaveFeedRouter(prisma));
+
+app.get("/api/dashboard/worlds", async (_req, res) => {
+  try {
+    const activeSlugs = roomManager
+      .getActiveRoomSlugs()
+      .sort((a, b) => roomManager.getRoomPlayerCount(b) - roomManager.getRoomPlayerCount(a));
+    const meta = await loadDashboardWorldMeta(activeSlugs);
+    const worlds = activeSlugs.map((slug) => {
+      const m = meta.get(slug);
+      const playerCount = roomManager.getRoomPlayerCount(slug);
+      return {
+        slug,
+        name: m?.name ?? slug,
+        createdBy: m?.createdBy ?? "Unknown",
+        playerCount,
+        effectiveCount: roomManager.getEffectiveCount(slug),
+      };
+    });
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      generatedAt: new Date().toISOString(),
+      totalPlayers: worlds.reduce((sum, world) => sum + world.playerCount, 0),
+      activeWorlds: worlds.length,
+      worlds,
+    });
+  } catch (err) {
+    console.error("Dashboard status failed:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/dashboard", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.type("html").send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tiny Skies World Dashboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0b0f17;
+      color: #eef3ff;
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 32px 20px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: clamp(1.45rem, 4vw, 2rem); line-height: 1.1; }
+    .muted { color: rgba(238, 243, 255, 0.58); }
+    .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .card, table {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 14px;
+    }
+    .card { padding: 14px 16px; }
+    .card strong { display: block; font-size: 1.5rem; line-height: 1.1; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left; }
+    th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(238, 243, 255, 0.55); }
+    tr:last-child td { border-bottom: 0; }
+    code { color: #a6d5ff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .right { text-align: right; }
+    .empty { padding: 30px 18px; text-align: center; }
+    @media (max-width: 640px) {
+      header { display: block; }
+      .cards { grid-template-columns: 1fr; }
+      th:nth-child(3), td:nth-child(3) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Tiny Skies World Dashboard</h1>
+        <div class="muted">Live in-memory room counts. Refreshes every 5 seconds.</div>
+      </div>
+      <div class="muted" id="updated">Loading...</div>
+    </header>
+
+    <section class="cards">
+      <div class="card"><span class="muted">Players Online</span><strong id="totalPlayers">0</strong></div>
+      <div class="card"><span class="muted">Active Worlds</span><strong id="activeWorlds">0</strong></div>
+      <div class="card"><span class="muted">Poll Interval</span><strong>5s</strong></div>
+    </section>
+
+    <table>
+      <thead>
+        <tr>
+          <th>World</th>
+          <th>Slug</th>
+          <th>Created By</th>
+          <th class="right">Players</th>
+          <th class="right">Players + Reserved</th>
+        </tr>
+      </thead>
+      <tbody id="worldRows">
+        <tr><td colspan="5" class="empty muted">Loading active worlds...</td></tr>
+      </tbody>
+    </table>
+  </main>
+  <script>
+    const rows = document.getElementById("worldRows");
+    const totalPlayers = document.getElementById("totalPlayers");
+    const activeWorlds = document.getElementById("activeWorlds");
+    const updated = document.getElementById("updated");
+
+    function cell(text, className) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      if (className) td.className = className;
+      return td;
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch("/api/dashboard/worlds", { cache: "no-store" });
+        if (!res.ok) throw new Error("dashboard fetch failed");
+        const data = await res.json();
+        totalPlayers.textContent = String(data.totalPlayers ?? 0);
+        activeWorlds.textContent = String(data.activeWorlds ?? 0);
+        updated.textContent = "Updated " + new Date(data.generatedAt).toLocaleTimeString();
+        rows.replaceChildren();
+        if (!data.worlds || data.worlds.length === 0) {
+          const tr = document.createElement("tr");
+          const td = cell("No active worlds right now.", "empty muted");
+          td.colSpan = 5;
+          tr.appendChild(td);
+          rows.appendChild(tr);
+          return;
+        }
+        for (const world of data.worlds) {
+          const tr = document.createElement("tr");
+          tr.appendChild(cell(world.name || world.slug));
+          const slug = document.createElement("td");
+          const code = document.createElement("code");
+          code.textContent = world.slug;
+          slug.appendChild(code);
+          tr.appendChild(slug);
+          tr.appendChild(cell(world.createdBy || "Unknown"));
+          tr.appendChild(cell(String(world.playerCount ?? 0), "right"));
+          tr.appendChild(cell(String(world.effectiveCount ?? world.playerCount ?? 0), "right"));
+          rows.appendChild(tr);
+        }
+      } catch (err) {
+        updated.textContent = "Update failed";
+        console.error(err);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>`);
+});
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
