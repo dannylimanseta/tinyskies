@@ -114,25 +114,39 @@ function nextRemoteColor(): number {
   return c;
 }
 
-/** Scale mesh material opacities (stores base opacity in userData on first use). */
-function applyRemoteOpacity(root: Group, opacity: number) {
-  const o = Math.max(0, Math.min(1, opacity));
+const REMOTE_OPACITY_EPSILON = 0.001;
+
+interface RemoteOpacityMaterial {
+  material: Material & { opacity: number; transparent: boolean; depthWrite: boolean };
+  baseOpacity: number;
+}
+
+/** Remote vehicle material list is stable after construction; cache it instead of traversing every frame. */
+function collectRemoteOpacityMaterials(root: Group): RemoteOpacityMaterial[] {
+  const seen = new Set<Material>();
+  const out: RemoteOpacityMaterial[] = [];
   root.traverse((obj) => {
     const mesh = obj as Mesh;
     if (!mesh.isMesh || !mesh.material) return;
     const mats: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mat of mats) {
-      if ("opacity" in mat) {
-        const m = mat as Material & { opacity: number; transparent: boolean; depthWrite: boolean };
-        if (m.userData.baseOpacity === undefined) {
-          m.userData.baseOpacity = m.opacity;
-        }
-        m.opacity = m.userData.baseOpacity * o;
-        m.transparent = m.opacity < 0.998 || m.userData.baseOpacity < 0.998;
-        m.depthWrite = m.opacity >= 0.998;
-      }
+      if (seen.has(mat) || !("opacity" in mat)) continue;
+      seen.add(mat);
+      const m = mat as Material & { opacity: number; transparent: boolean; depthWrite: boolean };
+      out.push({ material: m, baseOpacity: m.opacity });
     }
   });
+  return out;
+}
+
+/** Scale cached remote mesh material opacities. */
+function applyRemoteOpacity(materials: RemoteOpacityMaterial[], opacity: number) {
+  const o = Math.max(0, Math.min(1, opacity));
+  for (const { material, baseOpacity } of materials) {
+    material.opacity = baseOpacity * o;
+    material.transparent = material.opacity < 0.998 || baseOpacity < 0.998;
+    material.depthWrite = material.opacity >= 0.998;
+  }
 }
 
 class RemotePlane {
@@ -162,6 +176,8 @@ class RemotePlane {
   private hullColor: number;
   private visibilityTarget = 1;
   private visibilitySmooth = 1;
+  private lastAppliedOpacity = Number.NaN;
+  private readonly opacityMaterials: RemoteOpacityMaterial[];
 
   private paintballWobbleAmp = 0;
   private paintballWobblePhase = 0;
@@ -197,6 +213,7 @@ class RemotePlane {
     this.group.add(this.carryPackage);
     this.hotFlag = createRemoteHotFlag(this.timeUniform);
     this.group.add(this.hotFlag);
+    this.opacityMaterials = collectRemoteOpacityMaterials(this.group);
   }
 
   /** Multiplayer hot-flag bearer (not related to {@link PlayerState.carrying} / package). */
@@ -300,8 +317,14 @@ class RemotePlane {
     }
 
     this.visibilitySmooth += (this.visibilityTarget - this.visibilitySmooth) * Math.min(1, dt * 10);
-    applyRemoteOpacity(this.group, this.visibilitySmooth);
-    this.beacon.setOpacityMultiplier(this.visibilitySmooth);
+    if (
+      Number.isNaN(this.lastAppliedOpacity) ||
+      Math.abs(this.visibilitySmooth - this.lastAppliedOpacity) > REMOTE_OPACITY_EPSILON
+    ) {
+      this.lastAppliedOpacity = this.visibilitySmooth;
+      applyRemoteOpacity(this.opacityMaterials, this.visibilitySmooth);
+      this.beacon.setOpacityMultiplier(this.visibilitySmooth);
+    }
   }
 
   private tryInterpolate(renderTime: number): PartialState | null {
