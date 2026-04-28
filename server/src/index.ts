@@ -302,8 +302,12 @@ app.get("/dashboard", (_req, res) => {
     function renderHistory(history) {
       const all = totalsMap(history.totals);
       const today = totalsMap(history.todayTotals);
-      const totalPlaytime = all.get("session_ended")?.durationSec ?? 0;
-      const todayPlaytime = today.get("session_ended")?.durationSec ?? 0;
+      const totalPlaytime =
+        (all.get("session_heartbeat")?.durationSec ?? 0) +
+        (all.get("session_ended")?.durationSec ?? 0);
+      const todayPlaytime =
+        (today.get("session_heartbeat")?.durationSec ?? 0) +
+        (today.get("session_ended")?.durationSec ?? 0);
       const cards = [
         ["World Saves", all.get("world_saved")?.count ?? 0, "Today: " + (today.get("world_saved")?.count ?? 0)],
         ["Quest Completions", all.get("quest_completed")?.count ?? 0, "Today: " + (today.get("quest_completed")?.count ?? 0)],

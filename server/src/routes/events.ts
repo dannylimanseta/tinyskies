@@ -2,7 +2,13 @@ import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { nanoid } from "nanoid";
 
-const EVENT_TYPES = new Set(["world_saved", "quest_completed", "session_ended", "flag_event"]);
+const EVENT_TYPES = new Set([
+  "world_saved",
+  "quest_completed",
+  "session_heartbeat",
+  "session_ended",
+  "flag_event",
+]);
 const VEHICLES = new Set(["plane", "boat", "carpet"]);
 const MAX_NAME = 48;
 const MAX_WORLD = 80;
@@ -143,6 +149,7 @@ export function createEventsRouter(prisma: PrismaClient) {
             SELECT "vehicle", COUNT(*) AS "count"
             FROM "GameEvent"
             WHERE "vehicle" IS NOT NULL
+              AND "type" IN ('world_saved', 'quest_completed', 'flag_event')
             GROUP BY "vehicle"
             ORDER BY COUNT(*) DESC
           `,

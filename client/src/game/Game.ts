@@ -146,6 +146,8 @@ const BALLOON_GREET_COOLDOWN = 32;
 
 /** Min time between save-feed posts for the same world (rare event; avoids duplicate requests). */
 const SAVE_FEED_MIN_INTERVAL_MS = 10_000;
+/** Low-frequency playtime accounting; not used for gameplay or render-loop logic. */
+const SESSION_HEARTBEAT_MS = 60_000;
 /** Quest tracker values are small and user-facing; 5 Hz is responsive without per-frame storage/DOM work. */
 const QUEST_TRACKER_SYNC_INTERVAL_MS = 200;
 
@@ -644,8 +646,11 @@ export class Game {
   /** Last “world saved” feed post time per world slug. */
   private lastSaveFeedAtBySlug = new Map<string, number>();
   private gameSessionStartedAtMs = 0;
+  private gameSessionLastHeartbeatAtMs = 0;
   private gameSessionStartXp = 0;
   private gameSessionStartLevel = 1;
+  private gameSessionId = "";
+  private gameSessionHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private gameSessionEndReported = false;
 
   private readonly onUiClickSound = (e: MouseEvent) => {
@@ -1335,9 +1340,14 @@ export class Game {
     this.progression = new ProgressionManager(vehicle);
     this.progression.restore();
     this.gameSessionStartedAtMs = Date.now();
+    this.gameSessionLastHeartbeatAtMs = this.gameSessionStartedAtMs;
     this.gameSessionStartXp = this.progression.getXP();
     this.gameSessionStartLevel = this.progression.getLevel();
+    this.gameSessionId = `${this.gameSessionStartedAtMs.toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
     this.gameSessionEndReported = false;
+    this.startSessionHeartbeat();
 
     const savedColor = this.progression.getSavedVehicleColor();
     const hullColor = savedColor ?? pickRandomVehicleColor(vehicle);
@@ -6468,8 +6478,27 @@ export class Game {
     return Math.max(0, Math.round((Date.now() - this.gameSessionStartedAtMs) / 1000));
   }
 
+  private sessionDeltaSinceLastHeartbeatSec(now = Date.now()): number {
+    if (this.gameSessionLastHeartbeatAtMs <= 0) return this.runDurationSec();
+    return Math.max(0, Math.round((now - this.gameSessionLastHeartbeatAtMs) / 1000));
+  }
+
+  private startSessionHeartbeat() {
+    this.stopSessionHeartbeat();
+    this.gameSessionHeartbeatTimer = setInterval(() => {
+      this.reportSessionHeartbeat();
+    }, SESSION_HEARTBEAT_MS);
+  }
+
+  private stopSessionHeartbeat() {
+    if (this.gameSessionHeartbeatTimer != null) {
+      clearInterval(this.gameSessionHeartbeatTimer);
+      this.gameSessionHeartbeatTimer = null;
+    }
+  }
+
   private reportGameEvent(
-    type: "world_saved" | "quest_completed" | "session_ended" | "flag_event",
+    type: "world_saved" | "quest_completed" | "session_heartbeat" | "session_ended" | "flag_event",
     metadata: Record<string, unknown> = {},
     overrides?: { runDurationSec?: number; level?: number },
   ) {
@@ -6500,20 +6529,42 @@ export class Game {
     this.reportGameEvent("world_saved", { milestone, ...metadata });
   }
 
+  private reportSessionHeartbeat() {
+    if (this.gameSessionEndReported || this.gameSessionStartedAtMs <= 0) return;
+    const now = Date.now();
+    const deltaSec = this.sessionDeltaSinceLastHeartbeatSec(now);
+    if (deltaSec <= 0) return;
+    this.gameSessionLastHeartbeatAtMs = now;
+    this.reportGameEvent(
+      "session_heartbeat",
+      {
+        sessionId: this.gameSessionId,
+        totalDurationSec: this.runDurationSec(),
+      },
+      { runDurationSec: deltaSec },
+    );
+  }
+
   private reportSessionEnded(reason: string) {
     if (this.gameSessionEndReported || this.gameSessionStartedAtMs <= 0) return;
     this.gameSessionEndReported = true;
+    this.stopSessionHeartbeat();
+    const now = Date.now();
+    const deltaSec = this.sessionDeltaSinceLastHeartbeatSec(now);
+    this.gameSessionLastHeartbeatAtMs = now;
     const currentXp = this.progression?.getXP?.() ?? this.gameSessionStartXp;
     const currentLevel = this.progression?.getLevel?.() ?? this.gameSessionStartLevel;
     this.reportGameEvent(
       "session_ended",
       {
+        sessionId: this.gameSessionId,
         reason,
         startLevel: this.gameSessionStartLevel,
         endLevel: currentLevel,
         xpGained: Math.max(0, currentXp - this.gameSessionStartXp),
+        totalDurationSec: this.runDurationSec(),
       },
-      { level: currentLevel, runDurationSec: this.runDurationSec() },
+      { level: currentLevel, runDurationSec: deltaSec },
     );
   }
 
@@ -6878,6 +6929,7 @@ export class Game {
   dispose() {
     this.clearTutorialSpotlight();
     this.container.removeEventListener("click", this.onUiClickSound);
+    this.reportSessionEnded("dispose");
     this.running = false;
     this.previewActive = false;
     this.paintballSystem?.dispose();
