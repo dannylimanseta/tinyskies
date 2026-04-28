@@ -1488,8 +1488,10 @@ export class Game {
 
     this.collectVFX = new RingCollectVFX();
     this.scene.add(this.collectVFX.group);
-    // Pre-compile the shard ShaderMaterial pool so first collect has no hitch.
+    // Pre-compile the collect-burst pool so the first pickup does not pay shader/GPU upload cost.
+    this.collectVFX.preWarmForCompile();
     this.renderer.compile(this.collectVFX.group, this.cameraRig.camera, this.scene);
+    this.collectVFX.postWarmForCompile();
 
     this.meteorShower = new MeteorShower(globeRadius, seed, terrainType);
     this.scene.add(this.meteorShower.group);
@@ -3495,7 +3497,6 @@ export class Game {
         this.hud.showRainbowCelebrate();
         this.awardXP("rainbow", RAINBOW_XP * rainbowHits);
         this.vehicleFlashTimer = 0.35;
-        this.cameraRig.shake();
       }
     }
 
