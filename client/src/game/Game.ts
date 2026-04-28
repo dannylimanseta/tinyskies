@@ -4857,7 +4857,6 @@ export class Game {
       this.moonstoneUnionTargetQuat,
     );
     this.savePlayerWorldState({ moonstoneUnionComplete: true, braziersRevealed: true });
-    this.reportWorldSaved("moonstone_union");
     this.globe.setMoonstoneCinematicActive(false);
     this.globe.setMoonstoneRimIntensity(this.globe.getMoonstoneRimIntensityBase());
 
@@ -5695,9 +5694,6 @@ export class Game {
       voidPortalsClosed: true,
     });
     this.reportQuestCompleted("eternal_flame_defended", {
-      waves: Game.VOID_WAVE_CONFIGS.length,
-    });
-    this.reportWorldSaved("void_portals_closed", {
       waves: Game.VOID_WAVE_CONFIGS.length,
     });
     this.eternalFlameUI?.syncFromSave();
