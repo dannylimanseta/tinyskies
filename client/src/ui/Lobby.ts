@@ -99,6 +99,7 @@ export class Lobby {
     this.options = options;
     this.el = document.createElement("div");
     this.el.id = "lobby";
+    if (options.mobile) this.el.classList.add("lobby--mobile");
     this.buildUI();
   }
 
@@ -555,6 +556,9 @@ export class Lobby {
       }
       .lobby-header.visible ~ .lobby-attribution {
         opacity: 1;
+      }
+      .lobby--mobile .lobby-attribution {
+        display: none !important;
       }
 
       .lobby-header {
@@ -1197,10 +1201,7 @@ export class Lobby {
         }
         .lobby-unlock-body { font-size: 0.9rem; }
         .lobby-attribution {
-          font-size: 0.7rem;
-          bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 8px));
-          padding: 0 12px;
-          letter-spacing: 0.025em;
+          display: none !important;
         }
       }
     `;
