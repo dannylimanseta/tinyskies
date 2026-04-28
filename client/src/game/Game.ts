@@ -977,6 +977,7 @@ export class Game {
         <div class="loading-built-with" aria-label="Built with Cursor">
           <span class="loading-built-text">Built with</span>
           <img class="loading-cursor-logo" src="/2D/logo_cursor.png" alt="" width="180" height="47" decoding="async" />
+          <span class="loading-best-enjoyed">Best enjoyed on desktop with sound</span>
         </div>
       </div>
     `;
@@ -1028,6 +1029,16 @@ export class Game {
           object-fit: contain;
           opacity: 0.94;
         }
+        .loading-best-enjoyed {
+          margin-top: clamp(0.34rem, 0.9vh, 0.52rem);
+          font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+            'Helvetica Neue', Arial, sans-serif;
+          font-size: clamp(0.62rem, 1.8vw, 0.74rem);
+          font-weight: 500;
+          letter-spacing: 0.04em;
+          color: rgba(200, 210, 230, 0.48);
+          white-space: nowrap;
+        }
       `;
       document.head.appendChild(s);
     }
@@ -1047,6 +1058,7 @@ export class Game {
           <div class="loading-built-with" aria-label="Built with Cursor">
             <span class="loading-built-text">Built with</span>
             <img class="loading-cursor-logo" src="/2D/logo_cursor.png" alt="" width="180" height="47" decoding="async" />
+            <span class="loading-best-enjoyed">Best enjoyed on desktop with sound</span>
           </div>
         </div>
         <p style="color:rgba(180,200,255,0.5);margin:16px 0 20px;font-size:0.9rem;">
