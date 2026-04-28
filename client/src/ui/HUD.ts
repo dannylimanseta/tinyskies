@@ -223,11 +223,12 @@ export class HUD {
 
   /**
    * Per-vehicle quest lines under the world name. Pass `null` to hide the block.
-   * Updates are a no-op when the serialized state is unchanged (cheap every-frame sync).
+   * Updates are a no-op when the serialized state is unchanged.
    */
   setQuestTrackers(state: QuestTrackerState | null) {
     if (!this.questTrackersEl) return;
     if (!state) {
+      if (this.lastQuestTrackerSig === "" && this.questTrackersEl.style.display === "none") return;
       this.questTrackersEl.style.display = "none";
       this.questTrackersEl.innerHTML = "";
       this.lastQuestTrackerSig = "";

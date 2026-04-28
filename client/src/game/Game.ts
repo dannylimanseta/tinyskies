@@ -146,6 +146,8 @@ const BALLOON_GREET_COOLDOWN = 32;
 
 /** Min time between save-feed posts for the same world (rare event; avoids duplicate requests). */
 const SAVE_FEED_MIN_INTERVAL_MS = 10_000;
+/** Quest tracker values are small and user-facing; 5 Hz is responsive without per-frame storage/DOM work. */
+const QUEST_TRACKER_SYNC_INTERVAL_MS = 200;
 
 const OBSERVATORY_GREET_DIST = 1.6;
 const OBSERVATORY_GREET_EXIT_DIST = 2.2;
@@ -585,6 +587,8 @@ export class Game {
   private prevExtraRainbows = 0;
   private prevExtraFireflies = 0;
   private prevExtraLanterns = 0;
+  private questTrackerNextSyncAtMs = 0;
+  private questTrackersHidden = true;
 
   private running = false;
   private worldConfig: WorldConfig | null = null;
@@ -5060,9 +5064,19 @@ export class Game {
   /** Per-vehicle quest lines under the world name (gremlin / package / jelly / brazier hint / fish). */
   private syncQuestTrackersToHud() {
     if (this.gamePhase !== "flying") {
-      this.hud.setQuestTrackers(null);
+      if (!this.questTrackersHidden) {
+        this.hud.setQuestTrackers(null);
+        this.questTrackersHidden = true;
+      }
+      this.questTrackerNextSyncAtMs = 0;
       return;
     }
+    const now = performance.now();
+    if (!this.questTrackersHidden && now < this.questTrackerNextSyncAtMs) {
+      return;
+    }
+    this.questTrackerNextSyncAtMs = now + QUEST_TRACKER_SYNC_INTERVAL_MS;
+
     const v = this.playerVehicle;
     if (v === "plane") {
       const kills = this.skyGremlins?.getSessionGremlinKills() ?? 0;
@@ -5080,6 +5094,7 @@ export class Game {
         pkg,
         raceCompleted,
       });
+      this.questTrackersHidden = false;
     } else if (v === "carpet") {
       const jelly = this.skyJellyfish?.getCollectedCount() ?? 0;
       const ws = ProgressionManager.loadPlayerWorldState();
@@ -5090,13 +5105,16 @@ export class Game {
         brazierHint: true,
         eternalFlameActive,
       });
+      this.questTrackersHidden = false;
     } else if (v === "boat") {
       this.hud.setQuestTrackers({
         vehicle: "boat",
         fish: { current: this.fishCaught, max: FISH_COUNT_BEFORE_MYSTERY_OCTOPUS },
       });
+      this.questTrackersHidden = false;
     } else {
       this.hud.setQuestTrackers(null);
+      this.questTrackersHidden = true;
     }
   }
 
