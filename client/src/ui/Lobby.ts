@@ -1,5 +1,10 @@
 import type { Vehicle } from "@globefly/shared";
 import { ProgressionManager } from "../game/ProgressionManager";
+import {
+  BOAT_HULL_PALETTE,
+  CARPET_HULL_PALETTE,
+  PLANE_HULL_PALETTE,
+} from "../game/vehicleColors";
 import { EpilogueStatuePreview } from "./EpilogueStatuePreview";
 import { VehicleUnlockPreview } from "./VehicleUnlockPreview";
 
@@ -21,6 +26,11 @@ const VEHICLE_ICON_SRC: Record<Vehicle, string> = {
 };
 
 const LOBBY_DISPLAY_TITLE = "Tiny Skies";
+
+const VIBEJAM_PORTAL_BASE = "https://vibejam.cc/portal/2026";
+/** Rough cruise speed (m/s) for webring query continuity. */
+const VIBEJAM_PORTAL_SPEED = "1.6";
+const PORTAL_ICON_SRC = "/2D/icon_portal.svg";
 
 /** Last per-letter animation index (non-space chars); drives tagline entrance delay. */
 const LOBBY_TITLE_LAST_CHAR_I = Math.max(
@@ -118,6 +128,37 @@ export class Lobby {
     return `Level ${n}`;
   }
 
+  private vehicleColorHexForSelectedVehicle(): string {
+    const v = this.selectedVehicle;
+    const saved = ProgressionManager.loadVehicle(v)?.vehicleColor;
+    if (saved != null) {
+      return `#${saved.toString(16).padStart(6, "0")}`;
+    }
+    const pal =
+      v === "boat" ? BOAT_HULL_PALETTE : v === "carpet" ? CARPET_HULL_PALETTE : PLANE_HULL_PALETTE;
+    return `#${pal[0]!.toString(16).padStart(6, "0")}`;
+  }
+
+  private vibejamPortalHref(): string {
+    const params = new URLSearchParams();
+    const name = this.options.playerName.trim();
+    if (name.length > 0) params.set("username", name);
+    params.set("color", this.vehicleColorHexForSelectedVehicle());
+    params.set("speed", VIBEJAM_PORTAL_SPEED);
+    try {
+      params.set("ref", window.location.href.split("#")[0] ?? "");
+    } catch {
+      /* ignore */
+    }
+    const q = params.toString();
+    return q.length > 0 ? `${VIBEJAM_PORTAL_BASE}?${q}` : VIBEJAM_PORTAL_BASE;
+  }
+
+  private updateVibejamPortalLink(): void {
+    const a = this.el.querySelector(".lobby-vibejam-portal") as HTMLAnchorElement | null;
+    if (a) a.href = this.vibejamPortalHref();
+  }
+
   private buildVehicleButtonsHTML(): string {
     return VEHICLE_ORDER.map((v) => {
       const unlocked = ProgressionManager.isVehicleUnlocked(v);
@@ -200,6 +241,15 @@ export class Lobby {
             <button type="button" class="lobby-unlock-ok" id="btn-unlock-ok">Got it</button>
           </div>
         </div>
+        <a
+          class="lobby-vibejam-portal"
+          href="${VIBEJAM_PORTAL_BASE}"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Vibe Jam 2026 — continue to the next game in the webring"
+        >
+          <img src="${PORTAL_ICON_SRC}" alt="" width="26" height="26" decoding="async" />
+        </a>
         <p class="lobby-attribution">Built with <strong class="lobby-attribution__brand">Cursor</strong>, Music by <strong class="lobby-attribution__brand">Suno</strong>, SFX by <strong class="lobby-attribution__brand">ElevenLabs</strong>, 3D Assets by <strong class="lobby-attribution__brand">Tripo3D</strong></p>
       </div>
     `;
@@ -218,6 +268,7 @@ export class Lobby {
           this.options.playerName = result.trim();
           nameEl.textContent = result.trim();
           this.options.onNameChange?.(this.options.playerName);
+          this.updateVibejamPortalLink();
         }
       };
       editBtn.addEventListener("click", promptName);
@@ -248,6 +299,7 @@ export class Lobby {
           nameEl.textContent = trimmed;
         }
         this.options.onNameChange?.(this.options.playerName);
+        this.updateVibejamPortalLink();
       });
     }
 
@@ -274,6 +326,7 @@ export class Lobby {
         el.classList.toggle("active", on);
         el.setAttribute("aria-checked", on ? "true" : "false");
       });
+      this.updateVibejamPortalLink();
     };
 
     vehiclesEl.querySelectorAll(".lobby-vbtn:not(.locked)").forEach((btn) => {
@@ -418,6 +471,7 @@ export class Lobby {
       }
     }
 
+    this.updateVibejamPortalLink();
     this.applyStyles();
   }
 
@@ -559,6 +613,62 @@ export class Lobby {
       }
       .lobby--mobile .lobby-attribution {
         display: none !important;
+      }
+
+      .lobby-vibejam-portal {
+        position: fixed;
+        left: max(12px, calc(env(safe-area-inset-left, 0px) + 8px));
+        bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px));
+        z-index: 102;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(12px) saturate(120%);
+        -webkit-backdrop-filter: blur(12px) saturate(120%);
+        pointer-events: auto;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+        opacity: 0;
+        transition: background 0.2s, transform 0.15s, opacity 0.8s ease-out;
+        transition-delay: 0s, 0s, 0.35s;
+      }
+      .lobby-header.visible ~ .lobby-vibejam-portal {
+        opacity: 1;
+      }
+      .lobby-vibejam-portal:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: scale(1.05);
+      }
+      .lobby-vibejam-portal:active {
+        transform: scale(0.97);
+      }
+      .lobby-vibejam-portal img {
+        width: 26px;
+        height: 26px;
+        display: block;
+        filter: brightness(0) invert(1);
+        opacity: 0.95;
+      }
+      .lobby-overlay.fade-out .lobby-vibejam-portal {
+        opacity: 0;
+        pointer-events: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lobby-vibejam-portal {
+          transition: background 0.2s;
+          opacity: 1;
+        }
+        .lobby-header.visible ~ .lobby-vibejam-portal {
+          opacity: 1;
+        }
+        .lobby-vibejam-portal:hover,
+        .lobby-vibejam-portal:active {
+          transform: none;
+        }
       }
 
       .lobby-header {
