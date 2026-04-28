@@ -100,8 +100,8 @@ export class FloatingLanterns {
   private fadeOut = 0;
   private fadeIn = 0;
   private time = 0;
-  private static readonly FADE_OUT_SEC = 2.0;
-  private static readonly FADE_IN_SEC = 1.5;
+  private static readonly FADE_OUT_SEC = 0.35;
+  private static readonly FADE_IN_SEC = 0.3;
 
   private tmpMat = new Matrix4();
   private tmpPos = new Vector3();

@@ -111,8 +111,8 @@ export class RainbowArch {
   private cooldown = 0;
   private fadeOut = 0;
   private fadeIn = 0;
-  private static readonly FADE_OUT_SEC = 1.5;
-  private static readonly FADE_IN_SEC = 1.0;
+  private static readonly FADE_OUT_SEC = 0.35;
+  private static readonly FADE_IN_SEC = 0.3;
 
   private scratch = new Vector3();
 
