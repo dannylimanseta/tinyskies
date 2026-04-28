@@ -402,6 +402,7 @@ export class Game {
   private carpetLeaves!: CarpetLeaves;
   private carpetDriftSmoke!: CarpetDriftSmoke;
   private carpetPortalSystem: CarpetPortalSystem | null = null;
+  private carpetPortalTeleportSeq = 0;
   private capybaraFlameShots: CapybaraFlameShots | null = null;
   private cosmicWorldPortals: CosmicWorldPortal[] = [];
   private inCosmicVoid = false;
@@ -1336,6 +1337,7 @@ export class Game {
     this.prevExtraFireflies = 0;
     this.prevExtraLanterns = 0;
     this.portalInteractionSuppressTimer = 0;
+    this.carpetPortalTeleportSeq = 0;
 
     if (vehicle === "boat") {
       this.localPlayer = new Boat(globeRadius, seed, terrainType, hullColor, spawnSessionSalt);
@@ -2818,7 +2820,11 @@ export class Game {
 
     this.socketClient.joinWorld(slug, this.playerName, this.playerVehicle, this.reservationId);
 
-    this.stateSync = new StateSync(this.socketClient, this.localPlayer);
+    this.stateSync = new StateSync(this.socketClient, this.localPlayer, {
+      getCarpetPortals: () => this.carpetPortalSystem?.getMultiplayerSnapshot(),
+      getCarpetPortalTeleportSeq: () =>
+        this.playerVehicle === "carpet" ? this.carpetPortalTeleportSeq : undefined,
+    });
     this.stateSync.start();
 
     if (this.playerVehicle === "plane") {
@@ -6050,6 +6056,8 @@ export class Game {
 
     this.audioManager.resumeContextIfNeeded();
     this.audioManager.playSFX("portal_1", PORTAL_TELEPORT_SFX_VOLUME);
+    this.carpetPortalTeleportSeq++;
+    this.stateSync?.flush();
 
     const globeRadius = this.worldConfig?.globeRadius ?? 5;
     this.portalInteractionSuppressTimer = PORTAL_INTERACTION_SUPPRESS_SEC;

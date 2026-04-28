@@ -12,6 +12,7 @@ import {
   TorusGeometry,
   Vector3,
 } from "three";
+import type { CarpetPortalEndpointSnapshot } from "@globefly/shared";
 import { CARPET_HOVER_HEIGHT, type Carpet } from "./Carpet";
 import {
   cartesianFromSpherical,
@@ -255,6 +256,12 @@ export type CarpetPortalSystemOptions = {
   onPortalSpawnStart?: () => void;
 };
 
+type RemotePortalEntry = {
+  id: number;
+  createdAt: number;
+  visual: PortalVisual;
+};
+
 export class CarpetPortalSystem {
   readonly group = new Group();
   private readonly globeRadius: number;
@@ -345,6 +352,19 @@ export class CarpetPortalSystem {
     for (const portal of this.portals) {
       portal.armed = this.lastPlayerWorldPos.distanceToSquared(portal.worldPosition) > armDistSq;
     }
+  }
+
+  getMultiplayerSnapshot(): CarpetPortalEndpointSnapshot[] {
+    return this.portals.map((portal) => ({
+      id: portal.id,
+      age: Math.max(0, this.time - portal.createdAt),
+      qx: portal.qPosition.x,
+      qy: portal.qPosition.y,
+      qz: portal.qPosition.z,
+      qw: portal.qPosition.w,
+      heading: portal.heading,
+      altitude: portal.altitude,
+    }));
   }
 
   update(dt: number, carpet: Carpet): PortalUpdateResult {
@@ -486,5 +506,71 @@ export class CarpetPortalSystem {
       .addScaledVector(frame.north, Math.cos(heading))
       .addScaledVector(frame.east, Math.sin(heading))
       .normalize();
+  }
+}
+
+export class RemoteCarpetPortalSystem {
+  readonly group = new Group();
+  private readonly globeRadius: number;
+  private readonly portals = new Map<number, RemotePortalEntry>();
+  private time = 0;
+
+  constructor(globeRadius: number) {
+    this.globeRadius = globeRadius;
+  }
+
+  sync(snapshots: CarpetPortalEndpointSnapshot[] | undefined) {
+    const incoming = new Set<number>();
+    for (const snapshot of snapshots ?? []) {
+      incoming.add(snapshot.id);
+      let entry = this.portals.get(snapshot.id);
+      if (!entry) {
+        entry = {
+          id: snapshot.id,
+          createdAt: Math.max(0, this.time - Math.max(0, snapshot.age)),
+          visual: new PortalVisual(
+            PORTAL_COLORS[snapshot.id % PORTAL_COLORS.length]!,
+            snapshot.id * 0.73,
+          ),
+        };
+        this.portals.set(snapshot.id, entry);
+        this.group.add(entry.visual.group);
+      }
+      this.applySnapshotPose(entry.visual, snapshot);
+    }
+
+    for (const [id, entry] of this.portals) {
+      if (incoming.has(id)) continue;
+      this.group.remove(entry.visual.group);
+      entry.visual.dispose();
+      this.portals.delete(id);
+    }
+  }
+
+  update(dt: number) {
+    this.time += dt;
+    for (const entry of this.portals.values()) {
+      entry.visual.update(this.time, Math.max(0, this.time - entry.createdAt));
+    }
+  }
+
+  dispose() {
+    for (const entry of this.portals.values()) {
+      entry.visual.dispose();
+    }
+    this.portals.clear();
+    this.group.clear();
+  }
+
+  private applySnapshotPose(visual: PortalVisual, snapshot: CarpetPortalEndpointSnapshot) {
+    const qPosition = new Quaternion(snapshot.qx, snapshot.qy, snapshot.qz, snapshot.qw);
+    const frame = tangentFrame(qPosition);
+    const worldPosition = cartesianFromSpherical(qPosition, snapshot.altitude, this.globeRadius);
+    const forward = new Vector3()
+      .addScaledVector(frame.north, Math.cos(snapshot.heading))
+      .addScaledVector(frame.east, Math.sin(snapshot.heading))
+      .normalize();
+    const right = new Vector3().crossVectors(forward, frame.up).normalize();
+    visual.applyPose(worldPosition, right, frame.up, forward);
   }
 }

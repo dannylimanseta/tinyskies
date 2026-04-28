@@ -20,6 +20,7 @@ import {
 import { createBiplane } from "./BiplaneMesh";
 import { createBoat } from "./BoatMesh";
 import { createCarpet } from "./CarpetMesh";
+import { RemoteCarpetPortalSystem } from "./CarpetPortalSystem";
 import { PlayerBeacon } from "./PlayerBeacon";
 
 const INTERPOLATION_DELAY_MS = 100;
@@ -159,6 +160,7 @@ class RemotePlane {
   readonly beacon: PlayerBeacon;
   readonly vehicleType: Vehicle;
   private readonly vehicle: Vehicle;
+  private readonly remoteCarpetPortals: RemoteCarpetPortalSystem | null;
   private readonly carryPackage: Group;
   private readonly hotFlag: Group;
   private carrying = false;
@@ -178,6 +180,7 @@ class RemotePlane {
   private visibilitySmooth = 1;
   private lastAppliedOpacity = Number.NaN;
   private readonly opacityMaterials: RemoteOpacityMaterial[];
+  private lastCarpetPortalTeleportSeq: number | null = null;
 
   private paintballWobbleAmp = 0;
   private paintballWobblePhase = 0;
@@ -185,6 +188,10 @@ class RemotePlane {
 
   get visibilityOpacity(): number {
     return this.visibilitySmooth;
+  }
+
+  get portalGroup(): Group | null {
+    return this.remoteCarpetPortals?.group ?? null;
   }
 
   constructor(
@@ -207,6 +214,8 @@ class RemotePlane {
         : vehicle === "carpet"
           ? createCarpet(color)
           : createBiplane(color);
+    this.remoteCarpetPortals =
+      vehicle === "carpet" ? new RemoteCarpetPortalSystem(globeRadius) : null;
     this.group.matrixAutoUpdate = false;
     this.beacon = new PlayerBeacon(color);
     this.carryPackage = createRemoteCarryPackage();
@@ -234,6 +243,27 @@ class RemotePlane {
     if (state.vehicleColor !== undefined) {
       this.applyHullColor(state.vehicleColor);
     }
+    const nextPortalTeleportSeq = state.carpetPortalTeleportSeq;
+    const portalTeleported =
+      this.vehicle === "carpet" &&
+      nextPortalTeleportSeq !== undefined &&
+      this.lastCarpetPortalTeleportSeq !== null &&
+      nextPortalTeleportSeq !== this.lastCarpetPortalTeleportSeq;
+    if (nextPortalTeleportSeq !== undefined) {
+      this.lastCarpetPortalTeleportSeq = nextPortalTeleportSeq;
+    }
+    this.remoteCarpetPortals?.sync(state.carpetPortals);
+    if (portalTeleported) {
+      this.buffer.length = 0;
+      this.correcting = false;
+      this.correctionFrom = null;
+      this.correctionProgress = 0;
+      this.wasDeadReckoning = false;
+      this.visibilitySmooth = 0;
+      this.lastAppliedOpacity = 0;
+      applyRemoteOpacity(this.opacityMaterials, 0);
+      this.beacon.setOpacityMultiplier(0);
+    }
     this.buffer.push({ state, receivedAt: Date.now() });
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer.shift();
@@ -242,7 +272,7 @@ class RemotePlane {
     this.carryPackage.visible = this.carrying;
     this.visibilityTarget = Math.max(0, Math.min(1, state.visibility ?? 1));
 
-    if (this.wasDeadReckoning && this.lastRendered) {
+    if (!portalTeleported && this.wasDeadReckoning && this.lastRendered) {
       this.correcting = true;
       this.correctionFrom = { ...this.lastRendered };
       this.correctionProgress = 0;
@@ -316,6 +346,7 @@ class RemotePlane {
       this.group.userData.propeller.rotation.z -= (computed.speed * 15 + 10) * dt;
     }
 
+    this.remoteCarpetPortals?.update(dt);
     this.visibilitySmooth += (this.visibilityTarget - this.visibilitySmooth) * Math.min(1, dt * 10);
     if (
       Number.isNaN(this.lastAppliedOpacity) ||
@@ -405,6 +436,7 @@ class RemotePlane {
       if ((child as any).geometry) (child as any).geometry.dispose();
       if ((child as any).material) (child as any).material.dispose();
     });
+    this.remoteCarpetPortals?.dispose();
     this.beacon.dispose();
   }
 }
@@ -455,6 +487,7 @@ export class RemotePlaneManager {
     this.planes.set(state.id, rp);
     this.scene.add(rp.group);
     this.scene.add(rp.beacon.mesh);
+    if (rp.portalGroup) this.scene.add(rp.portalGroup);
   }
 
   removePlayer(playerId: string) {
@@ -462,6 +495,7 @@ export class RemotePlaneManager {
     if (!rp) return;
     this.scene.remove(rp.group);
     this.scene.remove(rp.beacon.mesh);
+    if (rp.portalGroup) this.scene.remove(rp.portalGroup);
     rp.dispose();
     this.planes.delete(playerId);
   }
@@ -500,6 +534,7 @@ export class RemotePlaneManager {
     for (const rp of this.planes.values()) {
       rp.group.visible = visible;
       rp.beacon.mesh.visible = visible;
+      if (rp.portalGroup) rp.portalGroup.visible = visible;
     }
   }
 
@@ -514,6 +549,7 @@ export class RemotePlaneManager {
     for (const [, rp] of this.planes) {
       this.scene.remove(rp.group);
       this.scene.remove(rp.beacon.mesh);
+      if (rp.portalGroup) this.scene.remove(rp.portalGroup);
       rp.dispose();
     }
     this.planes.clear();

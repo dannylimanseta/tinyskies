@@ -4,6 +4,18 @@ export type TimeOfDay = "day" | "evening" | "night";
 export type { VehicleGameFeatures } from "./vehicleCapabilities";
 export { getVehicleFeatures } from "./vehicleCapabilities";
 
+export interface CarpetPortalEndpointSnapshot {
+  id: number;
+  /** Seconds since this endpoint was spawned; used to line up remote spawn animation. */
+  age: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+  heading: number;
+  altitude: number;
+}
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -24,6 +36,10 @@ export interface PlayerState {
   vehicleColor?: number;
   /** 0 = invisible, 1 = fully visible (e.g. moon cutscene fade). Omitted = 1. */
   visibility?: number;
+  /** Carpet-only: the latest two local portal endpoints, relayed for remote visuals. */
+  carpetPortals?: CarpetPortalEndpointSnapshot[];
+  /** Carpet-only: increments on portal travel so remotes snap/fade instead of interpolating. */
+  carpetPortalTeleportSeq?: number;
   timestamp: number;
 }
 

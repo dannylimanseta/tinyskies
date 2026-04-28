@@ -1,6 +1,6 @@
 import type { SocketClient } from "./SocketClient";
 import type { Quaternion } from "three";
-import type { Vehicle } from "@globefly/shared";
+import type { CarpetPortalEndpointSnapshot, Vehicle } from "@globefly/shared";
 
 const SEND_RATE_MS = 50; // 20 Hz
 
@@ -20,14 +20,21 @@ export type SyncablePlayer = {
   visibility?: number;
 };
 
+export type StateSyncOptions = {
+  getCarpetPortals?: () => CarpetPortalEndpointSnapshot[] | undefined;
+  getCarpetPortalTeleportSeq?: () => number | undefined;
+};
+
 export class StateSync {
   private client: SocketClient;
   private player: SyncablePlayer;
+  private options: StateSyncOptions;
   private interval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(client: SocketClient, player: SyncablePlayer) {
+  constructor(client: SocketClient, player: SyncablePlayer, options: StateSyncOptions = {}) {
     this.client = client;
     this.player = player;
+    this.options = options;
   }
 
   start() {
@@ -66,6 +73,8 @@ export class StateSync {
       rollAngle: this.player.rollAngle,
       carrying: this.player.carrying,
       visibility: this.player.visibility ?? 1,
+      carpetPortals: this.options.getCarpetPortals?.(),
+      carpetPortalTeleportSeq: this.options.getCarpetPortalTeleportSeq?.(),
       timestamp: Date.now(),
     });
   }
