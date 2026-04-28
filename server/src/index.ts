@@ -260,6 +260,7 @@ app.get("/dashboard", (_req, res) => {
         totalPlayers.textContent = String(data.totalPlayers ?? 0);
         activeWorlds.textContent = String(data.activeWorlds ?? 0);
         updated.textContent = "Updated " + new Date(data.generatedAt).toLocaleTimeString();
+        renderHistory(history);
         rows.replaceChildren();
         if (!data.worlds || data.worlds.length === 0) {
           const tr = document.createElement("tr");
@@ -282,7 +283,6 @@ app.get("/dashboard", (_req, res) => {
           tr.appendChild(cell(String(world.effectiveCount ?? world.playerCount ?? 0), "right"));
           rows.appendChild(tr);
         }
-        renderHistory(history);
       } catch (err) {
         updated.textContent = "Update failed";
         console.error(err);
