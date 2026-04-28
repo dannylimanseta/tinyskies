@@ -76,13 +76,13 @@ function createRemoteCarryPackage(): Group {
 function createRemoteHotFlag(timeUniform: { value: number }): Group {
   const g = new Group();
   const pole = new Mesh(
-    new CylinderGeometry(0.012, 0.012, 0.22, 6),
+    new CylinderGeometry(0.003, 0.003, 0.14, 6),
     new MeshBasicMaterial({ color: 0xf7c948 }),
   );
-  pole.position.y = 0.11;
+  pole.position.y = 0.07;
   g.add(pole);
 
-  const clothGeo = new BoxGeometry(0.14, 0.09, 0.02, 10, 4, 1);
+  const clothGeo = new BoxGeometry(0.07, 0.045, 0.005, 10, 4, 1);
   const clothMat = new MeshBasicMaterial({ color: 0xe8b030 });
   clothMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = timeUniform;
@@ -90,17 +90,17 @@ function createRemoteHotFlag(timeUniform: { value: number }): Group {
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
       `#include <begin_vertex>
-       float edge = smoothstep(-0.07, 0.07, position.x);
-       float wave = sin(position.x * 20.0 - uTime * 8.0) * 0.6
-                  + sin(position.y * 15.0 - uTime * 5.0) * 0.4;
-       transformed.z += wave * 0.05 * edge;
+       float edge = smoothstep(-0.035, 0.035, position.x);
+       float wave = sin(position.x * 40.0 - uTime * 8.0) * 0.6
+                  + sin(position.y * 30.0 - uTime * 5.0) * 0.4;
+       transformed.z += wave * 0.025 * edge;
       `
     );
   };
   const cloth = new Mesh(clothGeo, clothMat);
-  cloth.position.set(0.07, 0.2, 0);
+  cloth.position.set(0.0375, 0.115, 0);
   g.add(cloth);
-  g.position.y = 0.42;
+  g.position.y = 0.125;
   g.visible = false;
   return g;
 }

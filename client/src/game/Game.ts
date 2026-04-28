@@ -1794,6 +1794,9 @@ export class Game {
       () => {
         this.moonThreat?.jumpTo(0.70);
       },
+      () => {
+        this.socketClient?.forceFlagSpawn();
+      },
     );
 
     this.globe.syncMemorialStatueWithProgression();

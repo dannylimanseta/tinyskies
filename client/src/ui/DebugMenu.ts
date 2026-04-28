@@ -9,6 +9,7 @@ export class DebugMenu {
   private onShieldToZero: () => void;
   private onLightAllBraziersEternal: () => void;
   private onJumpMoonTo70: () => void;
+  private onForceFlagSpawn: () => void;
 
   constructor(
     container: HTMLElement,
@@ -19,6 +20,7 @@ export class DebugMenu {
     onShieldToZero: () => void,
     onLightAllBraziersEternal: () => void,
     onJumpMoonTo70: () => void,
+    onForceFlagSpawn: () => void = () => {},
   ) {
     this.container = container;
     this.onSpawnEternalFlame = onSpawnEternalFlame;
@@ -28,6 +30,7 @@ export class DebugMenu {
     this.onShieldToZero = onShieldToZero;
     this.onLightAllBraziersEternal = onLightAllBraziersEternal;
     this.onJumpMoonTo70 = onJumpMoonTo70;
+    this.onForceFlagSpawn = onForceFlagSpawn;
 
     this.menu = document.createElement("div");
     this.menu.className = "debug-menu";
@@ -41,6 +44,7 @@ export class DebugMenu {
       <button id="debug-shield-to-zero">Energy Shield → 0</button>
       <button id="debug-light-all-braziers-eternal">Light all 5 braziers (Eternal)</button>
       <button id="debug-moon-70">Moon progress → 70%</button>
+      <button id="debug-force-flag-spawn">Spawn Flag (Single Player)</button>
     `;
 
     this.container.appendChild(this.menu);
@@ -77,6 +81,11 @@ export class DebugMenu {
 
     this.menu.querySelector("#debug-moon-70")?.addEventListener("click", () => {
       this.onJumpMoonTo70();
+      this.hide();
+    });
+
+    this.menu.querySelector("#debug-force-flag-spawn")?.addEventListener("click", () => {
+      this.onForceFlagSpawn();
       this.hide();
     });
 

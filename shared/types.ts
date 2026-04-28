@@ -116,14 +116,14 @@ export interface PaintballHitEvent {
  * Hot-potato flag: max 3D distance for free-flag pickup (world units).
  * ~1.35 allows a fly-by on a ~radius-5 globe without lining up on the exact radial (see server copy).
  */
-export const FLAG_COLLECT_RADIUS = 1.35;
+export const FLAG_COLLECT_RADIUS = 0.8;
 /** Hot-potato flag: challenger must stay within this of carrier. */
 export const FLAG_CAPTURE_RADIUS = 1.0;
 /**
  * Clearance above terrain surface for free flag spawn (server: `surfaceDisplacement + this`).
  * Matches carpet low hover; spawn altitude must include terrain (see server `Room.spawnHotFlagAtRandomPosition`).
  */
-export const FLAG_HOVER_ALTITUDE = 0.03;
+export const FLAG_HOVER_ALTITUDE = 0.05;
 export const FLAG_CAPTURE_DURATION_MS = 3000;
 export const FLAG_IMMUNITY_MS = 10_000;
 export const FLAG_AUTO_RESPAWN_MS = 45_000;
@@ -208,4 +208,5 @@ export interface ClientToServerEvents {
   ) => void;
   "paintball:fire": () => void;
   "paintball:setUpgrades": (flags: PaintballUpgradeFlags) => void;
+  "debug:forceFlagSpawn": () => void;
 }

@@ -239,6 +239,14 @@ export class Room {
     }, FLAG_SPAWN_DELAY_MS);
   }
 
+  forceFlagSpawn() {
+    if (this.hotFlagSpawnTimer != null) {
+      clearTimeout(this.hotFlagSpawnTimer);
+      this.hotFlagSpawnTimer = null;
+    }
+    this.spawnHotFlagAtRandomPosition();
+  }
+
   private buildFlagSync(): FlagSyncEvent {
     if (this.hotFlagMode === "inactive") {
       return { free: false };

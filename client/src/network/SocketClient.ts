@@ -61,6 +61,10 @@ export class SocketClient {
     this.socket.emit("paintball:setUpgrades", flags);
   }
 
+  forceFlagSpawn() {
+    this.socket.emit("debug:forceFlagSpawn");
+  }
+
   onPaintballFired(cb: (ev: PaintballFiredEvent) => void) {
     this.socket.on("paintball:fired", cb);
   }
