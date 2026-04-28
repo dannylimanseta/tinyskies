@@ -37,3 +37,21 @@ model SaveFeedEntry {
 
   @@index([createdAt(sort: Desc)])
 }
+
+/** Milestone-only history for dashboards; never high-frequency telemetry. */
+model GameEvent {
+  id             String   @id @default(cuid())
+  type           String
+  playerName     String
+  worldSlug      String
+  worldName      String?
+  vehicle        String?
+  level          Int?
+  runDurationSec Int?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
+  @@index([worldSlug, createdAt(sort: Desc)])
+}

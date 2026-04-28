@@ -12,6 +12,7 @@ import { RoomManager } from "./rooms/RoomManager.js";
 import { createWorldsRouter } from "./routes/worlds.js";
 import { createLanternsRouter } from "./routes/lanterns.js";
 import { createSaveFeedRouter } from "./routes/saveFeed.js";
+import { createEventsRouter } from "./routes/events.js";
 import { generateUniqueWorldName } from "./utils/worldNames.js";
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -102,6 +103,7 @@ async function loadDashboardWorldMeta(activeSlugs: string[]): Promise<Map<string
 app.use("/api/worlds", createWorldsRouter(prisma, roomManager));
 app.use("/api/lanterns", createLanternsRouter(prisma));
 app.use("/api/save-feed", createSaveFeedRouter(prisma));
+app.use("/api/events", createEventsRouter(prisma));
 
 app.get("/api/dashboard/worlds", async (_req, res) => {
   try {
@@ -170,9 +172,18 @@ app.get("/dashboard", (_req, res) => {
     code { color: #a6d5ff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .right { text-align: right; }
     .empty { padding: 30px 18px; text-align: center; }
+    .history { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+    .panel { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 14px; padding: 16px; }
+    .panel h2 { margin: 0 0 12px; font-size: 1rem; }
+    .event-list { display: grid; gap: 10px; }
+    .event { padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+    .event:last-child { padding-bottom: 0; border-bottom: 0; }
+    .event-title { font-weight: 700; }
+    .event-meta { margin-top: 2px; font-size: 0.82rem; color: rgba(238, 243, 255, 0.56); }
+    .totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
     @media (max-width: 640px) {
       header { display: block; }
-      .cards { grid-template-columns: 1fr; }
+      .cards, .history, .totals { grid-template-columns: 1fr; }
       th:nth-child(3), td:nth-child(3) { display: none; }
     }
   </style>
@@ -207,12 +218,28 @@ app.get("/dashboard", (_req, res) => {
         <tr><td colspan="5" class="empty muted">Loading active worlds...</td></tr>
       </tbody>
     </table>
+
+    <section class="totals" id="historyTotals"></section>
+
+    <section class="history">
+      <div class="panel">
+        <h2>Hall of Saviors</h2>
+        <div id="worldSaves" class="event-list"><div class="muted">Loading...</div></div>
+      </div>
+      <div class="panel">
+        <h2>Recent Quest Completions</h2>
+        <div id="questCompletions" class="event-list"><div class="muted">Loading...</div></div>
+      </div>
+    </section>
   </main>
   <script>
     const rows = document.getElementById("worldRows");
     const totalPlayers = document.getElementById("totalPlayers");
     const activeWorlds = document.getElementById("activeWorlds");
     const updated = document.getElementById("updated");
+    const historyTotals = document.getElementById("historyTotals");
+    const worldSaves = document.getElementById("worldSaves");
+    const questCompletions = document.getElementById("questCompletions");
 
     function cell(text, className) {
       const td = document.createElement("td");
@@ -223,9 +250,13 @@ app.get("/dashboard", (_req, res) => {
 
     async function refresh() {
       try {
-        const res = await fetch("/api/dashboard/worlds", { cache: "no-store" });
-        if (!res.ok) throw new Error("dashboard fetch failed");
+        const [res, historyRes] = await Promise.all([
+          fetch("/api/dashboard/worlds", { cache: "no-store" }),
+          fetch("/api/events/dashboard", { cache: "no-store" }),
+        ]);
+        if (!res.ok || !historyRes.ok) throw new Error("dashboard fetch failed");
         const data = await res.json();
+        const history = await historyRes.json();
         totalPlayers.textContent = String(data.totalPlayers ?? 0);
         activeWorlds.textContent = String(data.activeWorlds ?? 0);
         updated.textContent = "Updated " + new Date(data.generatedAt).toLocaleTimeString();
@@ -251,9 +282,88 @@ app.get("/dashboard", (_req, res) => {
           tr.appendChild(cell(String(world.effectiveCount ?? world.playerCount ?? 0), "right"));
           rows.appendChild(tr);
         }
+        renderHistory(history);
       } catch (err) {
         updated.textContent = "Update failed";
         console.error(err);
+      }
+    }
+
+    function titleize(value) {
+      return String(value || "unknown").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function totalsMap(rows) {
+      const out = new Map();
+      for (const row of rows || []) out.set(row.type, row);
+      return out;
+    }
+
+    function renderHistory(history) {
+      const all = totalsMap(history.totals);
+      const today = totalsMap(history.todayTotals);
+      const totalPlaytime = all.get("session_ended")?.durationSec ?? 0;
+      const todayPlaytime = today.get("session_ended")?.durationSec ?? 0;
+      const cards = [
+        ["World Saves", all.get("world_saved")?.count ?? 0, "Today: " + (today.get("world_saved")?.count ?? 0)],
+        ["Quest Completions", all.get("quest_completed")?.count ?? 0, "Today: " + (today.get("quest_completed")?.count ?? 0)],
+        ["Total Playtime", formatDuration(totalPlaytime), "Today: " + formatDuration(todayPlaytime)],
+        ["Top Vehicle", topVehicle(history.vehicleCounts), "Milestone events"],
+      ];
+      historyTotals.replaceChildren(...cards.map(([label, value, sub]) => {
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = '<span class="muted"></span><strong></strong><div class="muted"></div>';
+        div.children[0].textContent = label;
+        div.children[1].textContent = value;
+        div.children[2].textContent = sub;
+        return div;
+      }));
+      renderEventList(worldSaves, history.recentWorldSaves, "No world saves recorded yet.");
+      renderEventList(questCompletions, history.recentQuestCompletions, "No quest completions recorded yet.");
+    }
+
+    function topVehicle(rows) {
+      const top = (rows || [])[0];
+      return top?.vehicle ? titleize(top.vehicle) : "None yet";
+    }
+
+    function formatDuration(sec) {
+      sec = Math.max(0, Math.round(Number(sec) || 0));
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      if (h > 0) return h + "h " + m + "m";
+      return m + "m";
+    }
+
+    function renderEventList(root, events, emptyText) {
+      root.replaceChildren();
+      if (!events || events.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = emptyText;
+        root.appendChild(empty);
+        return;
+      }
+      for (const event of events) {
+        const div = document.createElement("div");
+        div.className = "event";
+        const meta = event.metadata || {};
+        const title = document.createElement("div");
+        title.className = "event-title";
+        title.textContent = (event.playerName || "Pilot") + " · " + titleize(meta.milestone || meta.questType || event.type);
+        const detail = document.createElement("div");
+        detail.className = "event-meta";
+        detail.textContent = [
+          event.worldName || event.worldSlug,
+          event.vehicle ? titleize(event.vehicle) : "",
+          event.level ? "Lvl " + event.level : "",
+          event.runDurationSec != null ? formatDuration(event.runDurationSec) : "",
+          new Date(event.createdAt).toLocaleString(),
+        ].filter(Boolean).join(" · ");
+        div.appendChild(title);
+        div.appendChild(detail);
+        root.appendChild(div);
       }
     }
 

@@ -643,6 +643,10 @@ export class Game {
   private serverUrlCache: string | null = null;
   /** Last “world saved” feed post time per world slug. */
   private lastSaveFeedAtBySlug = new Map<string, number>();
+  private gameSessionStartedAtMs = 0;
+  private gameSessionStartXp = 0;
+  private gameSessionStartLevel = 1;
+  private gameSessionEndReported = false;
 
   private readonly onUiClickSound = (e: MouseEvent) => {
     if (e.button !== 0) return;
@@ -938,7 +942,7 @@ export class Game {
           holdAtFullSec: 1.35,
         });
       }
-      this.teardownGameplaySession();
+      this.teardownGameplaySession("player_downed");
       this.dayNightCycle.moonProgress = 0;
       this.moonThreat?.reset();
       this.shouldShowBrazierMoonResume = false;
@@ -1330,6 +1334,10 @@ export class Game {
 
     this.progression = new ProgressionManager(vehicle);
     this.progression.restore();
+    this.gameSessionStartedAtMs = Date.now();
+    this.gameSessionStartXp = this.progression.getXP();
+    this.gameSessionStartLevel = this.progression.getLevel();
+    this.gameSessionEndReported = false;
 
     const savedColor = this.progression.getSavedVehicleColor();
     const hullColor = savedColor ?? pickRandomVehicleColor(vehicle);
@@ -1562,6 +1570,7 @@ export class Game {
               eternalFlameCount: (ws.eternalFlameCount ?? 0) + 1,
               jellyfishSetEternalFlameClaimed: true,
             });
+            this.reportQuestCompleted("all_jellyfish_collected", { count: JELLY_COUNT });
             if (this.jellyfishEternalFlameRewardTimeout != null) {
               clearTimeout(this.jellyfishEternalFlameRewardTimeout);
               this.jellyfishEternalFlameRewardTimeout = null;
@@ -1615,6 +1624,7 @@ export class Game {
               eternalFlameCount: (pws.eternalFlameCount ?? 0) + 1,
               boatMysteryOctopusEternalFlameClaimed: true,
             });
+            this.reportQuestCompleted("mystery_octopus_caught", { fishCaught: this.fishCaught });
             if (this.boatOctopusEternalFlameRewardTimeout != null) {
               clearTimeout(this.boatOctopusEternalFlameRewardTimeout);
               this.boatOctopusEternalFlameRewardTimeout = null;
@@ -1702,6 +1712,7 @@ export class Game {
               eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
               gremlinKingEternalFlameClaimed: true,
             });
+            this.reportQuestCompleted("gremlin_king_defeated");
             if (this.kingEternalFlameRewardTimeout != null) {
               clearTimeout(this.kingEternalFlameRewardTimeout);
               this.kingEternalFlameRewardTimeout = null;
@@ -1893,6 +1904,7 @@ export class Game {
             eternalFlameCount: (ws.eternalFlameCount ?? 0) + 1,
             raceEternalFlameClaimed: true,
           });
+          this.reportQuestCompleted("race_completed");
           this.eternalFlameUI?.syncFromSave();
           this.eternalFlameUI?.playKingLootSequence();
         }
@@ -1954,6 +1966,9 @@ export class Game {
             this.savePlayerWorldState({
               eternalFlameCount: (ws.eternalFlameCount ?? 0) + 1,
               packageThirdDeliveryEternalFlameClaimed: true,
+            });
+            this.reportQuestCompleted("third_package_delivery", {
+              completedQuestIndex,
             });
             if (this.packageThirdEternalFlameRewardTimeout != null) {
               clearTimeout(this.packageThirdEternalFlameRewardTimeout);
@@ -2033,7 +2048,8 @@ export class Game {
   }
 
   /** Tear down everything created in startGame (globe / moon / renderer stay). */
-  private teardownGameplaySession() {
+  private teardownGameplaySession(reason = "session_ended") {
+    this.reportSessionEnded(reason);
     this.stateSync?.stop();
     this.stateSync = null;
     this.socketClient?.disconnect();
@@ -2469,7 +2485,7 @@ export class Game {
       });
     }
 
-    this.teardownGameplaySession();
+    this.teardownGameplaySession("moon_impact");
 
     this.dayNightCycle.moonProgress = 0;
     this.moonThreat?.reset();
@@ -2528,6 +2544,7 @@ export class Game {
       pendingEternalVictoryCelebration: true,
     });
     this.maybeReportSaveFeed();
+    this.reportWorldSaved("eternal_flames", { moonFrozenElapsedSec: elapsed });
     this.moonThreat?.freezeApproachForever();
     this.shouldShowBrazierMoonResume = false;
     void this.returnToMainMenuAfterEternalVictory();
@@ -2739,7 +2756,7 @@ export class Game {
         bgColor:       "#ffffff",
         textColor:     "#1a1a2e",
       });
-      this.teardownGameplaySession();
+      this.teardownGameplaySession("world_saved");
       this.dayNightCycle.moonProgress = 0;
       this.moonThreat?.reset();
       this.shouldShowBrazierMoonResume = false;
@@ -4830,6 +4847,7 @@ export class Game {
       this.moonstoneUnionTargetQuat,
     );
     this.savePlayerWorldState({ moonstoneUnionComplete: true, braziersRevealed: true });
+    this.reportWorldSaved("moonstone_union");
     this.globe.setMoonstoneCinematicActive(false);
     this.globe.setMoonstoneRimIntensity(this.globe.getMoonstoneRimIntensityBase());
 
@@ -5609,7 +5627,7 @@ export class Game {
 
     this.restoreWorldVisibilityFromVoid();
 
-    this.teardownGameplaySession();
+    this.teardownGameplaySession("void_failed");
     this.dayNightCycle.moonProgress = 0;
     this.moonThreat?.reset();
     this.shouldShowBrazierMoonResume = false;
@@ -5665,6 +5683,12 @@ export class Game {
     this.savePlayerWorldState({
       eternalFlameCount: (prev.eternalFlameCount ?? 0) + 1,
       voidPortalsClosed: true,
+    });
+    this.reportQuestCompleted("eternal_flame_defended", {
+      waves: Game.VOID_WAVE_CONFIGS.length,
+    });
+    this.reportWorldSaved("void_portals_closed", {
+      waves: Game.VOID_WAVE_CONFIGS.length,
     });
     this.eternalFlameUI?.syncFromSave();
     this.clearCosmicWorldPortals();
@@ -6437,6 +6461,60 @@ export class Game {
         worldSlug: this.worldSlug.slice(0, 32),
       }),
     }).catch(() => {});
+  }
+
+  private runDurationSec(): number {
+    if (this.gameSessionStartedAtMs <= 0) return 0;
+    return Math.max(0, Math.round((Date.now() - this.gameSessionStartedAtMs) / 1000));
+  }
+
+  private reportGameEvent(
+    type: "world_saved" | "quest_completed" | "session_ended" | "flag_event",
+    metadata: Record<string, unknown> = {},
+    overrides?: { runDurationSec?: number; level?: number },
+  ) {
+    if (!this.worldSlug || !this.worldConfig?.name) return;
+    const name = (this.playerName || "Pilot").trim() || "Pilot";
+    const body = {
+      type,
+      playerName: name.slice(0, 48),
+      worldName: this.worldConfig.name.slice(0, 80),
+      worldSlug: this.worldSlug.slice(0, 32),
+      vehicle: this.playerVehicle,
+      level: overrides?.level ?? this.progression?.getLevel?.(),
+      runDurationSec: overrides?.runDurationSec ?? this.runDurationSec(),
+      metadata,
+    };
+    void fetch(`${this.getServerUrl()}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => {});
+  }
+
+  private reportQuestCompleted(questType: string, metadata: Record<string, unknown> = {}) {
+    this.reportGameEvent("quest_completed", { questType, ...metadata });
+  }
+
+  private reportWorldSaved(milestone: string, metadata: Record<string, unknown> = {}) {
+    this.reportGameEvent("world_saved", { milestone, ...metadata });
+  }
+
+  private reportSessionEnded(reason: string) {
+    if (this.gameSessionEndReported || this.gameSessionStartedAtMs <= 0) return;
+    this.gameSessionEndReported = true;
+    const currentXp = this.progression?.getXP?.() ?? this.gameSessionStartXp;
+    const currentLevel = this.progression?.getLevel?.() ?? this.gameSessionStartLevel;
+    this.reportGameEvent(
+      "session_ended",
+      {
+        reason,
+        startLevel: this.gameSessionStartLevel,
+        endLevel: currentLevel,
+        xpGained: Math.max(0, currentXp - this.gameSessionStartXp),
+      },
+      { level: currentLevel, runDurationSec: this.runDurationSec() },
+    );
   }
 
   /** Places braziers in the world if they have not been created yet. */
