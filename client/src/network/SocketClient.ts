@@ -61,6 +61,10 @@ export class SocketClient {
     this.socket.emit("paintball:setUpgrades", flags);
   }
 
+  emitFlagSuppressed(suppressed: boolean) {
+    this.socket.emit("flag:setSuppressed", suppressed);
+  }
+
   forceFlagSpawn() {
     this.socket.emit("debug:forceFlagSpawn");
   }

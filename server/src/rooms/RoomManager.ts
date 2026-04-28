@@ -94,6 +94,10 @@ export class RoomManager {
       room.setPaintballUpgrades(socket.id, flags);
     });
 
+    socket.on("flag:setSuppressed", (suppressed) => {
+      room.setFlagSuppressed(socket.id, suppressed === true);
+    });
+
     socket.on("debug:forceFlagSpawn", () => {
       room.forceFlagSpawn();
     });

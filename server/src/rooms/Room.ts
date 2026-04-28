@@ -104,6 +104,8 @@ export class Room {
   private paintballShotHistory = new Map<string, number[]>();
   /** Client-reported paintball upgrade flags per socket (server validates / clamps). */
   private paintballUpgrades = new Map<string, PaintballUpgradeRecord>();
+  /** Players temporarily outside world-space flag play (e.g. carpet cosmic void). */
+  private flagSuppressedPlayers = new Set<string>();
 
   private hotFlagMode: HotFlagMode = "inactive";
   private hotFlagX = 0;
@@ -247,6 +249,25 @@ export class Room {
     this.spawnHotFlagAtRandomPosition();
   }
 
+  setFlagSuppressed(socketId: string, suppressed: boolean) {
+    const player = this.players.get(socketId);
+    if (!player) return;
+
+    if (suppressed) {
+      this.flagSuppressedPlayers.add(socketId);
+      if (this.hotFlagChallengers.delete(socketId)) {
+        this.broadcastFlagCaptureEnd({ challengerId: socketId });
+      }
+      if (this.hotFlagMode === "held" && this.hotFlagHolderId === socketId) {
+        this.dropFlagFromHolder(player.state);
+      }
+      return;
+    }
+
+    this.flagSuppressedPlayers.delete(socketId);
+    this.scheduleHotFlagSpawnIfNeeded();
+  }
+
   private buildFlagSync(): FlagSyncEvent {
     if (this.hotFlagMode === "inactive") {
       return { free: false };
@@ -287,6 +308,7 @@ export class Room {
 
     if (this.hotFlagMode === "free") {
       for (const [id, pl] of this.players) {
+        if (this.flagSuppressedPlayers.has(id)) continue;
         if (!isFlagVehicle(pl.state.vehicle)) continue;
         const ppos = playerWorldPos(pl.state, this.globeRadius, _vFlag);
         const dx = ppos.x - this.hotFlagX;
@@ -324,7 +346,7 @@ export class Room {
 
     for (const [cid, entry] of [...this.hotFlagChallengers.entries()]) {
       const ch = this.players.get(cid);
-      if (!ch || !isFlagVehicle(ch.state.vehicle)) {
+      if (!ch || this.flagSuppressedPlayers.has(cid) || !isFlagVehicle(ch.state.vehicle)) {
         this.hotFlagChallengers.delete(cid);
         this.broadcastFlagCaptureEnd({ challengerId: cid });
         continue;
@@ -373,6 +395,7 @@ export class Room {
 
     for (const [id, pl] of this.players) {
       if (id === this.hotFlagHolderId) continue;
+      if (this.flagSuppressedPlayers.has(id)) continue;
       if (!isFlagVehicle(pl.state.vehicle)) continue;
       if (this.hotFlagChallengers.has(id)) continue;
       const ppos = playerWorldPos(pl.state, this.globeRadius, _vOtherPlayer);
@@ -452,6 +475,7 @@ export class Room {
     this.players.delete(socketId);
     this.paintballShotHistory.delete(socketId);
     this.paintballUpgrades.delete(socketId);
+    this.flagSuppressedPlayers.delete(socketId);
 
     for (const [, p] of this.players) {
       p.socket.emit("player:left", socketId);

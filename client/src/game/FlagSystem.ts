@@ -53,6 +53,7 @@ export class FlagSystem {
 
   private mode: "none" | "free" | "held" = "none";
   private holderId: string | null = null;
+  private suppressed = false;
 
   private readonly freeBasePos = new Vector3();
 
@@ -150,6 +151,30 @@ export class FlagSystem {
     });
   }
 
+  private hideSuppressedVisuals() {
+    this.flagRoot.visible = false;
+    this.freeBeam.visible = false;
+    this.clearAllRemoteFlagDecor();
+    this.detachFlagFromParents();
+  }
+
+  setSuppressed(suppressed: boolean) {
+    if (this.suppressed === suppressed) return;
+    this.suppressed = suppressed;
+    this.clearCaptureUi();
+    if (suppressed) {
+      this.hideSuppressedVisuals();
+      return;
+    }
+    if (this.mode === "free") {
+      this.applyFreeAt(this.freeBasePos);
+    } else if (this.mode === "held") {
+      this.applyHeld();
+    } else {
+      this.hideSuppressedVisuals();
+    }
+  }
+
   private detachFlagFromParents() {
     if (this.flagRoot.parent) this.flagRoot.parent.remove(this.flagRoot);
     this.scene.add(this.flagRoot);
@@ -161,14 +186,18 @@ export class FlagSystem {
     this.clearAllRemoteFlagDecor();
     this.detachFlagFromParents();
     this.freeBasePos.copy(world);
+    this.mode = "free";
+    this.holderId = null;
+    if (this.suppressed) {
+      this.hideSuppressedVisuals();
+      return;
+    }
     this.flagRoot.position.copy(world);
     this.flagRoot.visible = true;
     this.freeBeam.visible = true;
     this.flagVisuals.position.y = 1.15;
     this.alignFreeBeamToRadial();
     this.carrierLight.intensity = 1.15;
-    this.mode = "free";
-    this.holderId = null;
   }
 
   /** Orients the entire flag root along globe outward normal so it reads “upright” on the surface. */
@@ -182,6 +211,11 @@ export class FlagSystem {
     if (!this.holderId) return;
     this.clearAllRemoteFlagDecor();
     this.detachFlagFromParents();
+    this.mode = "held";
+    if (this.suppressed) {
+      this.hideSuppressedVisuals();
+      return;
+    }
     this.freeBeam.visible = false;
     if (this.holderId === this.localId()) {
       const g = this.getLocalPlayerGroup();
@@ -198,7 +232,6 @@ export class FlagSystem {
       this.carrierLight.intensity = 0;
       this.remotePlanes.setPlayerCarryingFlag(this.holderId, true);
     }
-    this.mode = "held";
   }
 
   private clearCaptureUi() {
@@ -227,21 +260,26 @@ export class FlagSystem {
     this.clearCaptureUi();
     this.scratchWorld.set(ev.x, ev.y, ev.z);
     this.applyFreeAt(this.scratchWorld);
-    this.hud.showFlagAnnounce("A flag has spawned in the world!", 4000);
+    if (!this.suppressed) {
+      this.hud.showFlagAnnounce("A flag has spawned in the world!", 4000);
+    }
   }
 
   onFlagCollected(ev: FlagCollectedEvent) {
     this.holderId = ev.holderId;
     this.clearCaptureUi();
     const you = ev.holderId === this.localId();
-    this.hud.showFlagAnnounce(
-      you ? "You picked up the flag!" : `${ev.holderName} picked up the flag!`,
-      4000,
-    );
+    if (!this.suppressed) {
+      this.hud.showFlagAnnounce(
+        you ? "You picked up the flag!" : `${ev.holderName} picked up the flag!`,
+        4000,
+      );
+    }
     this.applyHeld();
   }
 
   onFlagCaptureStart(ev: FlagCaptureStartEvent) {
+    if (this.suppressed) return;
     if (this.holderId === this.localId() && ev.challengerId !== this.localId()) {
       this.challengersAgainstMe.add(ev.challengerId);
       this.hud.showFlagCarrierWarning(true);
@@ -255,6 +293,7 @@ export class FlagSystem {
   }
 
   onFlagCaptureEnd(ev: FlagCaptureEndEvent) {
+    if (this.suppressed) return;
     this.challengersAgainstMe.delete(ev.challengerId);
     if (this.challengersAgainstMe.size === 0) {
       this.hud.showFlagCarrierWarning(false);
@@ -278,7 +317,9 @@ export class FlagSystem {
     } else {
       msg = `${ev.newHolderName} stole the flag from ${ev.previousHolderName}!`;
     }
-    this.hud.showFlagAnnounce(msg, 4500);
+    if (!this.suppressed) {
+      this.hud.showFlagAnnounce(msg, 4500);
+    }
     this.applyHeld();
   }
 
@@ -288,10 +329,12 @@ export class FlagSystem {
     this.scratchWorld.set(ev.x, ev.y, ev.z);
     this.applyFreeAt(this.scratchWorld);
     const you = ev.droppedById === this.localId();
-    this.hud.showFlagAnnounce(
-      you ? "You dropped the flag!" : `${ev.droppedByName} dropped the flag!`,
-      4000,
-    );
+    if (!this.suppressed) {
+      this.hud.showFlagAnnounce(
+        you ? "You dropped the flag!" : `${ev.droppedByName} dropped the flag!`,
+        4000,
+      );
+    }
   }
 
   onFlagCleared() {

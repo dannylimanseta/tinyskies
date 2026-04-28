@@ -5865,6 +5865,8 @@ export class Game {
   private async doEnterCosmicVoid() {
     if (!this.transitionOverlay || this.inCosmicVoid) return;
     this.raceManager?.abort();
+    this.flagSystem?.setSuppressed(true);
+    this.socketClient?.emitFlagSuppressed(true);
     this.coastCarpetDuringCosmicTransition = true;
     this.voidEntryInProgress = true;
     this.twisterSpinTimer = 0;

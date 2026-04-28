@@ -224,5 +224,7 @@ export interface ClientToServerEvents {
   ) => void;
   "paintball:fire": () => void;
   "paintball:setUpgrades": (flags: PaintballUpgradeFlags) => void;
+  /** True while the local player is in a non-world scene where flag play is suspended. */
+  "flag:setSuppressed": (suppressed: boolean) => void;
   "debug:forceFlagSpawn": () => void;
 }
