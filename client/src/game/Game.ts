@@ -621,6 +621,7 @@ export class Game {
   private godRays!: GodRays;
   private skyCanvas!: HTMLCanvasElement;
   private skyTexture!: CanvasTexture;
+  private skyGradientSignature = "";
 
   private previewCamera!: PerspectiveCamera;
   private previewActive = false;
@@ -6076,6 +6077,7 @@ export class Game {
     this.skyCanvas.width = 512;
     this.skyCanvas.height = 512;
     this.paintRadialSky(stops);
+    this.skyGradientSignature = this.skyGradientStopsSignature(stops);
     this.skyTexture = new CanvasTexture(this.skyCanvas);
     this.skyTexture.colorSpace = SRGBColorSpace;
     return this.skyTexture;
@@ -6083,8 +6085,15 @@ export class Game {
 
   private updateSkyGradient(stops: { stop: number; color: string }[]) {
     if (!this.skyCanvas) return;
+    const sig = this.skyGradientStopsSignature(stops);
+    if (sig === this.skyGradientSignature) return;
     this.paintRadialSky(stops);
+    this.skyGradientSignature = sig;
     this.skyTexture.needsUpdate = true;
+  }
+
+  private skyGradientStopsSignature(stops: { stop: number; color: string }[]): string {
+    return stops.map((s) => `${s.stop}:${s.color}`).join("|");
   }
 
   private paintRadialSky(stops: { stop: number; color: string }[]) {
