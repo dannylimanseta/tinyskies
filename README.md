@@ -6,7 +6,6 @@ Multiplayer Three.js game where players fly planes around customizable globes.
 
 ### Prerequisites
 - Node.js 20+
-- PostgreSQL running locally (or via Docker)
 
 ### 1. Install dependencies
 
@@ -14,20 +13,7 @@ Multiplayer Three.js game where players fly planes around customizable globes.
 npm install
 ```
 
-### 2. Set up the database
-
-```bash
-# Start Postgres (if using Docker)
-docker run -d --name globefly-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=globefly -p 5432:5432 postgres:16
-
-# Generate Prisma client and run migrations
-cd server
-npx prisma generate
-npx prisma migrate dev --name init
-cd ..
-```
-
-### 3. Run both client and server
+### 2. Run both client and server
 
 ```bash
 npm run dev
@@ -36,7 +22,7 @@ npm run dev
 - Client: http://localhost:5173
 - Server: http://localhost:3001
 
-### 4. Play
+### 3. Play
 
 1. Open the client in your browser
 2. Create a world (give it a name and pick a texture)
@@ -114,7 +100,6 @@ Alternatively, set `SERVER_URL` in Vercel environment variables -- the client fe
 
 | Variable | Value |
 |----------|--------|
-| `DATABASE_URL` | PostgreSQL connection string |
 | `CLIENT_URL` | `https://tinyskies.vercel.app` (for CORS; comma-separated for extras) |
 | `PORT` | `3001` (or Railway's assigned port) |
 
@@ -129,6 +114,5 @@ Local dev keeps defaults: client `http://localhost:5173`, server `http://localho
 ## Tech Stack
 
 - **Client**: Vite, TypeScript, Three.js, Socket.io
-- **Server**: Node.js, Express, Socket.io, Prisma
-- **Database**: PostgreSQL
+- **Server**: Node.js, Express, Socket.io
 - **Architecture**: Quaternion-based spherical math for singularity-free globe flight, relay server with client-side prediction and slerp interpolation

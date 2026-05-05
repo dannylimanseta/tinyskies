@@ -2,18 +2,16 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { PrismaClient } from "@prisma/client";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
 } from "@globefly/shared";
-import { nanoid } from "nanoid";
 import { RoomManager } from "./rooms/RoomManager.js";
 import { createWorldsRouter } from "./routes/worlds.js";
 import { createLanternsRouter } from "./routes/lanterns.js";
 import { createSaveFeedRouter } from "./routes/saveFeed.js";
 import { createEventsRouter } from "./routes/events.js";
-import { generateUniqueWorldName } from "./utils/worldNames.js";
+import { findWorld, seedWorlds } from "./memoryStore.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -45,7 +43,6 @@ function isAllowedCorsOrigin(origin: string | undefined): boolean {
   return false;
 }
 
-const prisma = new PrismaClient();
 const app = express();
 const httpServer = createServer(app);
 
@@ -69,55 +66,23 @@ app.use(express.json());
 
 const roomManager = new RoomManager();
 
-const DASHBOARD_META_CACHE_MS = 30_000;
-type DashboardWorldMeta = { slug: string; name: string; createdBy: string };
-let dashboardWorldMetaCacheUntil = 0;
-let dashboardWorldMetaCache = new Map<string, DashboardWorldMeta>();
-
-async function loadDashboardWorldMeta(activeSlugs: string[]): Promise<Map<string, DashboardWorldMeta>> {
-  if (activeSlugs.length === 0) return new Map();
-  const now = Date.now();
-  const cacheCoversActive = activeSlugs.every((slug) => dashboardWorldMetaCache.has(slug));
-  if (now < dashboardWorldMetaCacheUntil && cacheCoversActive) {
-    return dashboardWorldMetaCache;
-  }
-
-  const worlds = await prisma.world.findMany({
-    where: { slug: { in: activeSlugs } },
-    select: { slug: true, name: true, createdBy: true },
-  });
-  dashboardWorldMetaCache = new Map(
-    worlds.map((world) => [
-      world.slug,
-      {
-        slug: world.slug,
-        name: world.name,
-        createdBy: world.createdBy,
-      },
-    ]),
-  );
-  dashboardWorldMetaCacheUntil = now + DASHBOARD_META_CACHE_MS;
-  return dashboardWorldMetaCache;
-}
-
-app.use("/api/worlds", createWorldsRouter(prisma, roomManager));
-app.use("/api/lanterns", createLanternsRouter(prisma));
-app.use("/api/save-feed", createSaveFeedRouter(prisma));
-app.use("/api/events", createEventsRouter(prisma));
+app.use("/api/worlds", createWorldsRouter(roomManager));
+app.use("/api/lanterns", createLanternsRouter());
+app.use("/api/save-feed", createSaveFeedRouter());
+app.use("/api/events", createEventsRouter());
 
 app.get("/api/dashboard/worlds", async (_req, res) => {
   try {
     const activeSlugs = roomManager
       .getActiveRoomSlugs()
       .sort((a, b) => roomManager.getRoomPlayerCount(b) - roomManager.getRoomPlayerCount(a));
-    const meta = await loadDashboardWorldMeta(activeSlugs);
     const worlds = activeSlugs.map((slug) => {
-      const m = meta.get(slug);
+      const world = findWorld(slug);
       const playerCount = roomManager.getRoomPlayerCount(slug);
       return {
         slug,
-        name: m?.name ?? slug,
-        createdBy: m?.createdBy ?? "Unknown",
+        name: world?.name ?? slug,
+        createdBy: world?.createdBy ?? "Unknown",
         playerCount,
         effectiveCount: roomManager.getEffectiveCount(slug),
       };
@@ -385,22 +350,13 @@ app.get("/health", (_req, res) => {
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  socket.on("world:join", async (slug, playerName, vehicle, reservationId) => {
+  socket.on("world:join", (slug, playerName, vehicle, reservationId) => {
     console.log(`Player ${socket.id} joining world: ${slug}`);
     const v = vehicle === "boat" ? "boat" : vehicle === "carpet" ? "carpet" : "plane";
-    let globeRadius = 5;
-    let worldSeed = 0;
-    let terrainType = "default";
-    try {
-      const world = await prisma.world.findUnique({ where: { slug } });
-      if (world) {
-        globeRadius = world.globeRadius;
-        worldSeed = world.seed;
-        terrainType = world.terrainType;
-      }
-    } catch (err) {
-      console.warn("world:join globeRadius lookup failed:", err);
-    }
+    const world = findWorld(slug);
+    const globeRadius = world?.globeRadius ?? 5;
+    const worldSeed = world?.seed ?? 0;
+    const terrainType = world?.terrainType ?? "default";
     roomManager.joinRoom(slug, socket, playerName, v, reservationId, globeRadius, worldSeed, terrainType);
   });
 
@@ -409,54 +365,15 @@ io.on("connection", (socket) => {
   });
 });
 
-const SEED_WORLD_COUNT = 20;
-
-async function ensureWorldsSeeded() {
-  const worlds = await prisma.world.findMany({
-    select: { name: true, createdBy: true },
-  });
-  const systemCount = worlds.filter((world) => world.createdBy === "System").length;
-  const missingCount = Math.max(0, SEED_WORLD_COUNT - systemCount);
-
-  if (missingCount === 0) return;
-
-  console.log(
-    `Seeding ${missingCount} missing system world(s) ` +
-    `(${worlds.length} total, ${systemCount} system)...`,
-  );
-
-  const usedNames = new Set(worlds.map((world) => world.name));
-  const toCreate = [];
-  for (let i = 0; i < missingCount; i++) {
-    const name = generateUniqueWorldName(usedNames);
-    usedNames.add(name);
-    toCreate.push({
-      slug: nanoid(10),
-      name,
-      texture: "earth",
-      globeRadius: 5.0,
-      seed: Math.floor(Math.random() * 2147483647),
-      terrainType: "default",
-      createdBy: "System",
-    });
-  }
-
-  await prisma.world.createMany({ data: toCreate });
-  console.log(`Seeded ${toCreate.length} system world(s)`);
-}
-
-async function bootstrap() {
-  await ensureWorldsSeeded();
-  await roomManager.loadWorldSlugs(prisma);
+function bootstrap() {
+  seedWorlds();
+  roomManager.loadWorldSlugs();
   console.log(`Loaded ${roomManager.getAllWorldSlugs().length} world(s) into cache`);
-  roomManager.startOverflowCleanup(prisma);
+  roomManager.startOverflowCleanup();
 
   httpServer.listen(PORT, () => {
     console.log(`Tiny Skies server running on http://localhost:${PORT}`);
   });
 }
 
-bootstrap().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
-});
+bootstrap();

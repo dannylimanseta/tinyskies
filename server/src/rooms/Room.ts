@@ -93,11 +93,11 @@ export const MAX_PLAYERS = 15;
 
 export class Room {
   readonly slug: string;
-  /** World globe radius — used for paintball raycast (matches Prisma world row). */
+  /** World globe radius — used for paintball raycast. */
   readonly globeRadius: number;
-  /** Matches client Globe terrain (Prisma `World.seed`). */
+  /** Matches client Globe terrain seed. */
   readonly worldSeed: number;
-  /** Matches client terrain preset id (Prisma `World.terrainType`). */
+  /** Matches client terrain preset id. */
   readonly terrainType: string;
   private players = new Map<string, ConnectedPlayer>();
   /** Rolling pair of the two most recent paintball shot timestamps per socket (ms). */
