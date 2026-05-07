@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { PrismaClient } from "@prisma/client";
+import { addSaveFeedEntry, saveFeedEntries } from "../memoryStore.js";
 
 const MAX_NAME = 48;
 const MAX_WORLD = 80;
@@ -11,7 +11,7 @@ function trimStr(s: unknown, max: number): string {
   return s.trim().slice(0, max);
 }
 
-export function createSaveFeedRouter(prisma: PrismaClient) {
+export function createSaveFeedRouter() {
   const router = Router();
 
   router.get("/", async (req, res) => {
@@ -22,11 +22,9 @@ export function createSaveFeedRouter(prisma: PrismaClient) {
           ? Math.min(MAX_RECENT, Math.max(1, parseInt(limitRaw, 10)))
           : MAX_RECENT;
 
-      const entries = await prisma.saveFeedEntry.findMany({
-        orderBy: { createdAt: "desc" },
-        take: n,
-        select: { playerName: true, worldName: true, createdAt: true },
-      });
+      const entries = saveFeedEntries
+        .slice(0, n)
+        .map(({ playerName, worldName, createdAt }) => ({ playerName, worldName, createdAt }));
 
       res.json({ entries });
     } catch (err) {
@@ -50,9 +48,7 @@ export function createSaveFeedRouter(prisma: PrismaClient) {
         return;
       }
 
-      await prisma.saveFeedEntry.create({
-        data: { playerName, worldName, worldSlug },
-      });
+      addSaveFeedEntry({ playerName, worldName, worldSlug, createdAt: new Date() });
 
       res.json({ ok: true });
     } catch (err) {

@@ -10,7 +10,7 @@
     "dev": "concurrently \"npm run dev -w client\" \"npm run dev -w server\"",
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
-    "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
+    "build": "npm run build -w client && npm run build -w server",
     "build:client": "npm run build -w client",
     "build:server": "npm run build -w server",
     "deploy": "railway up --detach && npx vercel@latest deploy --prod --yes",

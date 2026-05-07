@@ -1,8 +1,7 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
-import { nanoid } from "nanoid";
 import type { RoomManager } from "../rooms/RoomManager.js";
 import { generateUniqueWorldName } from "../utils/worldNames.js";
+import { createWorld, findWorld, worlds } from "../memoryStore.js";
 
 function worldToConfig(w: {
   id: string;
@@ -36,7 +35,6 @@ function withOverflowLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export function createWorldsRouter(
-  prisma: PrismaClient,
   roomManager: RoomManager,
 ) {
   const router = Router();
@@ -53,9 +51,7 @@ export function createWorldsRouter(
         if (bestSlug) {
           const reservationId = roomManager.reserveSlot(bestSlug);
           if (reservationId) {
-            const world = await prisma.world.findUnique({
-              where: { slug: bestSlug },
-            });
+            const world = findWorld(bestSlug);
             if (world) {
               res.json({ ...worldToConfig(world), reservationId });
               return;
@@ -71,37 +67,17 @@ export function createWorldsRouter(
           if (recheck) {
             const rid = roomManager.reserveSlot(recheck);
             if (rid) {
-              const w = await prisma.world.findUnique({
-                where: { slug: recheck },
-              });
+              const w = findWorld(recheck);
               if (w) return { world: w, reservationId: rid };
             }
             return null;
           }
 
-          const existingNames = new Set<string>();
-          const allWorlds = await prisma.world.findMany({
-            select: { name: true },
-          });
-          for (const w of allWorlds) existingNames.add(w.name);
-
+          const existingNames = new Set(worlds.map((world) => world.name));
           const name = generateUniqueWorldName(existingNames);
-          const slug = nanoid(10);
-          const seed = Math.floor(Math.random() * 2147483647);
-
-          const created = await prisma.world.create({
-            data: {
-              slug,
-              name,
-              texture: "earth",
-              globeRadius: 5.0,
-              seed,
-              terrainType: "default",
-              createdBy: "System",
-            },
-          });
-          roomManager.addWorldSlug(slug);
-          const rid = roomManager.reserveSlot(slug);
+          const created = createWorld({ name, createdBy: "System" });
+          roomManager.addWorldSlug(created.slug);
+          const rid = roomManager.reserveSlot(created.slug);
           return { world: created, reservationId: rid };
         });
 
@@ -131,19 +107,14 @@ export function createWorldsRouter(
         return;
       }
 
-      const slug = nanoid(10);
-      const seed = Math.floor(Math.random() * 2147483647);
-      const world = await prisma.world.create({
-        data: {
-          slug,
-          name: name.slice(0, 64),
-          texture: texture || "earth",
-          globeRadius: globeRadius ?? 5.0,
-          seed,
-          terrainType: terrainType || "default",
-          createdBy: createdBy || "Anonymous",
-        },
+      const world = createWorld({
+        name,
+        texture,
+        globeRadius,
+        terrainType,
+        createdBy,
       });
+      roomManager.addWorldSlug(world.slug);
 
       res.json(worldToConfig(world));
     } catch (err) {
@@ -154,9 +125,7 @@ export function createWorldsRouter(
 
   router.get("/:slug", async (req, res) => {
     try {
-      const world = await prisma.world.findUnique({
-        where: { slug: req.params.slug },
-      });
+      const world = findWorld(req.params.slug);
 
       if (!world) {
         res.status(404).json({ error: "World not found" });
@@ -172,14 +141,9 @@ export function createWorldsRouter(
 
   router.get("/", async (_req, res) => {
     try {
-      const worlds = await prisma.world.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      });
-
       const activeSlugs = new Set(roomManager.getActiveRoomSlugs());
 
-      const result = worlds.map((w) => ({
+      const result = worlds.slice(0, 50).map((w) => ({
         ...worldToConfig(w),
         playerCount: roomManager.getRoomPlayerCount(w.slug),
         effectiveCount: roomManager.getEffectiveCount(w.slug),

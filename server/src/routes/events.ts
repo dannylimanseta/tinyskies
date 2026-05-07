@@ -1,6 +1,6 @@
 import { Router } from "express";
-import type { PrismaClient } from "@prisma/client";
 import { nanoid } from "nanoid";
+import { addGameEvent, gameEvents } from "../memoryStore.js";
 
 const EVENT_TYPES = new Set([
   "world_saved",
@@ -16,28 +16,15 @@ const MAX_SLUG = 32;
 const MAX_TYPE = 32;
 const MAX_METADATA_BYTES = 4_000;
 
-type EventRow = {
-  id: string;
-  type: string;
-  playerName: string;
-  worldSlug: string;
-  worldName: string | null;
-  vehicle: string | null;
-  level: number | null;
-  runDurationSec: number | null;
-  metadata: unknown;
-  createdAt: Date;
-};
-
 type CountRow = {
   type: string;
-  count: bigint | number;
-  durationSec: bigint | number;
+  count: number;
+  durationSec: number;
 };
 
 type VehicleRow = {
   vehicle: string | null;
-  count: bigint | number;
+  count: number;
 };
 
 function trimStr(s: unknown, max: number): string {
@@ -62,18 +49,42 @@ function asPlainMetadata(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function numberFromDb(n: bigint | number): number {
-  return typeof n === "bigint" ? Number(n) : n;
-}
-
-function eventToJson(row: EventRow) {
+function eventToJson(row: { createdAt: Date }) {
   return {
     ...row,
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-export function createEventsRouter(prisma: PrismaClient) {
+function countEvents(events: typeof gameEvents): CountRow[] {
+  const counts = new Map<string, CountRow>();
+  for (const event of events) {
+    const row = counts.get(event.type) ?? { type: event.type, count: 0, durationSec: 0 };
+    row.count += 1;
+    row.durationSec += event.runDurationSec ?? 0;
+    counts.set(event.type, row);
+  }
+  return Array.from(counts.values());
+}
+
+function countVehicles(events: typeof gameEvents): VehicleRow[] {
+  const counts = new Map<string, VehicleRow>();
+  for (const event of events) {
+    if (!event.vehicle) continue;
+    if (!["world_saved", "quest_completed", "flag_event"].includes(event.type)) continue;
+    const row = counts.get(event.vehicle) ?? { vehicle: event.vehicle, count: 0 };
+    row.count += 1;
+    counts.set(event.vehicle, row);
+  }
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+}
+
+function startOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+export function createEventsRouter() {
   const router = Router();
 
   router.post("/", async (req, res) => {
@@ -87,7 +98,6 @@ export function createEventsRouter(prisma: PrismaClient) {
       const level = optionalInt(req.body?.level, 1, 999);
       const runDurationSec = optionalInt(req.body?.runDurationSec, 0, 24 * 60 * 60);
       const metadata = asPlainMetadata(req.body?.metadata);
-      const metadataJson = metadata ? JSON.stringify(metadata) : null;
 
       if (!EVENT_TYPES.has(type)) {
         res.status(400).json({ error: "invalid event type" });
@@ -98,16 +108,18 @@ export function createEventsRouter(prisma: PrismaClient) {
         return;
       }
 
-      await prisma.$executeRaw`
-        INSERT INTO "GameEvent" (
-          "id", "type", "playerName", "worldSlug", "worldName", "vehicle",
-          "level", "runDurationSec", "metadata"
-        )
-        VALUES (
-          ${nanoid(16)}, ${type}, ${playerName}, ${worldSlug}, ${worldName}, ${vehicle},
-          ${level}, ${runDurationSec}, CAST(${metadataJson} AS jsonb)
-        )
-      `;
+      addGameEvent({
+        id: nanoid(16),
+        type,
+        playerName,
+        worldSlug,
+        worldName,
+        vehicle,
+        level,
+        runDurationSec,
+        metadata,
+        createdAt: new Date(),
+      });
 
       res.json({ ok: true });
     } catch (err) {
@@ -118,61 +130,20 @@ export function createEventsRouter(prisma: PrismaClient) {
 
   router.get("/dashboard", async (_req, res) => {
     try {
-      const [recentWorldSaves, recentQuestCompletions, totals, todayTotals, vehicleCounts] =
-        await Promise.all([
-          prisma.$queryRaw<EventRow[]>`
-            SELECT *
-            FROM "GameEvent"
-            WHERE "type" = 'world_saved'
-            ORDER BY "createdAt" DESC
-            LIMIT 10
-          `,
-          prisma.$queryRaw<EventRow[]>`
-            SELECT *
-            FROM "GameEvent"
-            WHERE "type" = 'quest_completed'
-            ORDER BY "createdAt" DESC
-            LIMIT 12
-          `,
-          prisma.$queryRaw<CountRow[]>`
-            SELECT "type", COUNT(*) AS "count", COALESCE(SUM("runDurationSec"), 0) AS "durationSec"
-            FROM "GameEvent"
-            GROUP BY "type"
-          `,
-          prisma.$queryRaw<CountRow[]>`
-            SELECT "type", COUNT(*) AS "count", COALESCE(SUM("runDurationSec"), 0) AS "durationSec"
-            FROM "GameEvent"
-            WHERE "createdAt" >= date_trunc('day', now())
-            GROUP BY "type"
-          `,
-          prisma.$queryRaw<VehicleRow[]>`
-            SELECT "vehicle", COUNT(*) AS "count"
-            FROM "GameEvent"
-            WHERE "vehicle" IS NOT NULL
-              AND "type" IN ('world_saved', 'quest_completed', 'flag_event')
-            GROUP BY "vehicle"
-            ORDER BY COUNT(*) DESC
-          `,
-        ]);
+      const today = startOfToday();
+      const todayEvents = gameEvents.filter((event) => event.createdAt >= today);
+      const recentWorldSaves = gameEvents.filter((event) => event.type === "world_saved").slice(0, 10);
+      const recentQuestCompletions = gameEvents
+        .filter((event) => event.type === "quest_completed")
+        .slice(0, 12);
 
       res.setHeader("Cache-Control", "no-store");
       res.json({
         recentWorldSaves: recentWorldSaves.map(eventToJson),
         recentQuestCompletions: recentQuestCompletions.map(eventToJson),
-        totals: totals.map((row) => ({
-          type: row.type,
-          count: numberFromDb(row.count),
-          durationSec: numberFromDb(row.durationSec),
-        })),
-        todayTotals: todayTotals.map((row) => ({
-          type: row.type,
-          count: numberFromDb(row.count),
-          durationSec: numberFromDb(row.durationSec),
-        })),
-        vehicleCounts: vehicleCounts.map((row) => ({
-          vehicle: row.vehicle,
-          count: numberFromDb(row.count),
-        })),
+        totals: countEvents(gameEvents),
+        todayTotals: countEvents(todayEvents),
+        vehicleCounts: countVehicles(gameEvents),
       });
     } catch (err) {
       console.error("events dashboard failed:", err);

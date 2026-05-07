@@ -1,5 +1,4 @@
 import type { Socket } from "socket.io";
-import type { PrismaClient } from "@prisma/client";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -7,6 +6,7 @@ import type {
 } from "@globefly/shared";
 import { Room, MAX_PLAYERS } from "./Room.js";
 import { nanoid } from "nanoid";
+import { removeWorlds, worlds } from "../memoryStore.js";
 
 const EMPTY_ROOM_TTL_MS = 60_000;
 const RESERVATION_TTL_MS = 15_000;
@@ -26,8 +26,7 @@ export class RoomManager {
   private reservations = new Map<string, Reservation>();
   private overflowCleanupTimer?: ReturnType<typeof setInterval>;
 
-  async loadWorldSlugs(prisma: PrismaClient) {
-    const worlds = await prisma.world.findMany({ select: { slug: true } });
+  loadWorldSlugs() {
     this.worldSlugs = worlds.map((w) => w.slug);
     this.seededSlugs = new Set(this.worldSlugs);
   }
@@ -163,8 +162,8 @@ export class RoomManager {
 
   /* ── Overflow cleanup ─────────────────────────────────────────── */
 
-  startOverflowCleanup(prisma: PrismaClient) {
-    this.overflowCleanupTimer = setInterval(async () => {
+  startOverflowCleanup() {
+    this.overflowCleanupTimer = setInterval(() => {
       const toRemove: string[] = [];
 
       for (const slug of this.worldSlugs) {
@@ -176,27 +175,19 @@ export class RoomManager {
 
       if (toRemove.length === 0) return;
 
-      try {
-        await prisma.world.deleteMany({
-          where: { slug: { in: toRemove } },
-        });
-        this.worldSlugs = this.worldSlugs.filter(
-          (s) => !toRemove.includes(s),
-        );
-        for (const slug of toRemove) {
-          this.rooms.delete(slug);
-          const ct = this.cleanupTimers.get(slug);
-          if (ct) {
-            clearTimeout(ct);
-            this.cleanupTimers.delete(slug);
-          }
+      removeWorlds(toRemove);
+      this.worldSlugs = this.worldSlugs.filter(
+        (s) => !toRemove.includes(s),
+      );
+      for (const slug of toRemove) {
+        this.rooms.delete(slug);
+        const ct = this.cleanupTimers.get(slug);
+        if (ct) {
+          clearTimeout(ct);
+          this.cleanupTimers.delete(slug);
         }
-        if (toRemove.length > 0) {
-          console.log(`Cleaned up ${toRemove.length} overflow world(s)`);
-        }
-      } catch (err) {
-        console.error("Overflow cleanup failed:", err);
       }
+      console.log(`Cleaned up ${toRemove.length} overflow world(s)`);
     }, OVERFLOW_CLEANUP_INTERVAL_MS);
   }
 

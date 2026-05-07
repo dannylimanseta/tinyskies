@@ -1,7 +1,7 @@
 import { Router } from "express";
-import type { PrismaClient } from "@prisma/client";
+import { lanternsByWorldSlug } from "../memoryStore.js";
 
-export function createLanternsRouter(prisma: PrismaClient) {
+export function createLanternsRouter() {
   const router = Router();
 
   router.post("/add", async (req, res) => {
@@ -16,9 +16,7 @@ export function createLanternsRouter(prisma: PrismaClient) {
         return;
       }
 
-      await prisma.lanternLedger.create({
-        data: { count, worldSlug },
-      });
+      lanternsByWorldSlug.set(worldSlug, (lanternsByWorldSlug.get(worldSlug) ?? 0) + count);
 
       res.json({ ok: true });
     } catch (err) {
