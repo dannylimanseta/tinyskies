@@ -1,3 +1,4 @@
+import { inject } from "@vercel/analytics";
 import { Game } from "./game/Game";
 import { ProgressionManager } from "./game/ProgressionManager";
 import { inject } from "@vercel/analytics";
@@ -6,6 +7,9 @@ import { inject } from "@vercel/analytics";
 inject({
   mode: import.meta.env.PROD ? "production" : "development",
 });
+
+// Initialize Vercel Web Analytics
+inject();
 
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(window.location.search);
